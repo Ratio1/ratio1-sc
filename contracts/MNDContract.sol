@@ -264,7 +264,7 @@ contract MNDContract is ERC721, Pausable, Ownable, ReentrancyGuard {
         );
 
         uint256 currentCycle = getCurrentCycle();
-        uint256 startCycle = getStartCycle();
+        uint256 startCycle = getStartCycle(); //TODO why ND doesn't have this?
         for (uint256 i = 0; i < paramsArray.length; i++) {
             ComputeRewardsParams memory params = paramsArray[i];
             uint256 value = 0;
