@@ -16,13 +16,13 @@ import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 
 struct NodeAvailability {
     uint256 epoch;
-    uint256 availability;
+    uint8 availability;
 }
 
 struct ComputeRewardsParams {
-    uint256 licenseId;
-    string nodeHash;
-    NodeAvailability[] nodeAvailabilities;
+    uint256 licenseTokenId;
+    address nodeAddress;
+    NodeAvailability[] availabilityRecords;
 }
 
 struct ComputeRewardsResult {
@@ -31,30 +31,26 @@ struct ComputeRewardsResult {
 }
 
 struct PriceTier {
-    uint256 price; // Price in USD
-    uint256 units; // Number of units available at this stage
-    uint256 sold; // Number of units sold at this stage
+    uint256 usdPrice; // Price in USD
+    uint256 totalUnits; // Number of units available at this stage
+    uint256 soldUnits; // Number of units sold at this stage
 }
 
 struct License {
-    bool exists;
     uint256 licenseId;
-    string nodeHash;
-    uint256 lastClaimCycle;
-    uint256 currentClaimAmount;
+    address nodeAddress;
+    uint256 totalClaimedAmount;
+    uint256 lastClaimEpoch;
+    //TODO add lastClaimOracle
 }
 
 struct LicenseInfo {
     uint256 licenseId;
-    string nodeHash;
-    uint256 lastClaimCycle;
-    uint256 currentClaimAmount;
-    uint256 remainingClaimAmount;
-    uint256 currentClaimableCycles;
-}
-
-abstract contract IERC20Extented is IERC20 {
-    function decimals() public view virtual returns (uint8);
+    address nodeAddress;
+    uint256 totalClaimedAmount;
+    uint256 remainingClaimableAmount;
+    uint256 lastClaimEpoch;
+    uint256 claimableEpochs;
 }
 
 // TODO - Implement an upgradeability pattern for future improvements.
@@ -68,15 +64,16 @@ contract NDContract is
 {
     using SafeMath for uint256;
     using Counters for Counters.Counter;
-    Counters.Counter private _tokenIds;
+
+    Counters.Counter private _supply;
 
     NAEURA public _token;
 
     uint8 public currentPriceTier;
-    uint256 public startCycleTimestamp;
+    // TODO - change with start date of the protocol
+    uint256 public startCycleTimestamp = 1710028800; // 2024-03-10 00:00:00 UTC
     address[] public signers;
-    mapping(address => uint) index;
-    uint256 public cycleDuration;
+    uint256 public cycleDuration = 24 hours;
 
     IUniswapV2Router02 _uniswapV2Router;
     IUniswapV2Pair _uniswapV2Pair;
@@ -89,22 +86,23 @@ contract NDContract is
     uint256 private constant USDC_DECIMALS = 10 ** 6;
     uint256 private constant PRICE_DECIMALS = 10 ** 18;
     uint256 constant MAX_TOKEN_SUPPLY = 1618033988 * PRICE_DECIMALS;
-    uint256 constant MAX_PERCENT = 10000;
+    uint256 constant MAX_PERCENTAGE = 100_00;
 
     // Node deed constants
     uint256 constant MAX_LICENSE_SUPPLY = 46224;
-    uint256 constant MAX_LICENSE_TOKENS_PERCENT = 4000; // 40% of total supply
+    uint256 constant MAX_LICENSE_TOKENS_PERCENTAGE = 40_00; // 40% of total supply
     uint256 constant MAX_LICENSE_TOKENS_SUPPLY =
-        (MAX_TOKEN_SUPPLY * MAX_LICENSE_TOKENS_PERCENT) / MAX_PERCENT;
+        (MAX_TOKEN_SUPPLY * MAX_LICENSE_TOKENS_PERCENTAGE) / MAX_PERCENTAGE;
     uint256 constant MAX_RELEASE_PER_LICENSE =
         MAX_LICENSE_TOKENS_SUPPLY / MAX_LICENSE_SUPPLY;
+    uint256 constant RELEASE_DURATION_YEARS = 5;
     uint256 constant MAX_RELEASE_PER_DAY =
-        MAX_RELEASE_PER_LICENSE / 5 / 12 / 30; // 5 years
+        MAX_RELEASE_PER_LICENSE / RELEASE_DURATION_YEARS / 12 / 30;
 
     uint256 private constant MAX_LICENSES_BUYS_PER_TX = 5;
-    uint256 private constant BURN_PERCENT = 2000;
-    uint256 private constant LIQUIDITY_PERCENT = 5000;
-    uint256 private constant EXPENSES_PERCENT = 3000; // 30%
+    uint256 private constant BURN_PERCENTAGE = 20_00;
+    uint256 private constant LIQUIDITY_PERCENTAGE = 50_00;
+    uint256 private constant COMPANY_PERCENTAGE = 30_00;
     uint256 private constant LIQUIDITY_DEADLINE_EXTENSION = 20 minutes;
 
     mapping(uint8 => PriceTier) public _priceTiers;
@@ -116,22 +114,22 @@ contract NDContract is
     mapping(address => uint256[]) public userLicenses;
 
     // New mapping to store all registered node hashes
-    mapping(string => bool) public registeredNodeHashes;
+    mapping(address => bool) public registeredNodeAddresses;
 
     event LicenseCreated(address indexed to, uint256 indexed tokenId);
     event RegisterNode(
         address indexed to,
         uint256 indexed licenseId,
-        string nodeHash
+        address nodeAddress
     );
-    event NodeHashRemoved(
+    event RemovedNode(
         address indexed owner,
         uint256 indexed licenseId,
-        string oldNodeHash
+        address oldNodeAddress
     );
 
     event SignerAdded(address newSigner);
-    event SignerRemoved(address signerToRemove);
+    event SignerRemoved(address removedSigner);
     event LpAddrChanged(address newlpAddr);
     event FeesWithdrawn(address to, uint256 amount);
     event TokensBurned(uint256 amount);
@@ -145,16 +143,10 @@ contract NDContract is
 
     constructor(
         address tokenAddress,
-        address signerAddress,
-        uint256 newCycleDuration
+        address signerAddress
     ) ERC721("NDLicense", "ND") {
         _token = NAEURA(tokenAddress);
-        index[signerAddress] = signers.length;
         signers.push(signerAddress);
-
-        // TODO - change with start date of the protocol
-        startCycleTimestamp = 1710028800; // 2024-03-10 00:00:00 UTC
-        cycleDuration = newCycleDuration;
 
         initializePriceTiers();
     }
@@ -175,7 +167,7 @@ contract NDContract is
 
         uint256 ndSupply = 0;
         for (uint8 i = 1; i <= 12; i++) {
-            ndSupply += _priceTiers[i].units;
+            ndSupply += _priceTiers[i].totalUnits;
         }
         require(ndSupply == MAX_LICENSE_SUPPLY, "Invalid license supply");
 
@@ -196,7 +188,7 @@ contract NDContract is
         );
 
         PriceTier memory priceTier = _priceTiers[currentPriceTier];
-        uint256 availableUnits = priceTier.units.sub(priceTier.sold);
+        uint256 availableUnits = priceTier.totalUnits.sub(priceTier.soldUnits);
 
         if (availableUnits < numberOfLicenses) {
             numberOfLicenses = availableUnits;
@@ -228,34 +220,37 @@ contract NDContract is
             // TODO: reduce/refactor structure size
             // TODO: maybe batch minting
 
+            /*
+            TODO
             licenses[msg.sender][tokenId] = License({
                 exists: true,
                 licenseId: tokenId,
-                nodeHash: "",
-                lastClaimCycle: currentCycle,
-                currentClaimAmount: 0
+                nodeAddress: "",
+                lastClaimEpoch: currentCycle,
+                totalClaimedAmount: 0
             });
+            */
 
             userLicenses[msg.sender].push(tokenId);
         }
 
-        priceTier.sold = priceTier.sold.add(numberOfLicenses);
+        priceTier.soldUnits = priceTier.soldUnits.add(numberOfLicenses);
 
-        if (priceTier.sold == priceTier.units) {
+        if (priceTier.soldUnits == priceTier.totalUnits) {
             currentPriceTier++;
-        } else if (priceTier.sold > priceTier.units) {
+        } else if (priceTier.soldUnits > priceTier.totalUnits) {
             revert("Price tier sold more than available units");
         }
 
         return numberOfLicenses;
     }
 
-    function registerNode(uint256 licenseId, string memory nodeHash) public {
+    function registerNode(uint256 licenseId, address nodeAddress) public {
         _requireNotPaused();
         require(hasLicense(msg.sender, licenseId), "License does not exist");
 
         // Check if nodeHash already exists
-        require(!registeredNodeHashes[nodeHash], "Node hash already exists");
+        require(!registeredNodeAddresses[nodeAddress], "Node hash already exists");
 
         // TODO: check if nodeAddress also in MND
 
@@ -265,13 +260,13 @@ contract NDContract is
 
         // Update the license
         License storage license = licenses[msg.sender][licenseId];
-        license.nodeHash = nodeHash;
-        license.lastClaimCycle = getCurrentCycle();
+        license.nodeAddress = nodeAddress;
+        license.lastClaimEpoch = getCurrentCycle();
 
         // Add nodeHash to the list
-        registeredNodeHashes[nodeHash] = true;
+        registeredNodeAddresses[nodeAddress] = true;
 
-        emit RegisterNode(msg.sender, licenseId, nodeHash);
+        emit RegisterNode(msg.sender, licenseId, nodeAddress);
     }
 
     function removeNodeHash(uint256 licenseId) public {
@@ -281,15 +276,15 @@ contract NDContract is
 
         // TODO: force claim rewards before removing nodeAddress
 
-        string memory oldNodeHash = license.nodeHash;
+        address oldNodeHash = license.nodeAddress;
 
         if (bytes(oldNodeHash).length > 0) {
-            registeredNodeHashes[oldNodeHash] = false;
+            registeredNodeAddresses[oldNodeHash] = false;
         }
 
-        license.nodeHash = "";
+        license.nodeAddress = "";
 
-        emit NodeHashRemoved(msg.sender, licenseId, oldNodeHash);
+        emit RemovedNode(msg.sender, licenseId, oldNodeHash);
     }
 
     function claimRewards(
@@ -305,9 +300,9 @@ contract NDContract is
             require(
                 verifySignature(
                     msg.sender,
-                    paramsArray[i].licenseId,
-                    paramsArray[i].nodeHash,
-                    paramsArray[i].nodeAvailabilities,
+                    paramsArray[i].licenseTokenId,
+                    paramsArray[i].nodeAddress,
+                    paramsArray[i].availabilityRecords,
                     signatures[i]
                 ),
                 "Invalid signature."
@@ -330,8 +325,8 @@ contract NDContract is
                 rewardsArray[i].licenseId
             ];
 
-            license.lastClaimCycle = getCurrentCycle();
-            license.currentClaimAmount += rewardsArray[i].rewardsAmount;
+            license.lastClaimEpoch = getCurrentCycle();
+            license.totalClaimedAmount += rewardsArray[i].rewardsAmount;
             totalRewards += rewardsArray[i].rewardsAmount;
         }
 
@@ -353,38 +348,38 @@ contract NDContract is
             ComputeRewardsParams memory params = paramsArray[i];
             uint256 value = 0;
 
-            if (!hasLicense(addr, params.licenseId)) {
+            if (!hasLicense(addr, params.licenseTokenId)) {
                 continue;
             }
-            License storage license = licenses[addr][params.licenseId];
+            License storage license = licenses[addr][params.licenseTokenId];
             require( // TODO: remove this check
-                keccak256(abi.encodePacked(license.nodeHash)) ==
-                    keccak256(abi.encodePacked(params.nodeHash)),
+                keccak256(abi.encodePacked(license.nodeAddress)) ==
+                    keccak256(abi.encodePacked(params.nodeAddress)),
                 "Invalid node hash."
             );
 
             if (
-                license.lastClaimCycle < currentCycle &&
-                license.currentClaimAmount < MAX_RELEASE_PER_LICENSE
+                license.lastClaimEpoch < currentCycle &&
+                license.totalClaimedAmount < MAX_RELEASE_PER_LICENSE
             ) {
                 uint256 cyclesToClaim = currentCycle.sub(
-                    license.lastClaimCycle
+                    license.lastClaimEpoch
                 );
                 require(
-                    params.nodeAvailabilities.length == cyclesToClaim,
+                    params.availabilityRecords.length == cyclesToClaim,
                     "Incorrect number of availabilites."
                 );
 
                 for (uint256 j = 0; j < cyclesToClaim; j++) {
                     value = value.add(
                         MAX_RELEASE_PER_DAY
-                            .mul(params.nodeAvailabilities[j].availability)
+                            .mul(params.availabilityRecords[j].availability)
                             .div(MAX_AVAILABILITY)
                     );
                 }
 
                 uint256 maxRemainingClaimAmount = MAX_RELEASE_PER_LICENSE.sub(
-                    license.currentClaimAmount
+                    license.totalClaimedAmount
                 );
                 if (value > maxRemainingClaimAmount) {
                     value = maxRemainingClaimAmount;
@@ -392,7 +387,7 @@ contract NDContract is
             }
 
             results[i] = ComputeRewardsResult({
-                licenseId: params.licenseId,
+                licenseId: params.licenseTokenId,
                 rewardsAmount: value
             });
         }
@@ -418,8 +413,8 @@ contract NDContract is
     }
 
     function safeMint(address to) private returns (uint256) {
-        _tokenIds.increment();
-        uint256 newTokenId = _tokenIds.current();
+        _supply.increment();
+        uint256 newTokenId = _supply.current();
 
         _safeMint(to, newTokenId);
         emit LicenseCreated(to, newTokenId);
@@ -428,9 +423,9 @@ contract NDContract is
     }
 
     function handlePayment(uint256 totalCost) private {
-        uint256 burnAmount = totalCost.mul(BURN_PERCENT).div(MAX_PERCENT);
-        uint256 liquidityAmount = totalCost.mul(LIQUIDITY_PERCENT).div(
-            MAX_PERCENT
+        uint256 burnAmount = totalCost.mul(BURN_PERCENTAGE).div(MAX_PERCENTAGE);
+        uint256 liquidityAmount = totalCost.mul(LIQUIDITY_PERCENTAGE).div(
+            MAX_PERCENTAGE
         );
 
         // Burn 20% of _token from the contract's balance
@@ -529,14 +524,14 @@ contract NDContract is
 
     function getLicensePrice() public view returns (uint256 price) {
         PriceTier memory priceTier = _priceTiers[currentPriceTier];
-        uint256 priceInUsd = priceTier.price * USDC_DECIMALS; // Convert to 6 decimals (USDC format)
+        uint256 priceInUsd = priceTier.usdPrice * USDC_DECIMALS; // Convert to 6 decimals (USDC format)
         uint256 naeuraPrice = getTokenPrice(); // Price of 1 NAEURA in USDC (6 decimals)
         return priceInUsd.mul(PRICE_DECIMALS).div(naeuraPrice); // Result in NAEURA (18 decimals)
     }
 
     function getLicensePriceInUSD() public view returns (uint256 price) {
         PriceTier memory priceTier = _priceTiers[currentPriceTier];
-        return priceTier.price;
+        return priceTier.usdPrice;
     }
 
     // calculate price based on pair reserves
@@ -585,9 +580,9 @@ contract NDContract is
         if (from != address(0) && to != address(0)) {
             // Transfer of existing token
             License storage license = licenses[from][tokenId];
-            if (bytes(license.nodeHash).length > 0) {
-                registeredNodeHashes[license.nodeHash] = false;
-                license.nodeHash = "";
+            if (bytes(license.nodeAddress).length > 0) {
+                registeredNodeAddresses[license.nodeAddress] = false;
+                license.nodeAddress = "";
             }
         }
     }
@@ -608,7 +603,7 @@ contract NDContract is
         address addr,
         uint256 licenseId
     ) public view returns (bool) {
-        return licenses[addr][licenseId].exists;
+        return licenses[addr][licenseId].licenseId != 0;
     }
 
     function getLicenses(
@@ -626,23 +621,26 @@ contract NDContract is
             uint256 currentCycle = getCurrentCycle();
 
             if (
-                license.lastClaimCycle >= currentCycle ||
-                license.currentClaimAmount >= MAX_RELEASE_PER_LICENSE
+                license.lastClaimEpoch >= currentCycle ||
+                license.totalClaimedAmount >= MAX_RELEASE_PER_LICENSE
             ) {
                 cyclesToClaim = 0;
             } else {
-                cyclesToClaim = currentCycle - license.lastClaimCycle;
+                cyclesToClaim = currentCycle - license.lastClaimEpoch;
             }
 
+            /*
+            TODO
             licenseInfos[i] = LicenseInfo({
                 licenseId: license.licenseId,
-                nodeHash: license.nodeHash,
-                lastClaimCycle: license.lastClaimCycle,
-                currentClaimAmount: license.currentClaimAmount,
-                remainingClaimAmount: MAX_RELEASE_PER_LICENSE -
-                    license.currentClaimAmount,
-                currentClaimableCycles: cyclesToClaim
+                nodeAddress: license.nodeAddress,
+                lastClaimEpoch: license.lastClaimEpoch,
+                currentClaimAmount: license.totalClaimedAmount,
+                remainingClaimableAmount: MAX_RELEASE_PER_LICENSE -
+                    license.totalClaimedAmount,
+                claimableEpochs: cyclesToClaim
             });
+            */
         }
 
         return licenseInfos;
@@ -715,19 +713,21 @@ contract NDContract is
 
     function addSigner(address newSigner) public onlyOwner {
         if (newSigner != address(0)) {
-            index[newSigner] = signers.length;
+            //index[newSigner] = signers.length;
             signers.push(newSigner);
             emit SignerAdded(newSigner);
         }
     }
 
     function removeSigner(address signerToRemove) public onlyOwner {
+        /*
         uint index_signer = index[signerToRemove];
         if (signerToRemove != address(0) && index_signer > 0) {
             delete signers[index_signer];
             index[signerToRemove] = 0;
             emit SignerRemoved(signerToRemove);
         }
+        */
     }
 
     // Needed for the contract to receive ETH from LP in case of adding liquidity error
