@@ -175,8 +175,7 @@ contract NDContract is
     function buyLicense(
         uint256 numberOfLicenses
         // TODO: add price tier as parameter in order to avoid buying more expensive tiers
-    ) public nonReentrant returns (uint) {
-        _requireNotPaused();
+    ) public nonReentrant whenNotPaused returns (uint) {
         require(currentPriceTier <= 12, "All licenses have been sold");
 
         require(
@@ -243,8 +242,7 @@ contract NDContract is
         return numberOfLicenses;
     }
 
-    function registerNode(uint256 licenseId, address nodeAddress) public {
-        _requireNotPaused();
+    function registerNode(uint256 licenseId, address nodeAddress) public whenNotPaused {
         require(hasLicense(msg.sender, licenseId), "License does not exist");
 
         // Check if nodeHash already exists
@@ -267,8 +265,7 @@ contract NDContract is
         emit RegisterNode(msg.sender, licenseId, nodeAddress);
     }
 
-    function removeNodeHash(uint256 licenseId) public {
-        _requireNotPaused();
+    function removeNodeHash(uint256 licenseId) public whenNotPaused {
         require(hasLicense(msg.sender, licenseId), "License does not exist");
         License storage license = licenses[msg.sender][licenseId];
 
@@ -288,8 +285,7 @@ contract NDContract is
     function claimRewards(
         ComputeRewardsParams[] memory paramsArray,
         bytes[] memory signatures
-    ) public nonReentrant {
-        _requireNotPaused();
+    ) public nonReentrant whenNotPaused {
         require(
             paramsArray.length == signatures.length,
             "Mismatched input arrays"
