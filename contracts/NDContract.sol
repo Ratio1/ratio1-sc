@@ -2,7 +2,6 @@
 pragma solidity ^0.8.18;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
@@ -56,7 +55,6 @@ struct LicenseInfo {
 // TODO - Implement an upgradeability pattern for future improvements.
 contract NDContract is
     ERC721,
-    ERC721Enumerable,
     ERC721URIStorage,
     Pausable,
     Ownable,
@@ -574,7 +572,7 @@ contract NDContract is
         address to,
         uint256 tokenId,
         uint256 batchSize
-    ) internal override(ERC721, ERC721Enumerable) whenNotPaused {
+    ) internal override(ERC721) whenNotPaused {
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
 
         if (from != address(0) && to != address(0)) {
@@ -592,7 +590,7 @@ contract NDContract is
     )
         public
         view
-        override(ERC721, ERC721Enumerable, ERC721URIStorage)
+        override(ERC721, ERC721URIStorage)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
