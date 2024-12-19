@@ -173,73 +173,70 @@ contract NDContract is
     }
 
     function buyLicense(
-        uint256 numberOfLicenses
-        // TODO: add price tier as parameter in order to avoid buying more expensive tiers
+        uint256 nLicensesToBuy,
+        uint8 requestedPriceTier
     ) public nonReentrant whenNotPaused returns (uint) {
         require(currentPriceTier <= 12, "All licenses have been sold");
-
+        require(requestedPriceTier == currentPriceTier, "Not in the right price tier");
         require(
-            numberOfLicenses > 0 &&
-                numberOfLicenses <= MAX_LICENSES_BUYS_PER_TX,
+            nLicensesToBuy > 0 &&
+                nLicensesToBuy <= MAX_LICENSES_BUYS_PER_TX,
             "Invalid number of licenses"
         );
 
-        PriceTier memory priceTier = _priceTiers[currentPriceTier];
-        uint256 availableUnits = priceTier.totalUnits.sub(priceTier.soldUnits);
-
-        if (availableUnits < numberOfLicenses) {
-            numberOfLicenses = availableUnits;
-        }
-
-        uint256 pricePerLicense = getLicensePrice();
-        uint256 totalCost = numberOfLicenses.mul(pricePerLicense);
+        PriceTier storage priceTier = _priceTiers[currentPriceTier];
+        uint256 availableUnits = getPriceTierAvailableUnits(priceTier, nLicensesToBuy);
+        uint256 tokenPricePerLicense = getLicenseTokenPrice();
+        uint256 totalCost = nLicensesToBuy * tokenPricePerLicense;
 
         // Check user's balance before attempting transfer
-        uint256 userBalance = _token.balanceOf(msg.sender);
-        require(userBalance >= totalCost, "Insufficient NAEURA balance");
-
+        require(_token.balanceOf(msg.sender) >= totalCost, "Insufficient NAEURA balance");
         // Check allowance
-        uint256 allowance = _token.allowance(msg.sender, address(this));
-        require(allowance >= totalCost, "Insufficient allowance");
+        require(_token.allowance(msg.sender, address(this)) >= totalCost, "Insufficient allowance");
 
         // Transfer NAEURA tokens from user to contract
         require(
             _token.transferFrom(msg.sender, address(this), totalCost),
-            "Transfer failed"
+            "NAEURA transfer failed"
         );
 
-        handlePayment(totalCost);
+        distributePayment(totalCost);
 
-        uint256 currentCycle = getCurrentCycle();
-        for (uint i = 1; i <= numberOfLicenses; i++) {
-            uint256 tokenId = safeMint(msg.sender);
+        uint256[] memory mintedTokens = batchMint(msg.sender, availableUnits);
 
-            // TODO: reduce/refactor structure size
-            // TODO: maybe batch minting
-
-            /*
-            TODO
-            licenses[msg.sender][tokenId] = License({
-                exists: true,
-                licenseId: tokenId,
-                nodeAddress: "",
-                lastClaimEpoch: currentCycle,
-                totalClaimedAmount: 0
-            });
-            */
-
-            userLicenses[msg.sender].push(tokenId);
-        }
-
-        priceTier.soldUnits = priceTier.soldUnits.add(numberOfLicenses);
-
+        priceTier.soldUnits += mintedTokens.length;
         if (priceTier.soldUnits == priceTier.totalUnits) {
             currentPriceTier++;
         } else if (priceTier.soldUnits > priceTier.totalUnits) {
             revert("Price tier sold more than available units");
         }
 
-        return numberOfLicenses;
+        return mintedTokens.length;
+    }
+
+    function getPriceTierAvailableUnits(PriceTier memory tier, uint256 requestedUnits) private pure returns (uint256) {
+        uint256 availableUnits = tier.totalUnits - tier.soldUnits;
+        return availableUnits >= requestedUnits ? requestedUnits : availableUnits;
+    }
+
+    function batchMint(address to, uint256 quantity) private returns (uint256[] memory) {
+        uint256 currentCycle = getCurrentCycle();
+        uint256[] memory tokenIds = new uint256[](quantity);
+
+        for (uint256 i = 0; i < quantity; i++) {
+            uint256 tokenId = safeMint(to);
+            tokenIds[i] = tokenId;
+
+            licenses[to][tokenId] = License({
+                licenseId: tokenId,
+                nodeAddress: address(0),
+                lastClaimEpoch: currentCycle,
+                totalClaimedAmount: 0
+            });
+            userLicenses[to].push(tokenId);
+        }
+
+        return tokenIds;
     }
 
     function registerNode(uint256 licenseId, address nodeAddress) public whenNotPaused {
@@ -273,11 +270,11 @@ contract NDContract is
 
         address oldNodeHash = license.nodeAddress;
 
-        if (bytes(oldNodeHash).length > 0) {
+        if (oldNodeHash != address(0)) {
             registeredNodeAddresses[oldNodeHash] = false;
         }
 
-        license.nodeAddress = "";
+        license.nodeAddress = address(0);
 
         emit RemovedNode(msg.sender, licenseId, oldNodeHash);
     }
@@ -416,7 +413,7 @@ contract NDContract is
         return newTokenId;
     }
 
-    function handlePayment(uint256 totalCost) private {
+    function distributePayment(uint256 totalCost) private {
         uint256 burnAmount = totalCost.mul(BURN_PERCENTAGE).div(MAX_PERCENTAGE);
         uint256 liquidityAmount = totalCost.mul(LIQUIDITY_PERCENTAGE).div(
             MAX_PERCENTAGE
@@ -516,7 +513,7 @@ contract NDContract is
         return timestamp.sub(startCycleTimestamp).div(cycleDuration);
     }
 
-    function getLicensePrice() public view returns (uint256 price) {
+    function getLicenseTokenPrice() public view returns (uint256 price) {
         PriceTier memory priceTier = _priceTiers[currentPriceTier];
         uint256 priceInUsd = priceTier.usdPrice * USDC_DECIMALS; // Convert to 6 decimals (USDC format)
         uint256 naeuraPrice = getTokenPrice(); // Price of 1 NAEURA in USDC (6 decimals)
@@ -570,13 +567,13 @@ contract NDContract is
         uint256 batchSize
     ) internal override(ERC721) whenNotPaused {
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
-
+        //TODO license does not get transferred
         if (from != address(0) && to != address(0)) {
             // Transfer of existing token
             License storage license = licenses[from][tokenId];
-            if (bytes(license.nodeAddress).length > 0) {
+            if (license.nodeAddress != address(0)) {
                 registeredNodeAddresses[license.nodeAddress] = false;
-                license.nodeAddress = "";
+                license.nodeAddress = address(0);
             }
         }
     }
@@ -659,7 +656,7 @@ contract NDContract is
     function verifySignature(
         address _to,
         uint256 _licenseId,
-        string memory _nodeHash,
+        address _nodeHash,
         NodeAvailability[] memory _nodeAvailabilities,
         bytes memory signature
     ) internal view returns (bool) {
@@ -690,7 +687,7 @@ contract NDContract is
     function getMessageHash(
         address _to,
         uint256 _licenseId,
-        string memory _nodeHash,
+        address _nodeHash,
         NodeAvailability[] memory _nodeAvailabilities
     ) public pure returns (bytes32) {
         bytes memory encoded;
