@@ -412,7 +412,7 @@ contract NDContract is
         _token.burn(address(this), burnAmount);
         // Add liquidity with 50% of _token
         addLiquidity(liquidityAmount);
-        // The remaining 30% stays in the contract
+        // Send 30% to the company
         _token.transfer(owner(), companyAmount); //TODO check if it should be distributed in any other way
     }
 
@@ -513,15 +513,14 @@ contract NDContract is
 
     // calculate price based on pair reserves
     function getTokenPrice() public view returns (uint256 price) {
-        address[] memory path = new address[](3);
+        address[] memory path = new address[](2);
         path[0] = address(_token);
-        path[1] = _uniswapV2Router.WETH();
-        path[2] = _usdcAddr;
+        path[1] = _usdcAddr;
 
         uint256 priceTokenToUsd = _uniswapV2Router.getAmountsOut(
             10 ** 18,
             path
-        )[2];
+        )[1];
 
         return priceTokenToUsd;
     }
