@@ -19,7 +19,7 @@ struct NodeAvailability {
 }
 
 struct ComputeRewardsParams {
-    uint256 licenseTokenId;
+    uint256 licenseId;
     address nodeAddress;
     NodeAvailability[] availabilityRecords;
 }
@@ -40,6 +40,7 @@ struct License {
     address nodeAddress;
     uint256 totalClaimedAmount;
     uint256 lastClaimEpoch;
+    uint256 assignTimestamp;
     //TODO add lastClaimOracle
 }
 
@@ -69,9 +70,9 @@ contract NDContract is
 
     uint8 public currentPriceTier;
     // TODO - change with start date of the protocol
-    uint256 public startCycleTimestamp = 1710028800; // 2024-03-10 00:00:00 UTC
+    uint256 public startEpochTimestamp = 1710028800; // 2024-03-10 00:00:00 UTC
     address[] public signers;
-    uint256 public cycleDuration = 24 hours;
+    uint256 public epochDuration = 24 hours;
 
     IUniswapV2Router02 _uniswapV2Router;
     IUniswapV2Pair _uniswapV2Pair;
@@ -112,7 +113,7 @@ contract NDContract is
     mapping(address => uint256[]) public userLicenses;
 
     // New mapping to store all registered node hashes
-    mapping(address => bool) public registeredNodeAddresses;
+    mapping(address => bool) public registeredNodeAddresses; //TODO might make sense to map to the owner or licenseId?
 
     event LicenseCreated(address indexed to, uint256 indexed tokenId);
     event RegisterNode(
@@ -129,8 +130,6 @@ contract NDContract is
     event SignerAdded(address newSigner);
     event SignerRemoved(address removedSigner);
     event LpAddrChanged(address newlpAddr);
-    event FeesWithdrawn(address to, uint256 amount);
-    event TokensBurned(uint256 amount);
     event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount);
     event TokenSwapFailed(uint256 tokenAmount, string reason);
     event LiquidityAdditionFailed(
@@ -220,7 +219,7 @@ contract NDContract is
     }
 
     function batchMint(address to, uint256 quantity) private returns (uint256[] memory) {
-        uint256 currentCycle = getCurrentCycle();
+        uint256 currentEpoch = getCurrentEpoch();
         uint256[] memory tokenIds = new uint256[](quantity);
 
         for (uint256 i = 0; i < quantity; i++) {
@@ -230,8 +229,9 @@ contract NDContract is
             licenses[to][tokenId] = License({
                 licenseId: tokenId,
                 nodeAddress: address(0),
-                lastClaimEpoch: currentCycle,
-                totalClaimedAmount: 0
+                lastClaimEpoch: currentEpoch,
+                totalClaimedAmount: 0,
+                assignTimestamp: 0
             });
             userLicenses[to].push(tokenId);
         }
@@ -239,86 +239,83 @@ contract NDContract is
         return tokenIds;
     }
 
-    function registerNode(uint256 licenseId, address nodeAddress) public whenNotPaused {
+    function registerNode(uint256 licenseId, address newNodeAddress) public whenNotPaused {
         require(hasLicense(msg.sender, licenseId), "License does not exist");
-
-        // Check if nodeHash already exists
-        require(!registeredNodeAddresses[nodeAddress], "Node hash already exists");
+        require(newNodeAddress != address(0), "Invalid node address");
+        require(!registeredNodeAddresses[newNodeAddress], "Node hash already exists");
 
         // TODO: check if nodeAddress also in MND
 
-        // TODO: check if 24h from last assign
-
-        // TODO: check if nodeAddress is already asigned then remove it
-
-        // Update the license
         License storage license = licenses[msg.sender][licenseId];
-        license.nodeAddress = nodeAddress;
-        license.lastClaimEpoch = getCurrentCycle();
 
-        // Add nodeHash to the list
-        registeredNodeAddresses[nodeAddress] = true;
+        require(license.nodeAddress != newNodeAddress, "Cannot reassign the same node address");
+        require(license.assignTimestamp + 24 hours < block.timestamp, "Cannot reassign within 24 hours");
 
-        emit RegisterNode(msg.sender, licenseId, nodeAddress);
+        _removeNodeAddress(license);
+        license.nodeAddress = newNodeAddress;
+        license.lastClaimEpoch = getCurrentEpoch();
+        license.assignTimestamp = block.timestamp;
+        registeredNodeAddresses[newNodeAddress] = true;
+
+        emit RegisterNode(msg.sender, licenseId, newNodeAddress);
     }
 
     function removeNodeHash(uint256 licenseId) public whenNotPaused {
         require(hasLicense(msg.sender, licenseId), "License does not exist");
         License storage license = licenses[msg.sender][licenseId];
+        _removeNodeAddress(license);
+    }
 
-        // TODO: force claim rewards before removing nodeAddress
-
-        address oldNodeHash = license.nodeAddress;
-
-        if (oldNodeHash != address(0)) {
-            registeredNodeAddresses[oldNodeHash] = false;
+    function _removeNodeAddress(License storage license) private {
+        if (license.nodeAddress == address(0)) {
+            return;
         }
 
+        // TODO: force claim rewards before removing nodeAddress
+        address oldNodeAddress = license.nodeAddress;
+        registeredNodeAddresses[license.nodeAddress] = false;
         license.nodeAddress = address(0);
 
-        emit RemovedNode(msg.sender, licenseId, oldNodeHash);
+        emit RemovedNode(msg.sender, license.licenseId, oldNodeAddress);  
     }
 
     function claimRewards(
-        ComputeRewardsParams[] memory paramsArray,
+        ComputeRewardsParams[] memory computeParams,
         bytes[] memory signatures
     ) public nonReentrant whenNotPaused {
         require(
-            paramsArray.length == signatures.length,
-            "Mismatched input arrays"
+            computeParams.length == signatures.length,
+            "Mismatched input arrays length"
         );
-        for (uint256 i = 0; i < paramsArray.length; i++) {
+
+        uint256 totalRewards = 0;
+        for (uint256 i = 0; i < computeParams.length; i++) {
             require(
                 verifySignature(
                     msg.sender,
-                    paramsArray[i].licenseTokenId,
-                    paramsArray[i].nodeAddress,
-                    paramsArray[i].availabilityRecords,
+                    computeParams[i].licenseId,
+                    computeParams[i].nodeAddress,
+                    computeParams[i].availabilityRecords,
                     signatures[i]
                 ),
-                "Invalid signature."
+                "Invalid signature"
             );
-        }
-
-        ComputeRewardsResult[] memory rewardsArray = estimateRewards(
-            msg.sender,
-            paramsArray
-        );
-
-        // TODO: remove below loop - just use a totalRewards variable
-        uint256 totalRewards = 0;
-        for (uint256 i = 0; i < rewardsArray.length; i++) {
-            if (!hasLicense(msg.sender, rewardsArray[i].licenseId)) {
-                continue;
-            }
+            require(
+                hasLicense(msg.sender, computeParams[i].licenseId),
+                "User does not have the license"
+            );
 
             License storage license = licenses[msg.sender][
-                rewardsArray[i].licenseId
+                computeParams[i].licenseId
             ];
+            uint256 rewardsAmount = calculateLicenseRewards(
+                license,
+                computeParams[i]
+            );
 
-            license.lastClaimEpoch = getCurrentCycle();
-            license.totalClaimedAmount += rewardsArray[i].rewardsAmount;
-            totalRewards += rewardsArray[i].rewardsAmount;
+            license.lastClaimEpoch = getCurrentEpoch();
+            license.totalClaimedAmount += rewardsAmount;
+            totalRewards += rewardsAmount;
         }
 
         if (totalRewards > 0) {
@@ -326,73 +323,62 @@ contract NDContract is
         }
     }
 
-    function estimateRewards(
+    function calculateRewards(
         address addr, // TODO: remove this parameter
-        ComputeRewardsParams[] memory paramsArray
+        ComputeRewardsParams[] memory computeParams
     ) public view returns (ComputeRewardsResult[] memory) {
         ComputeRewardsResult[] memory results = new ComputeRewardsResult[](
-            paramsArray.length
+            computeParams.length
         );
 
-        uint256 currentCycle = getCurrentCycle();
-        for (uint256 i = 0; i < paramsArray.length; i++) {
-            ComputeRewardsParams memory params = paramsArray[i];
-            uint256 value = 0;
-
-            if (!hasLicense(addr, params.licenseTokenId)) {
-                continue;
-            }
-            License storage license = licenses[addr][params.licenseTokenId];
-            require( // TODO: remove this check
-                keccak256(abi.encodePacked(license.nodeAddress)) ==
-                    keccak256(abi.encodePacked(params.nodeAddress)),
-                "Invalid node hash."
-            );
-
-            if (
-                license.lastClaimEpoch < currentCycle &&
-                license.totalClaimedAmount < MAX_RELEASE_PER_LICENSE
-            ) {
-                uint256 cyclesToClaim = currentCycle.sub(
-                    license.lastClaimEpoch
-                );
-                require(
-                    params.availabilityRecords.length == cyclesToClaim,
-                    "Incorrect number of availabilites."
-                );
-
-                for (uint256 j = 0; j < cyclesToClaim; j++) {
-                    value = value.add(
-                        MAX_RELEASE_PER_DAY
-                            .mul(params.availabilityRecords[j].availability)
-                            .div(MAX_AVAILABILITY)
-                    );
-                }
-
-                uint256 maxRemainingClaimAmount = MAX_RELEASE_PER_LICENSE.sub(
-                    license.totalClaimedAmount
-                );
-                if (value > maxRemainingClaimAmount) {
-                    value = maxRemainingClaimAmount;
-                }
-            }
-
+        for (uint256 i = 0; i < computeParams.length; i++) {
+            ComputeRewardsParams memory params = computeParams[i];
+            License memory license = licenses[addr][params.licenseId];
             results[i] = ComputeRewardsResult({
-                licenseId: params.licenseTokenId,
-                rewardsAmount: value
+                licenseId: params.licenseId,
+                rewardsAmount: calculateLicenseRewards(license, params)
             });
         }
 
         return results;
     }
 
-    function withdrawFees(uint256 amount) public onlyOwner {
-        require(amount > 0, "Amount must be greater than 0");
-        uint256 contractBalance = _token.balanceOf(address(this));
-        require(amount <= contractBalance, "Insufficient balance");
+    function calculateLicenseRewards(
+        License memory license,
+        ComputeRewardsParams memory computeParam
+    ) internal view returns (uint256) {
+        uint256 currentEpoch = getCurrentEpoch();
+        uint256 licenseRewards = 0;
 
-        require(_token.transfer(owner(), amount), "Transfer failed");
-        emit FeesWithdrawn(owner(), amount);
+        require( // TODO: remove this check
+            license.nodeAddress == computeParam.nodeAddress,
+            "Invalid node address."
+        );
+
+        uint256 epochsToClaim = currentEpoch - license.lastClaimEpoch;
+        if (
+            epochsToClaim <= 0 ||
+            license.totalClaimedAmount == MAX_RELEASE_PER_LICENSE
+        ) {
+            return 0;
+        }
+
+        require(
+            computeParam.availabilityRecords.length == epochsToClaim,
+            "Incorrect number of availabilites."
+        );
+
+        for (uint256 j = 0; j < epochsToClaim; j++) {
+            licenseRewards += MAX_RELEASE_PER_DAY * computeParam.availabilityRecords[j].availability
+                    / MAX_AVAILABILITY;
+        }
+
+        uint256 maxRemainingClaimAmount = MAX_RELEASE_PER_LICENSE - license.totalClaimedAmount;
+        if (licenseRewards > maxRemainingClaimAmount) {
+            licenseRewards = maxRemainingClaimAmount;
+        }
+
+        return licenseRewards;
     }
 
     function pause() public onlyOwner {
@@ -406,6 +392,10 @@ contract NDContract is
     function safeMint(address to) private returns (uint256) {
         _supply.increment();
         uint256 newTokenId = _supply.current();
+        require(
+            newTokenId <= MAX_LICENSE_SUPPLY,
+            "Maximum token supply reached"
+        );
 
         _safeMint(to, newTokenId);
         emit LicenseCreated(to, newTokenId);
@@ -414,20 +404,16 @@ contract NDContract is
     }
 
     function distributePayment(uint256 totalCost) private {
-        uint256 burnAmount = totalCost.mul(BURN_PERCENTAGE).div(MAX_PERCENTAGE);
-        uint256 liquidityAmount = totalCost.mul(LIQUIDITY_PERCENTAGE).div(
-            MAX_PERCENTAGE
-        );
+        uint256 burnAmount = totalCost * BURN_PERCENTAGE / MAX_PERCENTAGE;
+        uint256 liquidityAmount = totalCost * LIQUIDITY_PERCENTAGE / MAX_PERCENTAGE;
+        uint256 companyAmount = totalCost * COMPANY_PERCENTAGE / MAX_PERCENTAGE;
 
         // Burn 20% of _token from the contract's balance
         _token.burn(address(this), burnAmount);
-        emit TokensBurned(burnAmount);
-
         // Add liquidity with 50% of _token
         addLiquidity(liquidityAmount);
-
         // The remaining 30% stays in the contract
-        // TODO: last 30% should go to owner
+        _token.transfer(owner(), companyAmount); //TODO check if it should be distributed in any other way
     }
 
     // LP interactions
@@ -500,17 +486,17 @@ contract NDContract is
         }
     }
 
-    function getCurrentCycle() public view returns (uint256) {
-        return _calculateCycle(block.timestamp);
+    function getCurrentEpoch() public view returns (uint256) {
+        return _calculateEpoch(block.timestamp);
     }
 
-    function _calculateCycle(uint256 timestamp) private view returns (uint256) {
+    function _calculateEpoch(uint256 timestamp) private view returns (uint256) {
         require(
-            timestamp >= startCycleTimestamp,
-            "Timestamp is before the start cycle."
+            timestamp >= startEpochTimestamp,
+            "Timestamp is before the start epoch."
         );
 
-        return timestamp.sub(startCycleTimestamp).div(cycleDuration);
+        return (timestamp - startEpochTimestamp) / epochDuration;
     }
 
     function getLicenseTokenPrice() public view returns (uint256 price) {
@@ -608,16 +594,16 @@ contract NDContract is
         for (uint256 i = 0; i < _userLicenses.length; i++) {
             uint256 licenseId = _userLicenses[i];
             License storage license = licenses[addr][licenseId];
-            uint256 cyclesToClaim = 0;
-            uint256 currentCycle = getCurrentCycle();
+            uint256 epochsToClaim = 0;
+            uint256 currentEpoch = getCurrentEpoch();
 
             if (
-                license.lastClaimEpoch >= currentCycle ||
+                license.lastClaimEpoch >= currentEpoch ||
                 license.totalClaimedAmount >= MAX_RELEASE_PER_LICENSE
             ) {
-                cyclesToClaim = 0;
+                epochsToClaim = 0;
             } else {
-                cyclesToClaim = currentCycle - license.lastClaimEpoch;
+                epochsToClaim = currentEpoch - license.lastClaimEpoch;
             }
 
             /*
