@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
@@ -57,7 +57,7 @@ struct LicenseInfo {
 
 // TODO - Implement an upgradeability pattern for future improvements.
 contract NDContract is
-    ERC721,
+    ERC721Enumerable,
     ERC721URIStorage,
     Pausable,
     Ownable,
@@ -78,7 +78,7 @@ contract NDContract is
     uint256 public epochDuration = 24 hours;
 
     IUniswapV2Router02 _uniswapV2Router;
-    IUniswapV2Pair _uniswapV2Pair;
+    IUniswapV2Pair _uniswapV2Pair; //TODO remove?
     address _usdcAddr;
 
     string private _baseTokenURI;
@@ -109,12 +109,7 @@ contract NDContract is
 
     mapping(uint8 => PriceTier) public _priceTiers;
 
-    // Main mapping: address => licenseId => License
-    mapping(address => mapping(uint256 => License)) public licenses;
-
-    // Additional mapping to keep track of user licenses
-    mapping(address => uint256[]) public userLicenses;
-
+    mapping(uint256 => License) public licenses;
     // New mapping to store all registered node hashes
     mapping(address => bool) public registeredNodeAddresses; //TODO might make sense to map to the owner or licenseId?
 
@@ -229,27 +224,26 @@ contract NDContract is
             uint256 tokenId = safeMint(to);
             tokenIds[i] = tokenId;
 
-            licenses[to][tokenId] = License({
+            licenses[tokenId] = License({
                 licenseId: tokenId,
                 nodeAddress: address(0),
                 lastClaimEpoch: currentEpoch,
                 totalClaimedAmount: 0,
                 assignTimestamp: 0
             });
-            userLicenses[to].push(tokenId);
         }
 
         return tokenIds;
     }
 
     function linkNode(uint256 licenseId, address newNodeAddress) public whenNotPaused {
-        require(hasLicense(msg.sender, licenseId), "License does not exist");
+        require(ownerOf(licenseId) == msg.sender, "Not the owner of the license");
         require(newNodeAddress != address(0), "Invalid node address");
         require(!registeredNodeAddresses[newNodeAddress], "Node hash already exists");
 
         // TODO: check if nodeAddress also in MND
 
-        License storage license = licenses[msg.sender][licenseId];
+        License storage license = licenses[licenseId];
 
         require(license.nodeAddress != newNodeAddress, "Cannot reassign the same node address");
         require(license.assignTimestamp + 24 hours < block.timestamp, "Cannot reassign within 24 hours");
@@ -264,8 +258,8 @@ contract NDContract is
     }
 
     function unlinkNode(uint256 licenseId) public whenNotPaused {
-        require(hasLicense(msg.sender, licenseId), "License does not exist");
-        License storage license = licenses[msg.sender][licenseId];
+        require(ownerOf(licenseId) == msg.sender, "Not the owner of the license");
+        License storage license = licenses[licenseId];
         _removeNodeAddress(license);
     }
 
@@ -304,11 +298,11 @@ contract NDContract is
                 "Invalid signature"
             );
             require(
-                hasLicense(msg.sender, computeParams[i].licenseId),
+                ownerOf(computeParams[i].licenseId) == msg.sender,
                 "User does not have the license"
             );
 
-            License storage license = licenses[msg.sender][
+            License storage license = licenses[
                 computeParams[i].licenseId
             ];
             uint256 rewardsAmount = calculateLicenseRewards(
@@ -327,7 +321,6 @@ contract NDContract is
     }
 
     function calculateRewards(
-        address addr, // TODO: remove this parameter
         ComputeRewardsParams[] memory computeParams
     ) public view returns (ComputeRewardsResult[] memory) {
         ComputeRewardsResult[] memory results = new ComputeRewardsResult[](
@@ -336,7 +329,7 @@ contract NDContract is
 
         for (uint256 i = 0; i < computeParams.length; i++) {
             ComputeRewardsParams memory params = computeParams[i];
-            License memory license = licenses[addr][params.licenseId];
+            License memory license = licenses[params.licenseId];
             results[i] = ComputeRewardsResult({
                 licenseId: params.licenseId,
                 rewardsAmount: calculateLicenseRewards(license, params)
@@ -543,17 +536,11 @@ contract NDContract is
         address to,
         uint256 tokenId,
         uint256 batchSize
-    ) internal override(ERC721) whenNotPaused {
+    ) internal override(ERC721, ERC721Enumerable) whenNotPaused {
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
-        //TODO license does not get transferred
-        if (from != address(0) && to != address(0)) {
-            // Transfer of existing token
-            License storage license = licenses[from][tokenId];
-            if (license.nodeAddress != address(0)) {
-                registeredNodeAddresses[license.nodeAddress] = false;
-                license.nodeAddress = address(0);
-            }
-        }
+        //TODO should check if from or to == address(0) ?
+        License storage license = licenses[tokenId];
+        _removeNodeAddress(license);
     }
 
     function supportsInterface(
@@ -561,32 +548,22 @@ contract NDContract is
     )
         public
         view
-        override(ERC721, ERC721URIStorage)
+        override(ERC721Enumerable, ERC721URIStorage)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
     }
 
     ///// View functions
-    function hasLicense(
-        //TODO remove with erc721enumerable?
-        address addr,
-        uint256 licenseId
-    ) public view returns (bool) {
-        return licenses[addr][licenseId].licenseId != 0;
-    }
-
     function getLicenses(
         address addr
     ) public view returns (LicenseInfo[] memory) {
-        uint256[] memory _userLicenses = userLicenses[addr];
-        LicenseInfo[] memory licenseInfos = new LicenseInfo[](
-            _userLicenses.length
-        );
+        uint256 balance = balanceOf(addr);
+        LicenseInfo[] memory licenseInfos = new LicenseInfo[](balance);
 
-        for (uint256 i = 0; i < _userLicenses.length; i++) {
-            uint256 licenseId = _userLicenses[i];
-            License storage license = licenses[addr][licenseId];
+        for (uint256 i = 0; i < balance; i++) {
+            uint256 licenseId = tokenOfOwnerByIndex(addr, i);
+            License storage license = licenses[licenseId];
             uint256 epochsToClaim = 0;
             uint256 currentEpoch = getCurrentEpoch();
 
