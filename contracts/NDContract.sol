@@ -256,8 +256,6 @@ contract NDContract is
         // TODO: check if nodeAddress also in MND
 
         License storage license = licenses[licenseId];
-
-        require(license.nodeAddress != newNodeAddress, "Cannot reassign the same node address");
         require(license.assignTimestamp + 24 hours < block.timestamp, "Cannot reassign within 24 hours");
 
         _removeNodeAddress(license);
