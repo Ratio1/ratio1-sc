@@ -10,6 +10,7 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "./NAEURA.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 
@@ -34,13 +35,14 @@ struct PriceTier {
     uint256 totalUnits; // Number of units available at this stage
     uint256 soldUnits; // Number of units sold at this stage
 }
+//TODO make view with all the price tiers for frontend
 
 struct License {
     uint256 licenseId;
     address nodeAddress;
     uint256 totalClaimedAmount;
     uint256 lastClaimEpoch;
-    uint256 assignTimestamp;
+    uint256 assignTimestamp; //TODO add on public view
     //TODO add lastClaimOracle
 }
 
@@ -48,7 +50,7 @@ struct LicenseInfo {
     uint256 licenseId;
     address nodeAddress;
     uint256 totalClaimedAmount;
-    uint256 remainingClaimableAmount;
+    uint256 remainingAmount;
     uint256 lastClaimEpoch;
     uint256 claimableEpochs;
 }
@@ -71,6 +73,7 @@ contract NDContract is
     uint8 public currentPriceTier;
     // TODO - change with start date of the protocol
     uint256 public startEpochTimestamp = 1710028800; // 2024-03-10 00:00:00 UTC
+    mapping(address => bool) isSigner;
     address[] public signers;
     uint256 public epochDuration = 24 hours;
 
@@ -143,7 +146,7 @@ contract NDContract is
         address signerAddress
     ) ERC721("NDLicense", "ND") {
         _token = NAEURA(tokenAddress);
-        signers.push(signerAddress);
+        addSigner(signerAddress);
 
         initializePriceTiers();
     }
@@ -239,7 +242,7 @@ contract NDContract is
         return tokenIds;
     }
 
-    function registerNode(uint256 licenseId, address newNodeAddress) public whenNotPaused {
+    function linkNode(uint256 licenseId, address newNodeAddress) public whenNotPaused {
         require(hasLicense(msg.sender, licenseId), "License does not exist");
         require(newNodeAddress != address(0), "Invalid node address");
         require(!registeredNodeAddresses[newNodeAddress], "Node hash already exists");
@@ -260,7 +263,7 @@ contract NDContract is
         emit RegisterNode(msg.sender, licenseId, newNodeAddress);
     }
 
-    function removeNodeHash(uint256 licenseId) public whenNotPaused {
+    function unlinkNode(uint256 licenseId) public whenNotPaused {
         require(hasLicense(msg.sender, licenseId), "License does not exist");
         License storage license = licenses[msg.sender][licenseId];
         _removeNodeAddress(license);
@@ -420,60 +423,52 @@ contract NDContract is
     function addLiquidity(uint256 tokenAmount) private {
         _token.approve(address(_uniswapV2Router), tokenAmount);
 
-        uint256 halfTokenAmount = tokenAmount.div(2);
-        uint256 ethAmount = swapTokensForETH(halfTokenAmount);
+        uint256 halfTokenAmount = tokenAmount / 2;
+        uint256 usdcAmount = swapTokensForUsdc(halfTokenAmount);
 
-        if (ethAmount == 0) {
+        if (usdcAmount == 0) {
             emit LiquidityAdditionFailed(tokenAmount, 0, "Token swap failed");
             return;
         }
 
-        (bool success, bytes memory result) = address(_uniswapV2Router).call{
-            value: ethAmount
-        }(
-            abi.encodeWithSelector(
-                _uniswapV2Router.addLiquidityETH.selector,
+        (uint256 usedAmountNaeura, uint256 usedAmountUsdc, ) =
+            _uniswapV2Router.addLiquidity(
                 address(_token),
+                _usdcAddr,
                 halfTokenAmount,
-                0, // Accept any amount of tokens
-                0, // Accept any amount of ETH
-                address(this),
+                usdcAmount,
+                0, // Min tokens out
+                0, // Min USDC out
+                address(this), //TODO this liquidity should die here? Or maybe be sent to the company?
                 block.timestamp + LIQUIDITY_DEADLINE_EXTENSION
-            )
-        );
+            );
 
-        if (success) {
-            (uint256 amountToken, uint256 amountETH, ) = abi.decode(
-                result,
-                (uint256, uint256, uint256)
-            );
-            emit LiquidityAdded(amountToken, amountETH);
-        } else {
-            emit LiquidityAdditionFailed(
-                halfTokenAmount,
-                ethAmount,
-                "Liquidity addition failed"
-            );
-            // Attempt to rescue the swapped ETH
-            (bool rescueSuccess, ) = payable(owner()).call{value: ethAmount}(
-                ""
-            );
-            require(rescueSuccess, "ETH rescue failed");
+        emit LiquidityAdded(usedAmountNaeura, usedAmountUsdc);
+
+        uint256 remainingAmountNaeura = halfTokenAmount - usedAmountNaeura;
+        uint256 remainingAmountUsdc = usdcAmount - usedAmountUsdc;
+
+        //TODO is this fine?
+        if (remainingAmountNaeura > 0) {
+            _token.transfer(owner(), remainingAmountNaeura);
         }
+        if (remainingAmountUsdc > 0) {
+            IERC20(_usdcAddr).transfer(owner(), remainingAmountUsdc);
+        }        
     }
 
-    function swapTokensForETH(uint256 amount) private returns (uint256) {
+    function swapTokensForUsdc(uint256 amount) private returns (uint256) {
         address[] memory path = new address[](2);
         path[0] = address(_token);
-        path[1] = _uniswapV2Router.WETH();
+        path[1] = _usdcAddr;
 
         try
-            _uniswapV2Router.swapExactTokensForETH(
-                amount,
-                0,
-                path,
-                address(this),
-                block.timestamp
+            _uniswapV2Router.swapExactTokensForTokens(
+                amount, // Amount of tokens to swap
+                0, // Minimum amount of tokens to receive
+                path, // Path of tokens to swap
+                address(this), // Address to receive the swapped tokens
+                block.timestamp // Deadline
             )
         returns (uint256[] memory amounts) {
             return amounts[1];
@@ -500,15 +495,13 @@ contract NDContract is
     }
 
     function getLicenseTokenPrice() public view returns (uint256 price) {
-        PriceTier memory priceTier = _priceTiers[currentPriceTier];
-        uint256 priceInUsd = priceTier.usdPrice * USDC_DECIMALS; // Convert to 6 decimals (USDC format)
+        uint256 priceInUsdc = getLicensePriceInUSD() * USDC_DECIMALS; // Convert to 6 decimals (USDC format)
         uint256 naeuraPrice = getTokenPrice(); // Price of 1 NAEURA in USDC (6 decimals)
-        return priceInUsd.mul(PRICE_DECIMALS).div(naeuraPrice); // Result in NAEURA (18 decimals)
+        return priceInUsdc.mul(PRICE_DECIMALS).div(naeuraPrice); // Result in NAEURA (18 decimals)
     }
 
     function getLicensePriceInUSD() public view returns (uint256 price) {
-        PriceTier memory priceTier = _priceTiers[currentPriceTier];
-        return priceTier.usdPrice;
+        return _priceTiers[currentPriceTier].usdPrice;
     }
 
     // calculate price based on pair reserves
@@ -576,6 +569,7 @@ contract NDContract is
 
     ///// View functions
     function hasLicense(
+        //TODO remove with erc721enumerable?
         address addr,
         uint256 licenseId
     ) public view returns (bool) {
@@ -631,7 +625,7 @@ contract NDContract is
         _uniswapV2Pair = IUniswapV2Pair(uniswapV2Pair_);
     }
 
-    function set_usdcAddress(address usdcAddr_) public onlyOwner {
+    function setUsdcAddress(address usdcAddr_) public onlyOwner {
         _usdcAddr = usdcAddr_;
     }
 
@@ -652,21 +646,7 @@ contract NDContract is
             _nodeAvailabilities
         );
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
-
-        bool verified = false;
-        // TODO: 
-        // mapping(address => bool) signers;
-        // require(signers[receivedSigner], "Invalid signer");
-        // require(ethSignedMessageHash.recover(signature) == receivedSigner)
-        for (uint i = 0; i < signers.length; i++) {
-            address signer = signers[i];
-            if (ethSignedMessageHash.recover(signature) == signer) {
-                verified = true;
-                break;
-            }
-        }
-
-        return verified;
+        return isSigner[ethSignedMessageHash.recover(signature)];
     }
 
     function getMessageHash(
@@ -688,22 +668,25 @@ contract NDContract is
     }
 
     function addSigner(address newSigner) public onlyOwner {
-        if (newSigner != address(0)) {
-            //index[newSigner] = signers.length;
-            signers.push(newSigner);
-            emit SignerAdded(newSigner);
-        }
+        require(newSigner != address(0), "Invalid signer address");
+        require(!isSigner[newSigner], "Signer already exists");
+        isSigner[newSigner] = true;
+        signers.push(newSigner);
+        emit SignerAdded(newSigner);
     }
 
     function removeSigner(address signerToRemove) public onlyOwner {
-        /*
-        uint index_signer = index[signerToRemove];
-        if (signerToRemove != address(0) && index_signer > 0) {
-            delete signers[index_signer];
-            index[signerToRemove] = 0;
-            emit SignerRemoved(signerToRemove);
+        require(signers.length > 1, "Cannot remove the last signer");
+        require(isSigner[signerToRemove], "Signer does not exist");
+        isSigner[signerToRemove] = false;
+        for (uint i = 0; i < signers.length; i++) {
+            if (signers[i] == signerToRemove) {
+                signers[i] = signers[signers.length - 1];
+                signers.pop();
+                break;
+            }
         }
-        */
+        emit SignerRemoved(signerToRemove);
     }
 
     // Needed for the contract to receive ETH from LP in case of adding liquidity error
