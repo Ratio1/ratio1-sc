@@ -61,31 +61,27 @@ contract NDContract is
     using SafeMath for uint256;
     using Counters for Counters.Counter;
 
-    Counters.Counter private _supply;
+    //..######...#######..##....##..######..########....###....##....##.########..######.
+    //.##....##.##.....##.###...##.##....##....##......##.##...###...##....##....##....##
+    //.##.......##.....##.####..##.##..........##.....##...##..####..##....##....##......
+    //.##.......##.....##.##.##.##..######.....##....##.....##.##.##.##....##.....######.
+    //.##.......##.....##.##..####.......##....##....#########.##..####....##..........##
+    //.##....##.##.....##.##...###.##....##....##....##.....##.##...###....##....##....##
+    //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
-    NAEURA public _token;
-
-    uint8 public currentPriceTier;
     // TODO - change with start date of the protocol
     uint256 public startEpochTimestamp = 1710028800; // 2024-03-10 00:00:00 UTC
-    mapping(address => bool) isSigner;
-    address[] public signers;
     uint256 public epochDuration = 24 hours;
 
-    IUniswapV2Router02 _uniswapV2Router;
-    address _usdcAddr;
-
-    string private _baseTokenURI;
-
-    // General constants
-    uint8 private constant MAX_AVAILABILITY = 255;
-    uint256 private constant USDC_DECIMALS = 10 ** 6;
-    uint256 private constant PRICE_DECIMALS = 10 ** 18;
-    uint256 constant MAX_TOKEN_SUPPLY = 1618033988 * PRICE_DECIMALS;
     uint256 constant MAX_PERCENTAGE = 100_00;
+    uint8 constant MAX_AVAILABILITY = 255;
+
+    uint256 constant USDC_DECIMALS = 10 ** 6;
+    uint256 constant PRICE_DECIMALS = 10 ** 18;
+
+    uint256 constant MAX_TOKEN_SUPPLY = 1618033988 * PRICE_DECIMALS;
     uint8 constant LAST_PRICE_TIER = 12;
 
-    // Node deed constants
     uint256 constant MAX_LICENSE_SUPPLY = 46224;
     uint256 constant MAX_LICENSE_TOKENS_PERCENTAGE = 40_00; // 40% of total supply
     uint256 constant MAX_LICENSE_TOKENS_SUPPLY =
@@ -96,16 +92,41 @@ contract NDContract is
     uint256 constant MAX_RELEASE_PER_DAY =
         MAX_RELEASE_PER_LICENSE / RELEASE_DURATION_YEARS / 12 / 30;
 
-    uint256 private constant MAX_LICENSES_BUYS_PER_TX = 5;
-    uint256 private constant BURN_PERCENTAGE = 20_00;
-    uint256 private constant LIQUIDITY_PERCENTAGE = 50_00;
-    uint256 private constant COMPANY_PERCENTAGE = 30_00;
-    uint256 private constant LIQUIDITY_DEADLINE_EXTENSION = 20 minutes;
+    uint256 constant MAX_LICENSES_BUYS_PER_TX = 5;
+    uint256 constant BURN_PERCENTAGE = 20_00;
+    uint256 constant LIQUIDITY_PERCENTAGE = 50_00;
+    uint256 constant COMPANY_PERCENTAGE = 30_00;
+    uint256 constant LIQUIDITY_DEADLINE_EXTENSION = 20 minutes;
 
+    //..######..########..#######..########.....###.....######...########
+    //.##....##....##....##.....##.##.....##...##.##...##....##..##......
+    //.##..........##....##.....##.##.....##..##...##..##........##......
+    //..######.....##....##.....##.########..##.....##.##...####.######..
+    //.......##....##....##.....##.##...##...#########.##....##..##......
+    //.##....##....##....##.....##.##....##..##.....##.##....##..##......
+    //..######.....##.....#######..##.....##.##.....##..######...########
+
+    Counters.Counter private _supply;
+    string private _baseTokenURI;
+    uint8 public currentPriceTier;
+
+    NAEURA public _naeuraToken;
+    IUniswapV2Router02 _uniswapV2Router;
+    address _usdcAddr;
+
+    address[] public signers;
+    mapping(address => bool) isSigner;
     mapping(uint8 => PriceTier) public _priceTiers;
-
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
+
+    //.########.##.....##.########.##....##.########..######.
+    //.##.......##.....##.##.......###...##....##....##....##
+    //.##.......##.....##.##.......####..##....##....##......
+    //.######...##.....##.######...##.##.##....##.....######.
+    //.##........##...##..##.......##..####....##..........##
+    //.##.........##.##...##.......##...###....##....##....##
+    //.########....###....########.##....##....##.....######.
 
     event LicenseCreated(address indexed to, uint256 indexed tokenId);
     event RegisterNode(
@@ -118,7 +139,6 @@ contract NDContract is
         uint256 indexed licenseId,
         address oldNodeAddress
     );
-
     event SignerAdded(address newSigner);
     event SignerRemoved(address removedSigner);
     event LpAddrChanged(address newlpAddr);
@@ -134,7 +154,7 @@ contract NDContract is
         address tokenAddress,
         address signerAddress
     ) ERC721("NDLicense", "ND") {
-        _token = NAEURA(tokenAddress);
+        _naeuraToken = NAEURA(tokenAddress);
         addSigner(signerAddress);
 
         initializePriceTiers();
@@ -166,6 +186,7 @@ contract NDContract is
     function buyLicense(
         uint256 nLicensesToBuy,
         uint8 requestedPriceTier
+        //TODO add KYC/KYB check
     ) public nonReentrant whenNotPaused returns (uint) {
         require(currentPriceTier <= LAST_PRICE_TIER, "All licenses have been sold");
         require(requestedPriceTier == currentPriceTier, "Not in the right price tier");
@@ -176,24 +197,22 @@ contract NDContract is
         );
 
         PriceTier storage priceTier = _priceTiers[currentPriceTier];
-        uint256 availableUnits = getPriceTierAvailableUnits(priceTier, nLicensesToBuy);
-        uint256 tokenPricePerLicense = getLicenseTokenPrice();
-        uint256 totalCost = nLicensesToBuy * tokenPricePerLicense;
+        uint256 buyableUnits = getPriceTierBuyableUnits(priceTier, nLicensesToBuy);
+        uint256 totalCost = nLicensesToBuy * getLicenseTokenPrice();
 
         // Check user's balance before attempting transfer
-        require(_token.balanceOf(msg.sender) >= totalCost, "Insufficient NAEURA balance");
-        // Check allowance
-        require(_token.allowance(msg.sender, address(this)) >= totalCost, "Insufficient allowance");
+        require(_naeuraToken.balanceOf(msg.sender) >= totalCost, "Insufficient NAEURA balance");
+        // Check user's allowance
+        require(_naeuraToken.allowance(msg.sender, address(this)) >= totalCost, "Insufficient allowance");
 
         // Transfer NAEURA tokens from user to contract
         require(
-            _token.transferFrom(msg.sender, address(this), totalCost),
+            _naeuraToken.transferFrom(msg.sender, address(this), totalCost),
             "NAEURA transfer failed"
         );
-
         distributePayment(totalCost);
 
-        uint256[] memory mintedTokens = batchMint(msg.sender, availableUnits);
+        uint256[] memory mintedTokens = batchMint(msg.sender, buyableUnits);
 
         priceTier.soldUnits += mintedTokens.length;
         if (priceTier.soldUnits == priceTier.totalUnits) {
@@ -205,13 +224,12 @@ contract NDContract is
         return mintedTokens.length;
     }
 
-    function getPriceTierAvailableUnits(PriceTier memory tier, uint256 requestedUnits) private pure returns (uint256) {
-        uint256 availableUnits = tier.totalUnits - tier.soldUnits;
-        return availableUnits >= requestedUnits ? requestedUnits : availableUnits;
+    function getPriceTierBuyableUnits(PriceTier memory tier, uint256 requestedUnits) private pure returns (uint256) {
+        uint256 buyableUnits = tier.totalUnits - tier.soldUnits;
+        return buyableUnits >= requestedUnits ? requestedUnits : buyableUnits;
     }
 
     function batchMint(address to, uint256 quantity) private returns (uint256[] memory) {
-        uint256 currentEpoch = getCurrentEpoch();
         uint256[] memory tokenIds = new uint256[](quantity);
 
         for (uint256 i = 0; i < quantity; i++) {
@@ -221,7 +239,7 @@ contract NDContract is
             licenses[tokenId] = License({
                 licenseId: tokenId,
                 nodeAddress: address(0),
-                lastClaimEpoch: currentEpoch,
+                lastClaimEpoch: 0,
                 totalClaimedAmount: 0,
                 assignTimestamp: 0
             });
@@ -233,7 +251,7 @@ contract NDContract is
     function linkNode(uint256 licenseId, address newNodeAddress) public whenNotPaused {
         require(ownerOf(licenseId) == msg.sender, "Not the owner of the license");
         require(newNodeAddress != address(0), "Invalid node address");
-        require(!registeredNodeAddresses[newNodeAddress], "Node hash already exists");
+        require(!registeredNodeAddresses[newNodeAddress], "Node address already registered");
 
         // TODO: check if nodeAddress also in MND
 
@@ -282,15 +300,12 @@ contract NDContract is
         uint256 totalRewards = 0;
         for (uint256 i = 0; i < computeParams.length; i++) {
             require(
-                verifySignature(
-                    computeParams[i],
-                    signatures[i]
-                ),
-                "Invalid signature"
-            );
-            require(
                 ownerOf(computeParams[i].licenseId) == msg.sender,
                 "User does not have the license"
+            );
+            require(
+                verifyRewardsSignature(computeParams[i], signatures[i]),
+                "Invalid signature"
             );
 
             License storage license = licenses[
@@ -307,7 +322,7 @@ contract NDContract is
         }
 
         if (totalRewards > 0) {
-            _token.mint(msg.sender, totalRewards);
+            _naeuraToken.mint(msg.sender, totalRewards);
         }
     }
 
@@ -353,18 +368,17 @@ contract NDContract is
         require(
             computeParam.epochs.length == epochsToClaim &&
                 computeParam.availabilies.length == epochsToClaim,
-            "Incorrect number of availabilites."
+            "Incorrect number of params."
         );
 
-        for (uint256 j = 0; j < epochsToClaim; j++) {
-                licenseRewards += MAX_RELEASE_PER_DAY * computeParam.availabilies[j] / MAX_AVAILABILITY;
+        for (uint256 i = 0; i < epochsToClaim; i++) {
+            licenseRewards += MAX_RELEASE_PER_DAY * computeParam.availabilies[i] / MAX_AVAILABILITY;
         }
 
         uint256 maxRemainingClaimAmount = MAX_RELEASE_PER_LICENSE - license.totalClaimedAmount;
         if (licenseRewards > maxRemainingClaimAmount) {
-            licenseRewards = maxRemainingClaimAmount;
+            return maxRemainingClaimAmount;
         }
-
         return licenseRewards;
     }
 
@@ -381,7 +395,7 @@ contract NDContract is
         uint256 newTokenId = _supply.current();
         require(
             newTokenId <= MAX_LICENSE_SUPPLY,
-            "Maximum token supply reached"
+            "Maximum token supply reached."
         );
 
         _safeMint(to, newTokenId);
@@ -395,31 +409,29 @@ contract NDContract is
         uint256 liquidityAmount = totalCost * LIQUIDITY_PERCENTAGE / MAX_PERCENTAGE;
         uint256 companyAmount = totalCost * COMPANY_PERCENTAGE / MAX_PERCENTAGE;
 
-        // Burn 20% of _token from the contract's balance
-        _token.burn(address(this), burnAmount);
-        // Add liquidity with 50% of _token
+        _naeuraToken.burn(address(this), burnAmount);
         addLiquidity(liquidityAmount);
-        // Send 30% to the company
-        _token.transfer(owner(), companyAmount); //TODO check if it should be distributed in any other way
+        _naeuraToken.transfer(owner(), companyAmount); //TODO check if it should be distributed in any other way
     }
 
     // LP interactions
-    function addLiquidity(uint256 tokenAmount) private {
-        _token.approve(address(_uniswapV2Router), tokenAmount);
+    function addLiquidity(uint256 naeuraAmount) private {
+        _naeuraToken.approve(address(_uniswapV2Router), naeuraAmount);
 
-        uint256 halfTokenAmount = tokenAmount / 2;
-        uint256 usdcAmount = swapTokensForUsdc(halfTokenAmount);
+        uint256 halfNaeuraAmount = naeuraAmount / 2;
+        uint256 usdcAmount = swapTokensForUsdc(halfNaeuraAmount);
 
         if (usdcAmount == 0) {
-            emit LiquidityAdditionFailed(tokenAmount, 0, "Token swap failed");
+            //TODO what should happen in case of a failed swap?
+            emit LiquidityAdditionFailed(naeuraAmount, 0, "Token swap failed");
             return;
         }
 
         (uint256 usedAmountNaeura, uint256 usedAmountUsdc, ) =
             _uniswapV2Router.addLiquidity(
-                address(_token),
+                address(_naeuraToken),
                 _usdcAddr,
-                halfTokenAmount,
+                halfNaeuraAmount,
                 usdcAmount,
                 0, // Min tokens out
                 0, // Min USDC out
@@ -429,12 +441,12 @@ contract NDContract is
 
         emit LiquidityAdded(usedAmountNaeura, usedAmountUsdc);
 
-        uint256 remainingAmountNaeura = halfTokenAmount - usedAmountNaeura;
+        uint256 remainingAmountNaeura = halfNaeuraAmount - usedAmountNaeura;
         uint256 remainingAmountUsdc = usdcAmount - usedAmountUsdc;
 
         //TODO is this fine?
         if (remainingAmountNaeura > 0) {
-            _token.transfer(owner(), remainingAmountNaeura);
+            _naeuraToken.transfer(owner(), remainingAmountNaeura);
         }
         if (remainingAmountUsdc > 0) {
             IERC20(_usdcAddr).transfer(owner(), remainingAmountUsdc);
@@ -443,7 +455,7 @@ contract NDContract is
 
     function swapTokensForUsdc(uint256 amount) private returns (uint256) {
         address[] memory path = new address[](2);
-        path[0] = address(_token);
+        path[0] = address(_naeuraToken);
         path[1] = _usdcAddr;
 
         try
@@ -491,7 +503,7 @@ contract NDContract is
     // calculate price based on pair reserves
     function getTokenPrice() public view returns (uint256 price) {
         address[] memory path = new address[](2);
-        path[0] = address(_token);
+        path[0] = address(_naeuraToken);
         path[1] = _usdcAddr;
 
         uint256 priceTokenToUsd = _uniswapV2Router.getAmountsOut(
@@ -545,29 +557,34 @@ contract NDContract is
         return super.supportsInterface(interfaceId);
     }
 
-    ///// View functions
+    //.##.....##.####.########.##......##....########.##.....##.##....##..######..########.####..#######..##....##..######.
+    //.##.....##..##..##.......##..##..##....##.......##.....##.###...##.##....##....##.....##..##.....##.###...##.##....##
+    //.##.....##..##..##.......##..##..##....##.......##.....##.####..##.##..........##.....##..##.....##.####..##.##......
+    //.##.....##..##..######...##..##..##....######...##.....##.##.##.##.##..........##.....##..##.....##.##.##.##..######.
+    //..##...##...##..##.......##..##..##....##.......##.....##.##..####.##..........##.....##..##.....##.##..####.......##
+    //...##.##....##..##.......##..##..##....##.......##.....##.##...###.##....##....##.....##..##.....##.##...###.##....##
+    //....###....####.########..###..###.....##........#######..##....##..######.....##....####..#######..##....##..######.
+
     function getLicenses(
         address addr
     ) public view returns (LicenseInfo[] memory) {
         uint256 balance = balanceOf(addr);
-        LicenseInfo[] memory licenseInfos = new LicenseInfo[](balance);
+        LicenseInfo[] memory licensesInfo = new LicenseInfo[](balance);
+        uint256 currentEpoch = getCurrentEpoch();
 
         for (uint256 i = 0; i < balance; i++) {
             uint256 licenseId = tokenOfOwnerByIndex(addr, i);
             License memory license = licenses[licenseId];
             uint256 claimableEpochs = 0;
-            uint256 currentEpoch = getCurrentEpoch();
 
             if (
-                license.lastClaimEpoch >= currentEpoch ||
-                license.totalClaimedAmount >= MAX_RELEASE_PER_LICENSE
+                license.lastClaimEpoch < currentEpoch &&
+                license.totalClaimedAmount < MAX_RELEASE_PER_LICENSE
             ) {
-                claimableEpochs = 0;
-            } else {
                 claimableEpochs = currentEpoch - license.lastClaimEpoch;
             }
 
-            licenseInfos[i] = LicenseInfo({
+            licensesInfo[i] = LicenseInfo({
                 licenseId: license.licenseId,
                 nodeAddress: license.nodeAddress,
                 totalClaimedAmount: license.totalClaimedAmount,
@@ -578,7 +595,7 @@ contract NDContract is
             });
         }
 
-        return licenseInfos;
+        return licensesInfo;
     }
 
     function getPriceTiers() public view returns (PriceTier[] memory) {
@@ -602,20 +619,21 @@ contract NDContract is
     using ECDSA for bytes32;
 
     function verifySignature(
-        ComputeRewardsParams memory computeParam,
+        bytes32 ethSignedMessageHash,
         bytes memory signature
     ) internal view returns (bool) {
-        bytes32 messageHash = getMessageHash(computeParam);
-        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
         return isSigner[ethSignedMessageHash.recover(signature)];
     }
 
-    function getMessageHash(
-        ComputeRewardsParams memory computeParam
-    ) public pure returns (bytes32) {
-        return keccak256(
+    function verifyRewardsSignature(
+        ComputeRewardsParams memory computeParam,
+        bytes memory signature //TODO allow multiple signers
+    ) public view returns (bool) {
+        bytes32 messageHash = keccak256(
             abi.encodePacked(computeParam.nodeAddress, computeParam.epochs, computeParam.availabilies)
         );
+        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
+        return verifySignature(ethSignedMessageHash, signature);
     }
 
     function addSigner(address newSigner) public onlyOwner {
@@ -627,7 +645,6 @@ contract NDContract is
     }
 
     function removeSigner(address signerToRemove) public onlyOwner {
-        require(signers.length > 1, "Cannot remove the last signer");
         require(isSigner[signerToRemove], "Signer does not exist");
         isSigner[signerToRemove] = false;
         for (uint i = 0; i < signers.length; i++) {
@@ -639,7 +656,4 @@ contract NDContract is
         }
         emit SignerRemoved(signerToRemove);
     }
-
-    // Needed for the contract to receive ETH from LP in case of adding liquidity error
-    receive() external payable {}
 }
