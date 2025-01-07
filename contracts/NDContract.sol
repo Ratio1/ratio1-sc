@@ -9,20 +9,15 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "./NAEURA.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
-import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
-
-struct NodeAvailability {
-    uint256 epoch;
-    uint8 availability;
-}
+import "./NAEURA.sol";
 
 struct ComputeRewardsParams {
     uint256 licenseId;
     address nodeAddress;
-    NodeAvailability[] availabilityRecords;
+    uint256[] epochs;
+    uint8[] availabilies;
 }
 
 struct ComputeRewardsResult {
@@ -42,7 +37,7 @@ struct License {
     address nodeAddress;
     uint256 totalClaimedAmount;
     uint256 lastClaimEpoch;
-    uint256 assignTimestamp; //TODO add on public view
+    uint256 assignTimestamp;
     //TODO add lastClaimOracle
 }
 
@@ -53,6 +48,7 @@ struct LicenseInfo {
     uint256 remainingAmount;
     uint256 lastClaimEpoch;
     uint256 claimableEpochs;
+    uint256 assignTimestamp;
 }
 
 // TODO - Implement an upgradeability pattern for future improvements.
@@ -78,7 +74,6 @@ contract NDContract is
     uint256 public epochDuration = 24 hours;
 
     IUniswapV2Router02 _uniswapV2Router;
-    IUniswapV2Pair _uniswapV2Pair; //TODO remove?
     address _usdcAddr;
 
     string private _baseTokenURI;
@@ -110,8 +105,7 @@ contract NDContract is
     mapping(uint8 => PriceTier) public _priceTiers;
 
     mapping(uint256 => License) public licenses;
-    // New mapping to store all registered node hashes
-    mapping(address => bool) public registeredNodeAddresses; //TODO might make sense to map to the owner or licenseId?
+    mapping(address => bool) public registeredNodeAddresses;
 
     event LicenseCreated(address indexed to, uint256 indexed tokenId);
     event RegisterNode(
@@ -289,10 +283,7 @@ contract NDContract is
         for (uint256 i = 0; i < computeParams.length; i++) {
             require(
                 verifySignature(
-                    msg.sender,
-                    computeParams[i].licenseId,
-                    computeParams[i].nodeAddress,
-                    computeParams[i].availabilityRecords,
+                    computeParams[i],
                     signatures[i]
                 ),
                 "Invalid signature"
@@ -360,13 +351,13 @@ contract NDContract is
         }
 
         require(
-            computeParam.availabilityRecords.length == epochsToClaim,
+            computeParam.epochs.length == epochsToClaim &&
+                computeParam.availabilies.length == epochsToClaim,
             "Incorrect number of availabilites."
         );
 
         for (uint256 j = 0; j < epochsToClaim; j++) {
-            licenseRewards += MAX_RELEASE_PER_DAY * computeParam.availabilityRecords[j].availability
-                    / MAX_AVAILABILITY;
+                licenseRewards += MAX_RELEASE_PER_DAY * computeParam.availabilies[j] / MAX_AVAILABILITY;
         }
 
         uint256 maxRemainingClaimAmount = MAX_RELEASE_PER_LICENSE - license.totalClaimedAmount;
@@ -490,7 +481,7 @@ contract NDContract is
     function getLicenseTokenPrice() public view returns (uint256 price) {
         uint256 priceInUsdc = getLicensePriceInUSD() * USDC_DECIMALS; // Convert to 6 decimals (USDC format)
         uint256 naeuraPrice = getTokenPrice(); // Price of 1 NAEURA in USDC (6 decimals)
-        return priceInUsdc.mul(PRICE_DECIMALS).div(naeuraPrice); // Result in NAEURA (18 decimals)
+        return priceInUsdc * PRICE_DECIMALS / naeuraPrice; // Result in NAEURA (18 decimals)
     }
 
     function getLicensePriceInUSD() public view returns (uint256 price) {
@@ -563,31 +554,28 @@ contract NDContract is
 
         for (uint256 i = 0; i < balance; i++) {
             uint256 licenseId = tokenOfOwnerByIndex(addr, i);
-            License storage license = licenses[licenseId];
-            uint256 epochsToClaim = 0;
+            License memory license = licenses[licenseId];
+            uint256 claimableEpochs = 0;
             uint256 currentEpoch = getCurrentEpoch();
 
             if (
                 license.lastClaimEpoch >= currentEpoch ||
                 license.totalClaimedAmount >= MAX_RELEASE_PER_LICENSE
             ) {
-                epochsToClaim = 0;
+                claimableEpochs = 0;
             } else {
-                epochsToClaim = currentEpoch - license.lastClaimEpoch;
+                claimableEpochs = currentEpoch - license.lastClaimEpoch;
             }
 
-            /*
-            TODO
             licenseInfos[i] = LicenseInfo({
                 licenseId: license.licenseId,
                 nodeAddress: license.nodeAddress,
+                totalClaimedAmount: license.totalClaimedAmount,
+                remainingAmount: MAX_RELEASE_PER_LICENSE - license.totalClaimedAmount,
                 lastClaimEpoch: license.lastClaimEpoch,
-                currentClaimAmount: license.totalClaimedAmount,
-                remainingClaimableAmount: MAX_RELEASE_PER_LICENSE -
-                    license.totalClaimedAmount,
-                claimableEpochs: cyclesToClaim
+                claimableEpochs: claimableEpochs,
+                assignTimestamp: license.assignTimestamp
             });
-            */
         }
 
         return licenseInfos;
@@ -598,10 +586,6 @@ contract NDContract is
         _uniswapV2Router = IUniswapV2Router02(uniswapV2Router_);
     }
 
-    function setUniswapPair(address uniswapV2Pair_) public onlyOwner {
-        _uniswapV2Pair = IUniswapV2Pair(uniswapV2Pair_);
-    }
-
     function setUsdcAddress(address usdcAddr_) public onlyOwner {
         _usdcAddr = usdcAddr_;
     }
@@ -610,38 +594,20 @@ contract NDContract is
     using ECDSA for bytes32;
 
     function verifySignature(
-        address _to,
-        uint256 _licenseId,
-        address _nodeHash,
-        NodeAvailability[] memory _nodeAvailabilities,
+        ComputeRewardsParams memory computeParam,
         bytes memory signature
     ) internal view returns (bool) {
-        bytes32 messageHash = getMessageHash(
-            _to,
-            _licenseId,
-            _nodeHash,
-            _nodeAvailabilities
-        );
+        bytes32 messageHash = getMessageHash(computeParam);
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
         return isSigner[ethSignedMessageHash.recover(signature)];
     }
 
     function getMessageHash(
-        address _to,
-        uint256 _licenseId,
-        address _nodeHash,
-        NodeAvailability[] memory _nodeAvailabilities
+        ComputeRewardsParams memory computeParam
     ) public pure returns (bytes32) {
-        bytes memory encoded;
-        // TODO: Corrent to simple keccak256(abi.encodePacked(node, epochs, epochs_vals));
-        for (uint i = 0; i < _nodeAvailabilities.length; i++) {
-            encoded = abi.encodePacked(
-                encoded,
-                _nodeAvailabilities[i].epoch,
-                _nodeAvailabilities[i].availability
-            );
-        }
-        return keccak256(abi.encodePacked(_to, _licenseId, _nodeHash, encoded));
+        return keccak256(
+            abi.encodePacked(computeParam.nodeAddress, computeParam.epochs, computeParam.availabilies)
+        );
     }
 
     function addSigner(address newSigner) public onlyOwner {
