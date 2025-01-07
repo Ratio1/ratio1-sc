@@ -30,7 +30,6 @@ struct PriceTier {
     uint256 totalUnits; // Number of units available at this stage
     uint256 soldUnits; // Number of units sold at this stage
 }
-//TODO make view with all the price tiers for frontend
 
 struct License {
     uint256 licenseId;
@@ -84,6 +83,7 @@ contract NDContract is
     uint256 private constant PRICE_DECIMALS = 10 ** 18;
     uint256 constant MAX_TOKEN_SUPPLY = 1618033988 * PRICE_DECIMALS;
     uint256 constant MAX_PERCENTAGE = 100_00;
+    uint8 constant LAST_PRICE_TIER = 12;
 
     // Node deed constants
     uint256 constant MAX_LICENSE_SUPPLY = 46224;
@@ -155,7 +155,7 @@ contract NDContract is
         _priceTiers[12] = PriceTier(20000, 17711, 0);
 
         uint256 ndSupply = 0;
-        for (uint8 i = 1; i <= 12; i++) {
+        for (uint8 i = 1; i <= LAST_PRICE_TIER; i++) {
             ndSupply += _priceTiers[i].totalUnits;
         }
         require(ndSupply == MAX_LICENSE_SUPPLY, "Invalid license supply");
@@ -167,7 +167,7 @@ contract NDContract is
         uint256 nLicensesToBuy,
         uint8 requestedPriceTier
     ) public nonReentrant whenNotPaused returns (uint) {
-        require(currentPriceTier <= 12, "All licenses have been sold");
+        require(currentPriceTier <= LAST_PRICE_TIER, "All licenses have been sold");
         require(requestedPriceTier == currentPriceTier, "Not in the right price tier");
         require(
             nLicensesToBuy > 0 &&
@@ -579,6 +579,14 @@ contract NDContract is
         }
 
         return licenseInfos;
+    }
+
+    function getPriceTiers() public view returns (PriceTier[] memory) {
+        PriceTier[] memory priceTiers = new PriceTier[](LAST_PRICE_TIER);
+        for (uint8 i = 1; i <= LAST_PRICE_TIER; i++) {
+            priceTiers[i - 1] = _priceTiers[i];
+        }
+        return priceTiers;
     }
 
     // LP setup
