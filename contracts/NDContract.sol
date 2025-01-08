@@ -186,24 +186,43 @@ contract NDContract is
     function buyLicense(
         uint256 nLicensesToBuy,
         uint8 requestedPriceTier
+    )
+        public
         //TODO add KYC/KYB check
-    ) public nonReentrant whenNotPaused returns (uint) {
-        require(currentPriceTier <= LAST_PRICE_TIER, "All licenses have been sold");
-        require(requestedPriceTier == currentPriceTier, "Not in the right price tier");
+        nonReentrant
+        whenNotPaused
+        returns (uint)
+    {
         require(
-            nLicensesToBuy > 0 &&
-                nLicensesToBuy <= MAX_LICENSES_BUYS_PER_TX,
+            currentPriceTier <= LAST_PRICE_TIER,
+            "All licenses have been sold"
+        );
+        require(
+            requestedPriceTier == currentPriceTier,
+            "Not in the right price tier"
+        );
+        require(
+            nLicensesToBuy > 0 && nLicensesToBuy <= MAX_LICENSES_BUYS_PER_TX,
             "Invalid number of licenses"
         );
 
         PriceTier storage priceTier = _priceTiers[currentPriceTier];
-        uint256 buyableUnits = getPriceTierBuyableUnits(priceTier, nLicensesToBuy);
+        uint256 buyableUnits = getPriceTierBuyableUnits(
+            priceTier,
+            nLicensesToBuy
+        );
         uint256 totalCost = nLicensesToBuy * getLicenseTokenPrice();
 
         // Check user's balance before attempting transfer
-        require(_naeuraToken.balanceOf(msg.sender) >= totalCost, "Insufficient NAEURA balance");
+        require(
+            _naeuraToken.balanceOf(msg.sender) >= totalCost,
+            "Insufficient NAEURA balance"
+        );
         // Check user's allowance
-        require(_naeuraToken.allowance(msg.sender, address(this)) >= totalCost, "Insufficient allowance");
+        require(
+            _naeuraToken.allowance(msg.sender, address(this)) >= totalCost,
+            "Insufficient allowance"
+        );
 
         // Transfer NAEURA tokens from user to contract
         require(
@@ -224,12 +243,18 @@ contract NDContract is
         return mintedTokens.length;
     }
 
-    function getPriceTierBuyableUnits(PriceTier memory tier, uint256 requestedUnits) private pure returns (uint256) {
+    function getPriceTierBuyableUnits(
+        PriceTier memory tier,
+        uint256 requestedUnits
+    ) private pure returns (uint256) {
         uint256 buyableUnits = tier.totalUnits - tier.soldUnits;
         return buyableUnits >= requestedUnits ? requestedUnits : buyableUnits;
     }
 
-    function batchMint(address to, uint256 quantity) private returns (uint256[] memory) {
+    function batchMint(
+        address to,
+        uint256 quantity
+    ) private returns (uint256[] memory) {
         uint256[] memory tokenIds = new uint256[](quantity);
 
         for (uint256 i = 0; i < quantity; i++) {
@@ -248,15 +273,27 @@ contract NDContract is
         return tokenIds;
     }
 
-    function linkNode(uint256 licenseId, address newNodeAddress) public whenNotPaused {
-        require(ownerOf(licenseId) == msg.sender, "Not the owner of the license");
+    function linkNode(
+        uint256 licenseId,
+        address newNodeAddress
+    ) public whenNotPaused {
+        require(
+            ownerOf(licenseId) == msg.sender,
+            "Not the owner of the license"
+        );
         require(newNodeAddress != address(0), "Invalid node address");
-        require(!registeredNodeAddresses[newNodeAddress], "Node address already registered");
+        require(
+            !registeredNodeAddresses[newNodeAddress],
+            "Node address already registered"
+        );
 
         // TODO: check if nodeAddress also in MND
 
         License storage license = licenses[licenseId];
-        require(license.assignTimestamp + 24 hours < block.timestamp, "Cannot reassign within 24 hours");
+        require(
+            license.assignTimestamp + 24 hours < block.timestamp,
+            "Cannot reassign within 24 hours"
+        );
 
         _removeNodeAddress(license);
         license.nodeAddress = newNodeAddress;
@@ -268,7 +305,10 @@ contract NDContract is
     }
 
     function unlinkNode(uint256 licenseId) public whenNotPaused {
-        require(ownerOf(licenseId) == msg.sender, "Not the owner of the license");
+        require(
+            ownerOf(licenseId) == msg.sender,
+            "Not the owner of the license"
+        );
         License storage license = licenses[licenseId];
         _removeNodeAddress(license);
     }
@@ -283,7 +323,7 @@ contract NDContract is
         registeredNodeAddresses[license.nodeAddress] = false;
         license.nodeAddress = address(0);
 
-        emit RemovedNode(msg.sender, license.licenseId, oldNodeAddress);  
+        emit RemovedNode(msg.sender, license.licenseId, oldNodeAddress);
     }
 
     function claimRewards(
@@ -306,9 +346,7 @@ contract NDContract is
                 "Invalid signature"
             );
 
-            License storage license = licenses[
-                computeParams[i].licenseId
-            ];
+            License storage license = licenses[computeParams[i].licenseId];
             uint256 rewardsAmount = calculateLicenseRewards(
                 license,
                 computeParams[i]
@@ -370,10 +408,13 @@ contract NDContract is
         );
 
         for (uint256 i = 0; i < epochsToClaim; i++) {
-            licenseRewards += MAX_RELEASE_PER_DAY * computeParam.availabilies[i] / MAX_AVAILABILITY;
+            licenseRewards +=
+                (MAX_RELEASE_PER_DAY * computeParam.availabilies[i]) /
+                MAX_AVAILABILITY;
         }
 
-        uint256 maxRemainingClaimAmount = MAX_RELEASE_PER_LICENSE - license.totalClaimedAmount;
+        uint256 maxRemainingClaimAmount = MAX_RELEASE_PER_LICENSE -
+            license.totalClaimedAmount;
         if (licenseRewards > maxRemainingClaimAmount) {
             return maxRemainingClaimAmount;
         }
@@ -403,9 +444,11 @@ contract NDContract is
     }
 
     function distributePayment(uint256 totalCost) private {
-        uint256 burnAmount = totalCost * BURN_PERCENTAGE / MAX_PERCENTAGE;
-        uint256 liquidityAmount = totalCost * LIQUIDITY_PERCENTAGE / MAX_PERCENTAGE;
-        uint256 companyAmount = totalCost * COMPANY_PERCENTAGE / MAX_PERCENTAGE;
+        uint256 burnAmount = (totalCost * BURN_PERCENTAGE) / MAX_PERCENTAGE;
+        uint256 liquidityAmount = (totalCost * LIQUIDITY_PERCENTAGE) /
+            MAX_PERCENTAGE;
+        uint256 companyAmount = (totalCost * COMPANY_PERCENTAGE) /
+            MAX_PERCENTAGE;
 
         _naeuraToken.burn(address(this), burnAmount);
         addLiquidity(liquidityAmount);
@@ -425,8 +468,8 @@ contract NDContract is
             return;
         }
 
-        (uint256 usedAmountNaeura, uint256 usedAmountUsdc, ) =
-            _uniswapV2Router.addLiquidity(
+        (uint256 usedAmountNaeura, uint256 usedAmountUsdc, ) = _uniswapV2Router
+            .addLiquidity(
                 address(_naeuraToken),
                 _usdcAddr,
                 halfNaeuraAmount,
@@ -448,7 +491,7 @@ contract NDContract is
         }
         if (remainingAmountUsdc > 0) {
             IERC20(_usdcAddr).transfer(owner(), remainingAmountUsdc);
-        }        
+        }
     }
 
     function swapTokensForUsdc(uint256 amount) private returns (uint256) {
@@ -491,7 +534,7 @@ contract NDContract is
     function getLicenseTokenPrice() public view returns (uint256 price) {
         uint256 priceInUsdc = getLicensePriceInUSD() * USDC_DECIMALS; // Convert to 6 decimals (USDC format)
         uint256 naeuraPrice = getTokenPrice(); // Price of 1 NAEURA in USDC (6 decimals)
-        return priceInUsdc * PRICE_DECIMALS / naeuraPrice; // Result in NAEURA (18 decimals)
+        return (priceInUsdc * PRICE_DECIMALS) / naeuraPrice; // Result in NAEURA (18 decimals)
     }
 
     function getLicensePriceInUSD() public view returns (uint256 price) {
@@ -546,12 +589,7 @@ contract NDContract is
 
     function supportsInterface(
         bytes4 interfaceId
-    )
-        public
-        view
-        override(ERC721Enumerable, ERC721URIStorage)
-        returns (bool)
-    {
+    ) public view override(ERC721Enumerable, ERC721URIStorage) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 
@@ -586,7 +624,8 @@ contract NDContract is
                 licenseId: license.licenseId,
                 nodeAddress: license.nodeAddress,
                 totalClaimedAmount: license.totalClaimedAmount,
-                remainingAmount: MAX_RELEASE_PER_LICENSE - license.totalClaimedAmount,
+                remainingAmount: MAX_RELEASE_PER_LICENSE -
+                    license.totalClaimedAmount,
                 lastClaimEpoch: license.lastClaimEpoch,
                 claimableEpochs: claimableEpochs,
                 assignTimestamp: license.assignTimestamp
@@ -628,7 +667,11 @@ contract NDContract is
         bytes memory signature //TODO allow multiple signers
     ) public view returns (bool) {
         bytes32 messageHash = keccak256(
-            abi.encodePacked(computeParam.nodeAddress, computeParam.epochs, computeParam.availabilies)
+            abi.encodePacked(
+                computeParam.nodeAddress,
+                computeParam.epochs,
+                computeParam.availabilies
+            )
         );
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
         return verifySignature(ethSignedMessageHash, signature);
