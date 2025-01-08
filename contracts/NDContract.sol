@@ -32,7 +32,6 @@ struct PriceTier {
 }
 
 struct License {
-    uint256 licenseId;
     address nodeAddress;
     uint256 totalClaimedAmount;
     uint256 lastClaimEpoch;
@@ -258,15 +257,7 @@ contract NDContract is
 
         for (uint256 i = 0; i < quantity; i++) {
             uint256 tokenId = safeMint(to);
-            tokenIds[i] = tokenId;
-
-            licenses[tokenId] = License({
-                licenseId: tokenId,
-                nodeAddress: address(0),
-                lastClaimEpoch: 0,
-                totalClaimedAmount: 0,
-                assignTimestamp: 0
-            });
+            tokenIds[i] = tokenId;            
         }
 
         return tokenIds;
@@ -294,7 +285,7 @@ contract NDContract is
             "Cannot reassign within 24 hours"
         );
 
-        _removeNodeAddress(license);
+        _removeNodeAddress(license, licenseId);
         license.nodeAddress = newNodeAddress;
         license.lastClaimEpoch = getCurrentEpoch();
         license.assignTimestamp = block.timestamp;
@@ -309,10 +300,10 @@ contract NDContract is
             "Not the owner of the license"
         );
         License storage license = licenses[licenseId];
-        _removeNodeAddress(license);
+        _removeNodeAddress(license, licenseId);
     }
 
-    function _removeNodeAddress(License storage license) private {
+    function _removeNodeAddress(License storage license, uint256 licenseId) private {
         if (license.nodeAddress == address(0)) {
             return;
         }
@@ -322,7 +313,7 @@ contract NDContract is
         registeredNodeAddresses[license.nodeAddress] = false;
         license.nodeAddress = address(0);
 
-        emit UnlinkNode(msg.sender, license.licenseId, oldNodeAddress);
+        emit UnlinkNode(msg.sender, licenseId, oldNodeAddress);
     }
 
     function claimRewards(
@@ -580,10 +571,10 @@ contract NDContract is
         uint256 tokenId,
         uint256 batchSize
     ) internal override(ERC721, ERC721Enumerable) whenNotPaused {
+        License storage license = licenses[tokenId];
+        _removeNodeAddress(license, tokenId);
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
         //TODO should check if from or to == address(0) ?
-        License storage license = licenses[tokenId];
-        _removeNodeAddress(license);
     }
 
     function supportsInterface(
@@ -620,7 +611,7 @@ contract NDContract is
             }
 
             licensesInfo[i] = LicenseInfo({
-                licenseId: license.licenseId,
+                licenseId: licenseId,
                 nodeAddress: license.nodeAddress,
                 totalClaimedAmount: license.totalClaimedAmount,
                 remainingAmount: MAX_RELEASE_PER_LICENSE -
