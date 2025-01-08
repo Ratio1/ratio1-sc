@@ -185,14 +185,9 @@ contract NDContract is
 
     function buyLicense(
         uint256 nLicensesToBuy,
-        uint8 requestedPriceTier
-    )
-        public
-        //TODO add KYC/KYB check
-        nonReentrant
-        whenNotPaused
-        returns (uint)
-    {
+        uint8 requestedPriceTier,
+        bytes memory signature
+    ) public nonReentrant whenNotPaused returns (uint) {
         require(
             currentPriceTier <= LAST_PRICE_TIER,
             "All licenses have been sold"
@@ -204,6 +199,10 @@ contract NDContract is
         require(
             nLicensesToBuy > 0 && nLicensesToBuy <= MAX_LICENSES_BUYS_PER_TX,
             "Invalid number of licenses"
+        );
+        require(
+            verifyBuyLicenseSignature(msg.sender, signature),
+            "Invalid signature"
         );
 
         PriceTier storage priceTier = _priceTiers[currentPriceTier];
@@ -673,6 +672,15 @@ contract NDContract is
                 computeParam.availabilies
             )
         );
+        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
+        return verifySignature(ethSignedMessageHash, signature);
+    }
+
+    function verifyBuyLicenseSignature(
+        address addr,
+        bytes memory signature //TODO allow multiple signers
+    ) public view returns (bool) {
+        bytes32 messageHash = keccak256(abi.encodePacked(addr));
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
         return verifySignature(ethSignedMessageHash, signature);
     }
