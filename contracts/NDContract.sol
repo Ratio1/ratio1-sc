@@ -70,8 +70,8 @@ contract NDContract is
     //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
     // TODO - change with start date of the protocol
-    uint256 public startEpochTimestamp = 1710028800; // 2024-03-10 00:00:00 UTC
-    uint256 public epochDuration = 24 hours;
+    uint256 constant startEpochTimestamp = 1710028800; // 2024-03-10 00:00:00 UTC
+    uint256 constant epochDuration = 24 hours;
 
     uint256 constant MAX_PERCENTAGE = 100_00;
     uint8 constant MAX_AVAILABILITY = 255;
@@ -129,12 +129,12 @@ contract NDContract is
     //.########....###....########.##....##....##.....######.
 
     event LicenseCreated(address indexed to, uint256 indexed tokenId);
-    event RegisterNode(
+    event LinkNode(
         address indexed to,
         uint256 indexed licenseId,
         address nodeAddress
     );
-    event RemovedNode(
+    event UnlinkNode(
         address indexed owner,
         uint256 indexed licenseId,
         address oldNodeAddress
@@ -300,7 +300,7 @@ contract NDContract is
         license.assignTimestamp = block.timestamp;
         registeredNodeAddresses[newNodeAddress] = true;
 
-        emit RegisterNode(msg.sender, licenseId, newNodeAddress);
+        emit LinkNode(msg.sender, licenseId, newNodeAddress);
     }
 
     function unlinkNode(uint256 licenseId) public whenNotPaused {
@@ -322,7 +322,7 @@ contract NDContract is
         registeredNodeAddresses[license.nodeAddress] = false;
         license.nodeAddress = address(0);
 
-        emit RemovedNode(msg.sender, license.licenseId, oldNodeAddress);
+        emit UnlinkNode(msg.sender, license.licenseId, oldNodeAddress);
     }
 
     function claimRewards(
@@ -521,7 +521,7 @@ contract NDContract is
         return _calculateEpoch(block.timestamp);
     }
 
-    function _calculateEpoch(uint256 timestamp) private view returns (uint256) {
+    function _calculateEpoch(uint256 timestamp) private pure returns (uint256) {
         require(
             timestamp >= startEpochTimestamp,
             "Timestamp is before the start epoch."
