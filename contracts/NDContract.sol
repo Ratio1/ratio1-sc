@@ -257,7 +257,7 @@ contract NDContract is
 
         for (uint256 i = 0; i < quantity; i++) {
             uint256 tokenId = safeMint(to);
-            tokenIds[i] = tokenId;            
+            tokenIds[i] = tokenId;
         }
 
         return tokenIds;
@@ -303,7 +303,10 @@ contract NDContract is
         _removeNodeAddress(license, licenseId);
     }
 
-    function _removeNodeAddress(License storage license, uint256 licenseId) private {
+    function _removeNodeAddress(
+        License storage license,
+        uint256 licenseId
+    ) private {
         if (license.nodeAddress == address(0)) {
             return;
         }
@@ -383,11 +386,12 @@ contract NDContract is
             "Invalid node address."
         );
 
+        if (license.totalClaimedAmount == MAX_RELEASE_PER_LICENSE) {
+            return 0;
+        }
+
         uint256 epochsToClaim = currentEpoch - license.lastClaimEpoch;
-        if (
-            epochsToClaim <= 0 ||
-            license.totalClaimedAmount == MAX_RELEASE_PER_LICENSE
-        ) {
+        if (epochsToClaim <= 0) {
             return 0;
         }
 
@@ -398,6 +402,7 @@ contract NDContract is
         );
 
         for (uint256 i = 0; i < epochsToClaim; i++) {
+            //TODO check that the epochs are valid?
             licenseRewards +=
                 (MAX_RELEASE_PER_DAY * computeParam.availabilies[i]) /
                 MAX_AVAILABILITY;
