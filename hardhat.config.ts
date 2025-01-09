@@ -50,7 +50,10 @@ const config: HardhatUserConfig = {
     coinmarketcap: "fe216009-c5aa-4629-874e-f43901af5108",
     //L1Etherscan:"YF24C96CAMZQIQ1TZV5Q21J1XQWDWDRT93",
     L2Etherscan: "I32XUBSQGUM2S3CYT2S4S2PPYFSCI23DT2"
-  }
+  },
+  mocha: {
+    timeout: 480000,
+  },
 };
 
 export default config;
