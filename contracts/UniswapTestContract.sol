@@ -15,4 +15,30 @@ contract UNISWAP is Ownable {
         result[1] = 1 * 10 ** 6;
         return result;
     }
+
+    function addLiquidity(
+        address tokenA,
+        address tokenB,
+        uint amountA,
+        uint amountB,
+        uint minAmountA,
+        uint minAmountB,
+        address to,
+        uint deadline
+    ) public returns (uint, uint, uint) {
+        return (amountA, amountB, 1);
+    }
+
+    function swapExactTokensForTokens(
+        uint amount,
+        uint minAmount,
+        address[] memory path,
+        address to,
+        uint deadline
+    ) public returns (uint[] memory) {
+        uint[] memory result = new uint[](2);
+        result[0] = 0;
+        result[1] = (amount / 10 ** 18) * 10 ** 6;
+        return result;
+    }
 }

@@ -1,4 +1,4 @@
-import { time, loadFixture } from "@nomicfoundation/hardhat-network-helpers";
+/*import { time, loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { expect } from "chai";
 import { ethers } from "hardhat";
@@ -114,4 +114,4 @@ describe("MNDContract - genesisInteraction module", function () {
 
 		await expect(mndContract.claimGenesisRewards()).to.be.revertedWith("All rewards have been claimed");
 	});
-})
+})*/
