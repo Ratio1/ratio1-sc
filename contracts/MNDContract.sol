@@ -24,28 +24,22 @@ struct ComputeRewardsResult {
 
 struct License {
     address nodeAddress;
+    uint256 totalAssignedAmount;
     uint256 totalClaimedAmount;
     uint256 lastClaimEpoch;
     uint256 assignTimestamp;
-    uint256 licensePower;
     //TODO add lastClaimOracle
-}
-
-struct GenesisNode {
-    string nodeAddress;
-    uint256 lastClaimTimestamp; //TODO for GND use timestamp instead of epoch?
-    uint256 totalClaimedAmount;
 }
 
 struct LicenseInfo {
     uint256 licenseId;
     address nodeAddress;
+    uint256 totalAssignedAmount;
     uint256 totalClaimedAmount;
     uint256 remainingAmount;
     uint256 lastClaimEpoch;
     uint256 claimableEpochs;
     uint256 assignTimestamp;
-    uint256 licensePower;
 }
 
 //TODO add ERC721URIStorage?
@@ -71,21 +65,18 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     uint256 constant PRICE_DECIMALS = 10 ** 18;
     uint256 constant MAX_TOKEN_SUPPLY = 1618033988 * PRICE_DECIMALS;
 
-    uint256 constant TOKENS_PER_LICENSE_POWER = (MAX_TOKEN_SUPPLY /
-        MAX_PERCENTAGE); // 0.01% of total supply
-    uint256 constant MAX_POWER_PER_LICENSE = 200;
-    uint256 constant MAX_MND_TOTAL_POWER = 26_10;
+    uint256 constant MAX_TOKENS_ASSIGNED_PER_LICENSE =
+        (MAX_TOKEN_SUPPLY * 2_00) / MAX_PERCENTAGE; // TODO check
+    uint256 constant MAX_MND_TOTAL_ASSIGNED_TOKENS =
+        (MAX_TOKEN_SUPPLY * 26_10) / MAX_PERCENTAGE; // 26.1% of total supply
     uint256 constant MAX_MND_SUPPLY = 500; //TODO how many max MNDs can be minted?
     uint256 constant CLIFF_EPOCHS = 30 * 4;
     uint256 constant VESTING_DURATION_YEARS = 5;
     uint256 constant VESTING_DURATION_EPOCHS = VESTING_DURATION_YEARS * 365;
-    uint256 constant VESTING_DURATION = VESTING_DURATION_EPOCHS * epochDuration;
 
     uint256 constant GENESIS_TOTAL_EMISSION =
         (MAX_TOKEN_SUPPLY * 33_20) / MAX_PERCENTAGE; // 33.2% of total supply
     uint256 constant GENESIS_UNLOCK_EPOCHS = 365;
-    uint256 constant GENESIS_UNLOCK_DURATION =
-        GENESIS_UNLOCK_EPOCHS * epochDuration;
     uint256 constant GENESIS_TOKEN_ID = 0;
 
     //..######..########..#######..########.....###.....######...########
@@ -100,13 +91,10 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
 
     NAEURA private _naeuraToken;
 
-    uint256 public totalLicensesPower;
+    uint256 public totalLicensesAssignedAmount;
     address[] public signers;
     mapping(address => bool) isSigner;
     mapping(uint256 => License) public licenses;
-
-    //TODO address is needed?
-    mapping(address => GenesisNode) public genesisNode;
     mapping(address => bool) public registeredNodeAddresses;
 
     //.########.##.....##.########.##....##.########..######.
@@ -120,7 +108,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     event LicenseCreated(
         address indexed to,
         uint256 indexed tokenId,
-        uint256 licensePower
+        uint256 totalAssignedAmount
     );
     event LinkNode(
         address indexed to,
@@ -149,36 +137,41 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
             lastClaimEpoch: 0,
             totalClaimedAmount: 0,
             assignTimestamp: 0,
-            licensePower: 0
+            totalAssignedAmount: GENESIS_TOTAL_EMISSION
         });
     }
 
     function addLicense(
         address to,
-        uint256 newLicensePower
+        uint256 newTotalAssignedAmount
     ) public onlyOwner whenNotPaused {
         require(
-            newLicensePower > 0 && newLicensePower <= MAX_POWER_PER_LICENSE,
+            newTotalAssignedAmount > 0 &&
+                newTotalAssignedAmount <= MAX_TOKENS_ASSIGNED_PER_LICENSE,
             "Invalid license power"
         );
         require(
-            totalLicensesPower + newLicensePower <= MAX_MND_TOTAL_POWER,
-            "Max supply reached"
+            totalLicensesAssignedAmount + newTotalAssignedAmount <=
+                MAX_MND_TOTAL_ASSIGNED_TOKENS,
+            "Max total assigned tokens reached"
         );
-        require(_supply.current() < MAX_MND_SUPPLY, "Max supply reached");
+        require(
+            _supply.current() < MAX_MND_SUPPLY,
+            "Maximum token supply reached"
+        );
         require(balanceOf(to) == 0, "User already has a license");
 
         uint256 tokenId = safeMint(to);
-        totalLicensesPower += newLicensePower;
+        totalLicensesAssignedAmount += newTotalAssignedAmount;
         licenses[tokenId] = License({
             nodeAddress: address(0),
             lastClaimEpoch: 0,
             totalClaimedAmount: 0,
             assignTimestamp: 0,
-            licensePower: newLicensePower
+            totalAssignedAmount: newTotalAssignedAmount
         });
 
-        emit LicenseCreated(to, tokenId, newLicensePower);
+        emit LicenseCreated(to, tokenId, newTotalAssignedAmount);
     }
 
     function linkNode(
@@ -279,33 +272,28 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         License memory license,
         ComputeRewardsParams memory computeParam
     ) internal view returns (uint256) {
-        /*
         uint256 currentEpoch = getCurrentEpoch();
-        uint256 startEpoch = getStartEpoch(); //TODO why ND doesn't have this?
         uint256 licenseRewards = 0;
 
         if (currentEpoch < CLIFF_EPOCHS) {
             return 0;
         }
 
-        require( // TODO: remove this check?
+        require(
             license.nodeAddress == computeParam.nodeAddress,
             "Invalid node address."
         );
 
-        uint256 licenseMaxClaimableAmount = TOKENS_PER_LICENSE_POWER *
-            license.licensePower;
-        if (licenseMaxClaimableAmount == license.totalClaimedAmount) {
+        if (license.totalClaimedAmount == license.totalAssignedAmount) {
             return 0;
         }
 
-        uint256 firstEpochToClaim = license.lastClaimEpoch < CLIFF_EPOCHS
-            ? CLIFF_EPOCHS
-            : license.lastClaimEpoch;
-        uint256 lastEpochToClaim = currentEpoch < VESTING_DURATION_EPOCHS
-            ? currentEpoch
-            : VESTING_DURATION_EPOCHS;
-        uint256 epochsToClaim = currentEpoch - license.lastClaimEpoch;
+        uint256 firstEpochToClaim = (computeParam.licenseId ==
+            GENESIS_TOKEN_ID ||
+            license.lastClaimEpoch >= CLIFF_EPOCHS)
+            ? license.lastClaimEpoch
+            : CLIFF_EPOCHS;
+        uint256 epochsToClaim = currentEpoch - firstEpochToClaim;
         if (epochsToClaim == 0) {
             return 0;
         }
@@ -316,82 +304,24 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
             "Incorrect number of params."
         );
 
-        uint256 timeElapsed = (currentEpoch - startEpoch) * epochDuration;
-
-        //uint256 epochsWithRewards =
-        uint256 vestingPeriod = timeElapsed.sub(cliffDuration);
-        if (vestingPeriod > VESTING_DURATION) {
-            vestingPeriod = VESTING_DURATION;
-        }
-
-        uint256 maxRewardsForPeriod = licenseMaxClaimableAmount
-            .mul(vestingPeriod)
-            .div(VESTING_DURATION);
-
-        uint256 totalAvailability = 0;
-        for (uint256 j = 0; j < computeParam.nodeAvailabilities.length; j++) {
-            totalAvailability = totalAvailability.add(
-                computeParam.nodeAvailabilities[j].availability
+        uint256 maxRewardsPerEpoch = license.totalAssignedAmount /
+            (
+                computeParam.licenseId == GENESIS_TOKEN_ID
+                    ? GENESIS_UNLOCK_EPOCHS
+                    : VESTING_DURATION_EPOCHS
             );
+        for (uint256 i = 0; i < epochsToClaim; i++) {
+            licenseRewards +=
+                (maxRewardsPerEpoch * computeParam.availabilies[i]) /
+                MAX_AVAILABILITY;
         }
 
-        value = maxRewardsForPeriod
-            .mul(totalAvailability)
-            .div(MAX_AVAILABILITY)
-            .div(cyclesToClaim);
-
-        uint256 maxRemainingClaimableAmount = licenseMaxClaimableAmount.sub(
-            license.currentClaimAmount
-        );
-        if (value > maxRemainingClaimableAmount) {
-            value = maxRemainingClaimableAmount;
+        uint256 maxRemainingClaimAmount = license.totalAssignedAmount -
+            license.totalClaimedAmount;
+        if (licenseRewards > maxRemainingClaimAmount) {
+            return maxRemainingClaimAmount;
         }
-
         return licenseRewards;
-        */
-        return 0;
-    }
-
-    function claimGenesisRewards() public onlyOwner {
-        /*
-        require(
-            bytes(genesisNode[msg.sender].nodeAddress).length > 0,
-            "Genesis node hash is empty"
-        );
-        require(
-            block.timestamp > genesisNode[msg.sender].lastClaimTimestamp,
-            "No rewards to claim yet"
-        );
-        require(
-            genesisNode[msg.sender].currentClaimAmount < GENESIS_TOTAL_EMISSION,
-            "All rewards have been claimed"
-        );
-
-        uint256 elapsedTime = block.timestamp.sub(
-            genesisNode[msg.sender].lastClaimTimestamp
-        );
-
-        uint256 rewardsAmount = GENESIS_TOTAL_EMISSION.mul(elapsedTime).div(
-            GENESIS_UNLOCK_DURATION
-        );
-
-        if (
-            rewardsAmount.add(genesisNode[msg.sender].currentClaimAmount) >
-            GENESIS_TOTAL_EMISSION
-        ) {
-            rewardsAmount = GENESIS_TOTAL_EMISSION.sub(
-                genesisNode[msg.sender].currentClaimAmount
-            );
-        }
-
-        if (rewardsAmount > 0) {
-            genesisNode[msg.sender].lastClaimTimestamp = block.timestamp;
-            genesisNode[msg.sender].currentClaimAmount = genesisNode[msg.sender]
-                .currentClaimAmount
-                .add(rewardsAmount);
-            _naeuraToken.mint(msg.sender, rewardsAmount);
-        }
-        */
     }
 
     function pause() public onlyOwner {
@@ -458,35 +388,29 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
                     lastClaimEpoch: 0,
                     claimableEpochs: 0,
                     assignTimestamp: 0,
-                    licensePower: 0
+                    totalAssignedAmount: 0
                 });
         }
         uint256 licenseId = tokenOfOwnerByIndex(addr, 0);
         License memory license = licenses[licenseId];
 
-        uint256 currentEpoch = getCurrentEpoch();
+        uint256 firstEpochToClaim = (licenseId == GENESIS_TOKEN_ID ||
+            license.lastClaimEpoch >= CLIFF_EPOCHS)
+            ? license.lastClaimEpoch
+            : CLIFF_EPOCHS;
+        uint256 claimableEpochs = getCurrentEpoch() - firstEpochToClaim;
 
-        uint256 epochsToClaim = 0;
-        if (
-            license.lastClaimEpoch >= currentEpoch ||
-            license.totalClaimedAmount >= TOKENS_PER_LICENSE_POWER
-        ) {
-            epochsToClaim = 0;
-        } else {
-            epochsToClaim = currentEpoch - license.lastClaimEpoch;
-        }
-
-        //TODO
         return
             LicenseInfo({
-                licenseId: 0,
-                nodeAddress: address(0),
-                totalClaimedAmount: 0,
-                remainingAmount: 0,
-                lastClaimEpoch: 0,
-                claimableEpochs: 0,
-                assignTimestamp: 0,
-                licensePower: 0
+                licenseId: licenseId,
+                nodeAddress: license.nodeAddress,
+                totalAssignedAmount: license.totalAssignedAmount,
+                totalClaimedAmount: license.totalClaimedAmount,
+                remainingAmount: license.totalAssignedAmount -
+                    license.totalClaimedAmount,
+                lastClaimEpoch: license.lastClaimEpoch,
+                claimableEpochs: claimableEpochs,
+                assignTimestamp: license.assignTimestamp
             });
     }
 

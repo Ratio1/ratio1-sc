@@ -380,7 +380,7 @@ contract NDContract is
         uint256 currentEpoch = getCurrentEpoch();
         uint256 licenseRewards = 0;
 
-        require( // TODO: remove this check
+        require(
             license.nodeAddress == computeParam.nodeAddress,
             "Invalid node address."
         );
@@ -390,7 +390,7 @@ contract NDContract is
         }
 
         uint256 epochsToClaim = currentEpoch - license.lastClaimEpoch;
-        if (epochsToClaim <= 0) {
+        if (epochsToClaim == 0) {
             return 0;
         }
 
@@ -401,7 +401,6 @@ contract NDContract is
         );
 
         for (uint256 i = 0; i < epochsToClaim; i++) {
-            //TODO check that the epochs are valid?
             licenseRewards +=
                 (MAX_RELEASE_PER_DAY * computeParam.availabilies[i]) /
                 MAX_AVAILABILITY;
