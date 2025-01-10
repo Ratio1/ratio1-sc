@@ -5,6 +5,9 @@ import { NAEURA, NDContract } from "../../typechain-types";
 import { Bytecode } from "hardhat/internal/hardhat-network/stack-traces/model";
 const BigNumber = ethers.BigNumber;
 
+// npx hardhat test     ---- for gas usage
+// npx hardhat coverage ---- for test coverage
+
 /*
 ..######...#######..##....##..######..########....###....##....##.########..######.
 .##....##.##.....##.###...##.##....##....##......##.##...###...##....##....##....##
@@ -123,6 +126,7 @@ describe("NDContract", function () {
   let firstUser: SignerWithAddress;
   let secondUser: SignerWithAddress;
   let backend: SignerWithAddress;
+  let maxUnits: number;
 
   beforeEach(async function () {
     const [deployer, user1, user2, backendSigner] = await ethers.getSigners();
@@ -130,6 +134,8 @@ describe("NDContract", function () {
     firstUser = user1;
     secondUser = user2;
     backend = backendSigner;
+
+    maxUnits = 5; //TODO change with storage when updated (with maxUnits = 100 it could take up to 95s)
 
     const NAEURAContract = await ethers.getContractFactory("NAEURA");
     naeuraContract = await NAEURAContract.deploy();
@@ -326,11 +332,6 @@ describe("NDContract", function () {
     );
   });
 
-  /*it("Get support interface", async function () {
-    let baseUri = "PIPPO.com/";
-    await ndContract.supportsInterface();
-  });*/
-
   it("Buy license - should work", async function () {
     let price = await ndContract.getLicensePriceInUSD();
     expect(price).to.equal(500);
@@ -415,33 +416,7 @@ describe("NDContract", function () {
     ).to.be.revertedWith("Invalid signature");
   });
 
-  it("Buy license- change tier", async function () {
-    //DO TEST - buy first 89 licenses
-    expect(await ndContract.currentPriceTier()).to.equal(1);
-    for (let i = 1; i <= 17; i++) {
-      await buyLicenseWithMintAndAllowance(
-        naeuraContract,
-        ndContract,
-        owner,
-        firstUser,
-        500 * 5,
-        5,
-        1,
-        await signAddress(backend, firstUser)
-      );
-    }
-    await buyLicenseWithMintAndAllowance(
-      naeuraContract,
-      ndContract,
-      owner,
-      firstUser,
-      500 * 4,
-      4,
-      1,
-      await signAddress(backend, firstUser)
-    );
-    expect(await ndContract.currentPriceTier()).to.equal(2);
-
+  it("Buy license- wrong tier", async function () {
     //DO TEST -try buy 1 license in first tier
     await expect(
       buyLicenseWithMintAndAllowance(
@@ -451,24 +426,26 @@ describe("NDContract", function () {
         firstUser,
         500,
         1,
-        1,
+        2,
         await signAddress(backend, firstUser)
       )
     ).to.be.revertedWith("Not in the right price tier");
+  });
 
-    //DO TEST -buy 1 license in second tier
-    await buyLicenseWithMintAndAllowance(
-      naeuraContract,
-      ndContract,
-      owner,
-      firstUser,
-      750,
-      1,
-      2,
-      await signAddress(backend, firstUser)
-    );
-    let result = await ndContract.ownerOf(90);
-    expect(result).to.equal(firstUser.address);
+  it("Buy license- wrong number of lienses", async function () {
+    //DO TEST -try buy 1 license in first tier
+    await expect(
+      buyLicenseWithMintAndAllowance(
+        naeuraContract,
+        ndContract,
+        owner,
+        firstUser,
+        (await ndContract._priceTiers(1)).usdPrice.toNumber() * maxUnits + 1,
+        maxUnits + 1,
+        1,
+        await signAddress(backend, firstUser)
+      )
+    ).to.be.revertedWith("Invalid number of licenses");
   });
 
   it("Link node - should work", async function () {
@@ -928,27 +905,14 @@ describe("NDContract", function () {
     ).to.be.revertedWith("Signer does not exist");
   });
 
-  it.skip("Buy all license ", async function () {
+  it("Buy all license ", async function () {
     // for gas test remove this function using "it.skip"
     //SETUP WORLD
     const signedMessage = await signAddress(backend, firstUser);
-    const maxUnits = 100; //TODO change with storage when updated (with maxUnits = 100 it could take up to 95s)
 
     //DO TEST
-    await expect(
-      buyLicenseWithMintAndAllowance(
-        naeuraContract,
-        ndContract,
-        owner,
-        firstUser,
-        (await ndContract._priceTiers(1)).usdPrice.toNumber() * maxUnits + 1,
-        maxUnits + 1,
-        1,
-        signedMessage
-      )
-    ).to.be.revertedWith("Invalid number of licenses");
-
     for (let i = 1; i <= 12; i++) {
+      expect(await ndContract.currentPriceTier()).to.equal(i);
       let tier = await ndContract._priceTiers(i);
       let units = tier.totalUnits.toNumber();
       do {
