@@ -30,6 +30,9 @@ const config: HardhatUserConfig = {
       },
     },
   },
+  paths: {
+    tests: "./test", // Assicurati che il percorso sia corretto
+  },
   networks: {
     arbitrum: {
       url: ARBITRUM_MAINNET,
@@ -58,6 +61,7 @@ const config: HardhatUserConfig = {
   },
   mocha: {
     timeout: 480000,
+    parallel: false,
   },
 };
 

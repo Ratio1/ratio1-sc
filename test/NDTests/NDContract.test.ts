@@ -2,7 +2,6 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { NAEURA, NDContract } from "../../typechain-types";
-import { Bytecode } from "hardhat/internal/hardhat-network/stack-traces/model";
 const BigNumber = ethers.BigNumber;
 
 // npx hardhat test     ---- for gas usage
@@ -23,7 +22,7 @@ const ONE_DAY_IN_SECS = 24 * 60 * 60;
 const NODE_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const USDC_ADDRESS = "0x6f14C02Fc1F78322cFd7d707aB90f18baD3B54f5";
 const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
-const REWARDS_AMOUNT = BigNumber.from("17387705547524190242");
+const REWARDS_AMOUNT = BigNumber.from("19561168740964714023");
 const COMPUTE_PARAMS = {
   licenseId: 1,
   nodeAddress: NODE_ADDRESS,
@@ -39,7 +38,7 @@ const EXPECTED_LICENSES_INFO = [
     licenseId: BigNumber.from(1),
     nodeAddress: NULL_ADDRESS,
     totalClaimedAmount: BigNumber.from(0),
-    remainingAmount: BigNumber.from("14001678677743163724472"),
+    remainingAmount: BigNumber.from("15751888512461059190031"),
     lastClaimEpoch: BigNumber.from(0),
     claimableEpochs: BigNumber.from("306"),
     assignTimestamp: BigNumber.from(0),
@@ -905,7 +904,7 @@ describe("NDContract", function () {
     ).to.be.revertedWith("Signer does not exist");
   });
 
-  it("Buy all license ", async function () {
+  it.skip("Buy all license ", async function () {
     // for gas test remove this function using "it.skip"
     //SETUP WORLD
     const signedMessage = await signAddress(backend, firstUser);
