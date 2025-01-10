@@ -49,7 +49,6 @@ struct LicenseInfo {
     uint256 assignTimestamp;
 }
 
-// TODO - Implement an upgradeability pattern for future improvements.
 contract NDContract is
     ERC721Enumerable,
     ERC721URIStorage,
@@ -82,7 +81,7 @@ contract NDContract is
     uint8 constant LAST_PRICE_TIER = 12;
 
     uint256 constant MAX_LICENSE_SUPPLY = 46224;
-    uint256 constant MAX_LICENSE_TOKENS_PERCENTAGE = 40_00; // 40% of total supply
+    uint256 constant MAX_LICENSE_TOKENS_PERCENTAGE = 45_00; // 45% of total supply
     uint256 constant MAX_LICENSE_TOKENS_SUPPLY =
         (MAX_TOKEN_SUPPLY * MAX_LICENSE_TOKENS_PERCENTAGE) / MAX_PERCENTAGE;
     uint256 constant MAX_RELEASE_PER_LICENSE =
@@ -311,7 +310,7 @@ contract NDContract is
             return;
         }
 
-        // TODO: force claim rewards before removing nodeAddress
+        // TODO: force claim rewards before removing nodeAddress - require last claim epoch == current epoch
         address oldNodeAddress = license.nodeAddress;
         registeredNodeAddresses[license.nodeAddress] = false;
         license.nodeAddress = address(0);
@@ -458,7 +457,7 @@ contract NDContract is
         uint256 usdcAmount = swapTokensForUsdc(halfNaeuraAmount);
 
         if (usdcAmount == 0) {
-            //TODO what should happen in case of a failed swap?
+            //TODO what should happen in case of a failed swap? - revert everything
             emit LiquidityAdditionFailed(naeuraAmount, 0, "Token swap failed");
             return;
         }
@@ -471,7 +470,7 @@ contract NDContract is
                 usdcAmount,
                 0, // Min tokens out
                 0, // Min USDC out
-                address(this), //TODO this liquidity should die here? Or maybe be sent to the company?
+                address(this), //TODO this liquidity should die here? Or maybe be sent to the company? - send to LP company address
                 block.timestamp + LIQUIDITY_DEADLINE_EXTENSION
             );
 
@@ -480,7 +479,7 @@ contract NDContract is
         uint256 remainingAmountNaeura = halfNaeuraAmount - usedAmountNaeura;
         uint256 remainingAmountUsdc = usdcAmount - usedAmountUsdc;
 
-        //TODO is this fine?
+        //TODO send to LP wallet
         if (remainingAmountNaeura > 0) {
             _naeuraToken.transfer(owner(), remainingAmountNaeura);
         }
