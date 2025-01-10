@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { NAEURA, NDContract } from "../../typechain-types";
+import { Bytecode } from "hardhat/internal/hardhat-network/stack-traces/model";
 const BigNumber = ethers.BigNumber;
 
 /*
@@ -19,8 +20,6 @@ const ONE_DAY_IN_SECS = 24 * 60 * 60;
 const NODE_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const USDC_ADDRESS = "0x6f14C02Fc1F78322cFd7d707aB90f18baD3B54f5";
 const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
-const WRONG_SIGNATURE =
-  "0bbb76f330fe36625b3c932055b5e7b5a7adb86b1e19c727cf21f8ada45299a97d35232bbc3205663b610ae2f3e2017eecc6ad62f7b22afa846762d666bb6ec81b";
 const REWARDS_AMOUNT = BigNumber.from("17387705547524190242");
 const COMPUTE_PARAMS = {
   licenseId: 1,
@@ -32,6 +31,80 @@ const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: BigNumber.from(1),
   rewardsAmount: REWARDS_AMOUNT,
 };
+const EXPECTED_LICENSES_INFO = [
+  {
+    licenseId: BigNumber.from(1),
+    nodeAddress: NULL_ADDRESS,
+    totalClaimedAmount: BigNumber.from(0),
+    remainingAmount: BigNumber.from("14001678677743163724472"),
+    lastClaimEpoch: BigNumber.from(0),
+    claimableEpochs: BigNumber.from("306"),
+    assignTimestamp: BigNumber.from(0),
+  },
+];
+
+const EXPECTED_PRICE_TIERS = [
+  {
+    usdPrice: BigNumber.from(500),
+    totalUnits: BigNumber.from(89),
+    soldUnits: BigNumber.from(0),
+  },
+  {
+    usdPrice: BigNumber.from(750),
+    totalUnits: BigNumber.from(144),
+    soldUnits: BigNumber.from(0),
+  },
+  {
+    usdPrice: BigNumber.from(1000),
+    totalUnits: BigNumber.from(233),
+    soldUnits: BigNumber.from(0),
+  },
+  {
+    usdPrice: BigNumber.from(1500),
+    totalUnits: BigNumber.from(377),
+    soldUnits: BigNumber.from(0),
+  },
+  {
+    usdPrice: BigNumber.from(2000),
+    totalUnits: BigNumber.from(610),
+    soldUnits: BigNumber.from(0),
+  },
+  {
+    usdPrice: BigNumber.from(2500),
+    totalUnits: BigNumber.from(987),
+    soldUnits: BigNumber.from(0),
+  },
+  {
+    usdPrice: BigNumber.from(3000),
+    totalUnits: BigNumber.from(1597),
+    soldUnits: BigNumber.from(0),
+  },
+  {
+    usdPrice: BigNumber.from(3500),
+    totalUnits: BigNumber.from(2584),
+    soldUnits: BigNumber.from(0),
+  },
+  {
+    usdPrice: BigNumber.from(4000),
+    totalUnits: BigNumber.from(4181),
+    soldUnits: BigNumber.from(0),
+  },
+  {
+    usdPrice: BigNumber.from(5000),
+    totalUnits: BigNumber.from(6765),
+    soldUnits: BigNumber.from(0),
+  },
+  {
+    usdPrice: BigNumber.from(10000),
+    totalUnits: BigNumber.from(10946),
+    soldUnits: BigNumber.from(0),
+  },
+  {
+    usdPrice: BigNumber.from(20000),
+    totalUnits: BigNumber.from(17711),
+    soldUnits: BigNumber.from(0),
+  },
+];
 
 describe("NDContract", function () {
   /*
@@ -189,6 +262,75 @@ describe("NDContract", function () {
 	....##....########..######.....##.....######.
 	*/
 
+  it("Set base uri", async function () {
+    let baseUri = "PIPPO.com/";
+    await ndContract.setBaseURI(baseUri);
+  });
+
+  it("Get token uri", async function () {
+    let baseUri = "PIPPO.com/";
+    await ndContract.setBaseURI(baseUri);
+
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    let licenseId = 1;
+    let result = await ndContract.tokenURI(BigNumber.from(1));
+    expect(baseUri + licenseId).to.equal(result);
+  });
+
+  it("Get price tiers", async function () {
+    let result = await ndContract.getPriceTiers();
+    expect(EXPECTED_PRICE_TIERS).to.deep.equal(
+      result.map((r) => {
+        return {
+          usdPrice: r.usdPrice,
+          totalUnits: r.totalUnits,
+          soldUnits: r.soldUnits,
+        };
+      })
+    );
+  });
+
+  it("Get licenses", async function () {
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    let result = await ndContract.getLicenses(firstUser.address);
+    expect(EXPECTED_LICENSES_INFO).to.deep.equal(
+      result.map((r) => {
+        return {
+          licenseId: r.licenseId,
+          nodeAddress: r.nodeAddress,
+          totalClaimedAmount: r.totalClaimedAmount,
+          remainingAmount: r.remainingAmount,
+          lastClaimEpoch: r.lastClaimEpoch,
+          claimableEpochs: r.claimableEpochs,
+          assignTimestamp: r.assignTimestamp,
+        };
+      })
+    );
+  });
+
+  /*it("Get support interface", async function () {
+    let baseUri = "PIPPO.com/";
+    await ndContract.supportsInterface();
+  });*/
+
   it("Buy license - should work", async function () {
     let price = await ndContract.getLicensePriceInUSD();
     expect(price).to.equal(500);
@@ -213,7 +355,7 @@ describe("NDContract", function () {
         ndContract,
         owner,
         firstUser,
-        499,
+        499, //since 1 neura = 1 usdc minimum is 500
         1,
         1,
         await signAddress(backend, firstUser)
@@ -222,9 +364,12 @@ describe("NDContract", function () {
   });
 
   it("Buy license - insufficent allowance", async function () {
+    //Mint tokens
     await naeuraContract
       .connect(owner)
       .mint(firstUser.address, ONE_TOKEN.mul(500));
+
+    //Buy license without giving allowance
     await expect(
       ndContract
         .connect(firstUser)
@@ -257,9 +402,16 @@ describe("NDContract", function () {
 
   it("Buy license - wrong signature", async function () {
     await expect(
-      ndContract
-        .connect(firstUser)
-        .buyLicense(1, 1, Buffer.from(WRONG_SIGNATURE, "hex"))
+      buyLicenseWithMintAndAllowance(
+        naeuraContract,
+        ndContract,
+        owner,
+        firstUser,
+        500,
+        1,
+        1,
+        await signAddress(secondUser, firstUser) //second user is not a signer
+      )
     ).to.be.revertedWith("Invalid signature");
   });
 
@@ -359,6 +511,26 @@ describe("NDContract", function () {
     //DO TEST - try to link again
     await expect(linkNode(ndContract, firstUser, 1)).to.be.revertedWith(
       "Node address already registered"
+    );
+  });
+
+  it("Link node - not the owner of the license", async function () {
+    //SETUP WORLD
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+
+    //DO TEST - try to link again
+    await expect(linkNode(ndContract, secondUser, 1)).to.be.revertedWith(
+      "Not the owner of the license"
     );
   });
 
@@ -536,7 +708,7 @@ describe("NDContract", function () {
     expect(formattedResults[0]).to.deep.equal(EXPECTED_COMPUTE_REWARDS_RESULT);
   });
 
-  it("Claim rewards", async function () {
+  it("Claim rewards - should work", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
       naeuraContract,
@@ -564,11 +736,203 @@ describe("NDContract", function () {
     );
   });
 
+  it("Claim rewards - mismatched input arrays length", async function () {
+    //SETUP WORLD
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    expect(
+      ndContract
+        .connect(firstUser)
+        .claimRewards(
+          [COMPUTE_PARAMS, COMPUTE_PARAMS],
+          [Buffer.from(await signComputeParams(backend), "hex")]
+        )
+    ).to.be.revertedWith("Mismatched input arrays length");
+  });
+
+  it("Claim rewards - user does not have the license", async function () {
+    //SETUP WORLD
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    expect(
+      ndContract
+        .connect(secondUser)
+        .claimRewards(
+          [COMPUTE_PARAMS],
+          [Buffer.from(await signComputeParams(backend), "hex")]
+        )
+    ).to.be.revertedWith("User does not have the license");
+  });
+
+  it("Claim rewards - invalid signature", async function () {
+    //SETUP WORLD
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    expect(
+      ndContract
+        .connect(firstUser)
+        .claimRewards(
+          [COMPUTE_PARAMS],
+          [Buffer.from(await signComputeParams(secondUser), "hex")]
+        )
+    ).to.be.revertedWith("Invalid signature");
+  });
+
+  it("Claim rewards - invalid node address.", async function () {
+    //SETUP WORLD
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    COMPUTE_PARAMS.nodeAddress = "0xf2e3878c9ab6a377d331e252f6bf3673d8e87323";
+    //DO TEST
+    expect(
+      ndContract
+        .connect(firstUser)
+        .claimRewards(
+          [COMPUTE_PARAMS],
+          [Buffer.from(await signComputeParams(secondUser), "hex")]
+        )
+    ).to.be.revertedWith("Invalid node address.");
+  });
+
+  it("Claim rewards - incorrect number of params.", async function () {
+    //SETUP WORLD
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    COMPUTE_PARAMS.epochs.concat([6]);
+    //DO TEST
+    expect(
+      ndContract
+        .connect(firstUser)
+        .claimRewards(
+          [COMPUTE_PARAMS],
+          [Buffer.from(await signComputeParams(secondUser), "hex")]
+        )
+    ).to.be.revertedWith("Incorrect number of params.");
+  });
+
+  it("Add signer - should work", async function () {
+    //ADD second user as a signer
+    await ndContract.addSigner(secondUser.address);
+
+    //Should not be reverted
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(secondUser, firstUser) //second user is a signer
+    );
+  });
+
+  it("Add signer - invalid signer address", async function () {
+    await expect(ndContract.addSigner(NULL_ADDRESS)).to.be.revertedWith(
+      "Invalid signer address"
+    );
+  });
+
+  it("Add signer - signer already exists", async function () {
+    await expect(ndContract.addSigner(backend.address)).to.be.revertedWith(
+      "Signer already exists"
+    );
+  });
+
+  it("Remove signer -should work", async function () {
+    //Add second user as a signer
+    await ndContract.removeSigner(backend.address);
+
+    //Should be reverted
+    await expect(
+      buyLicenseWithMintAndAllowance(
+        naeuraContract,
+        ndContract,
+        owner,
+        firstUser,
+        500,
+        1,
+        1,
+        await signAddress(backend, firstUser) //second user is not a signer
+      )
+    ).to.be.revertedWith("Invalid signature");
+  });
+
+  it("Remove signer - signer does not exist", async function () {
+    //Remove second user as a signer
+    await expect(
+      ndContract.removeSigner(secondUser.address)
+    ).to.be.revertedWith("Signer does not exist");
+  });
+
   it.skip("Buy all license ", async function () {
     // for gas test remove this function using "it.skip"
     //SETUP WORLD
     const signedMessage = await signAddress(backend, firstUser);
-    const maxUnits = 5; //TODO change with storage when updated (with maxUnits = 100 it could take up to 95s)
+    const maxUnits = 100; //TODO change with storage when updated (with maxUnits = 100 it could take up to 95s)
 
     //DO TEST
     await expect(
