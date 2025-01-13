@@ -94,7 +94,13 @@ contract NDContract is
     uint256 constant BURN_PERCENTAGE = 20_00;
     uint256 constant LIQUIDITY_PERCENTAGE = 50_00;
     uint256 constant COMPANY_PERCENTAGE = 30_00;
-    uint256 constant LIQUIDITY_DEADLINE_EXTENSION = 20 minutes;
+    uint256 constant LP_WALLET_PERCENTAGE = 26_70;
+    uint256 constant EXPENSES_WALLET_PERCENTAGE = 13_80;
+    uint256 constant MARKETING_WALLET_PERCENTAGE = 7_50;
+    uint256 constant GRANTS_WALLET_PERCENTAGE = 34_60;
+    uint256 constant CSR_WALLET_PERCENTAGE = 17_30;
+
+    uint256 constant LIQUIDITY_DEADLINE_EXTENSION = 20 minutes; //TODO check if this is needed
 
     //..######..########..#######..########.....###.....######...########
     //.##....##....##....##.....##.##.....##...##.##...##....##..##......
@@ -111,6 +117,11 @@ contract NDContract is
     NAEURA public _naeuraToken;
     IUniswapV2Router02 _uniswapV2Router;
     address _usdcAddr;
+    address lpWallet;
+    address expensesWallet;
+    address marketingWallet;
+    address grantsWallet;
+    address csrWallet;
 
     address[] public signers;
     mapping(address => bool) isSigner;
@@ -445,7 +456,27 @@ contract NDContract is
 
         _naeuraToken.burn(address(this), burnAmount);
         addLiquidity(liquidityAmount);
-        _naeuraToken.transfer(owner(), companyAmount); //TODO check if it should be distributed in any other way
+        // Distribute company funds
+        _naeuraToken.transfer(
+            lpWallet,
+            (companyAmount * LP_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
+        _naeuraToken.transfer(
+            expensesWallet,
+            (companyAmount * EXPENSES_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
+        _naeuraToken.transfer(
+            marketingWallet,
+            (companyAmount * MARKETING_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
+        _naeuraToken.transfer(
+            grantsWallet,
+            (companyAmount * GRANTS_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
+        _naeuraToken.transfer(
+            csrWallet,
+            (companyAmount * CSR_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
     }
 
     // LP interactions
@@ -469,7 +500,7 @@ contract NDContract is
                 usdcAmount,
                 0, // Min tokens out
                 0, // Min USDC out
-                address(this), //TODO this liquidity should die here? Or maybe be sent to the company? - send to LP company address
+                address(lpWallet),
                 block.timestamp + LIQUIDITY_DEADLINE_EXTENSION
             );
 
@@ -478,12 +509,11 @@ contract NDContract is
         uint256 remainingAmountNaeura = halfNaeuraAmount - usedAmountNaeura;
         uint256 remainingAmountUsdc = usdcAmount - usedAmountUsdc;
 
-        //TODO send to LP wallet
         if (remainingAmountNaeura > 0) {
-            _naeuraToken.transfer(owner(), remainingAmountNaeura);
+            _naeuraToken.transfer(lpWallet, remainingAmountNaeura);
         }
         if (remainingAmountUsdc > 0) {
-            IERC20(_usdcAddr).transfer(owner(), remainingAmountUsdc);
+            IERC20(_usdcAddr).transfer(lpWallet, remainingAmountUsdc);
         }
     }
 
@@ -584,6 +614,20 @@ contract NDContract is
         bytes4 interfaceId
     ) public view override(ERC721Enumerable, ERC721URIStorage) returns (bool) {
         return super.supportsInterface(interfaceId);
+    }
+
+    function setCompanyWallets(
+        address newLpWallet,
+        address newExpensesWallet,
+        address newMarketingWallet,
+        address newGrantsWallet,
+        address newCsrWallet
+    ) public onlyOwner {
+        lpWallet = newLpWallet;
+        expensesWallet = newExpensesWallet;
+        marketingWallet = newMarketingWallet;
+        grantsWallet = newGrantsWallet;
+        csrWallet = newCsrWallet;
     }
 
     //.##.....##.####.########.##......##....########.##.....##.##....##..######..########.####..#######..##....##..######.

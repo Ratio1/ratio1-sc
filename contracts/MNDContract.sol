@@ -69,7 +69,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         (MAX_TOKEN_SUPPLY * 2_00) / MAX_PERCENTAGE; // TODO check
     uint256 constant MAX_MND_TOTAL_ASSIGNED_TOKENS =
         (MAX_TOKEN_SUPPLY * 26_10) / MAX_PERCENTAGE; // 26.1% of total supply
-    uint256 constant MAX_MND_SUPPLY = 500; //TODO how many max MNDs can be minted?
+    uint256 constant MAX_MND_SUPPLY = 500;
     uint256 constant CLIFF_EPOCHS = 30 * 4;
     uint256 constant VESTING_DURATION_YEARS = 5;
     uint256 constant VESTING_DURATION_EPOCHS = VESTING_DURATION_YEARS * 365;
@@ -78,6 +78,12 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         (MAX_TOKEN_SUPPLY * 33_20) / MAX_PERCENTAGE; // 33.2% of total supply
     uint256 constant GENESIS_UNLOCK_EPOCHS = 365;
     uint256 constant GENESIS_TOKEN_ID = 0;
+
+    uint256 constant LP_WALLET_PERCENTAGE = 26_70;
+    uint256 constant EXPENSES_WALLET_PERCENTAGE = 13_80;
+    uint256 constant MARKETING_WALLET_PERCENTAGE = 7_50;
+    uint256 constant GRANTS_WALLET_PERCENTAGE = 34_60;
+    uint256 constant CSR_WALLET_PERCENTAGE = 17_30;
 
     //..######..########..#######..########.....###.....######...########
     //.##....##....##....##.....##.##.....##...##.##...##....##..##......
@@ -96,6 +102,12 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     mapping(address => bool) isSigner;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
+
+    address lpWallet;
+    address expensesWallet;
+    address marketingWallet;
+    address grantsWallet;
+    address csrWallet;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -251,7 +263,32 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         license.totalClaimedAmount += rewardsAmount;
 
         if (rewardsAmount > 0) {
-            _naeuraToken.mint(msg.sender, rewardsAmount);
+            if (computeParam.licenseId == GENESIS_TOKEN_ID) {
+                _naeuraToken.transfer(
+                    lpWallet,
+                    (rewardsAmount * LP_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+                );
+                _naeuraToken.transfer(
+                    expensesWallet,
+                    (rewardsAmount * EXPENSES_WALLET_PERCENTAGE) /
+                        MAX_PERCENTAGE
+                );
+                _naeuraToken.transfer(
+                    marketingWallet,
+                    (rewardsAmount * MARKETING_WALLET_PERCENTAGE) /
+                        MAX_PERCENTAGE
+                );
+                _naeuraToken.transfer(
+                    grantsWallet,
+                    (rewardsAmount * GRANTS_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+                );
+                _naeuraToken.transfer(
+                    csrWallet,
+                    (rewardsAmount * CSR_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+                );
+            } else {
+                _naeuraToken.mint(msg.sender, rewardsAmount);
+            }
         }
     }
 
@@ -365,6 +402,20 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
             "Soulbound: Non-transferable token"
         );
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
+    }
+
+    function setCompanyWallets(
+        address newLpWallet,
+        address newExpensesWallet,
+        address newMarketingWallet,
+        address newGrantsWallet,
+        address newCsrWallet
+    ) public onlyOwner {
+        lpWallet = newLpWallet;
+        expensesWallet = newExpensesWallet;
+        marketingWallet = newMarketingWallet;
+        grantsWallet = newGrantsWallet;
+        csrWallet = newCsrWallet;
     }
 
     //.##.....##.####.########.##......##....########.##.....##.##....##..######..########.####..#######..##....##..######.
