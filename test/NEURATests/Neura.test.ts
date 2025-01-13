@@ -87,21 +87,33 @@ describe("NEURA contract", function () {
     );
   });
 
-  it("Set NDcontract- should work", async function () {
+  it("Set NDcontract- not the owner", async function () {
+    await expect(
+      naeuraContract.connect(firstUser).setNdContract(NULL_ADDRESS)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Set MNDcontract- should work", async function () {
     await naeuraContract.setMndContract(ndContract.address);
   });
 
-  it("Set NDcontract- already set", async function () {
+  it("Set MNDcontract- already set", async function () {
     await naeuraContract.setMndContract(ndContract.address);
     await expect(
       naeuraContract.setMndContract(ndContract.address)
     ).to.be.revertedWith("Master Node Deed address already set");
   });
 
-  it("Set NDcontract- wrong address", async function () {
+  it("Set MNDcontract- wrong address", async function () {
     await expect(
       naeuraContract.setMndContract(NULL_ADDRESS)
     ).to.be.revertedWith("Invalid Master Node Deed address");
+  });
+
+  it("Set MNDcontract- not the owner", async function () {
+    await expect(
+      naeuraContract.connect(firstUser).setMndContract(NULL_ADDRESS)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
   it("Mint- should work", async function () {

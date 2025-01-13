@@ -22,23 +22,21 @@ const ONE_DAY_IN_SECS = 24 * 60 * 60;
 const NODE_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const USDC_ADDRESS = "0x6f14C02Fc1F78322cFd7d707aB90f18baD3B54f5";
 const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
+const newLpWallet = "0x0000000000000000000000000000000000000001";
+const newExpensesWallet = "0x0000000000000000000000000000000000000002";
+const newMarketingWallet = "0x0000000000000000000000000000000000000003";
+const newGrantsWallet = "0x0000000000000000000000000000000000000004";
+const newCsrWallet = "0x0000000000000000000000000000000000000005";
 const REWARDS_AMOUNT = BigNumber.from("19561168740964714023");
-const COMPUTE_PARAMS = {
-  licenseId: 1,
-  nodeAddress: NODE_ADDRESS,
-  epochs: [1, 2, 3, 4, 5],
-  availabilies: [250, 130, 178, 12, 0],
-};
 const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: BigNumber.from(1),
   rewardsAmount: REWARDS_AMOUNT,
 };
 const START_EPOCH_TIMESTAMP = 1710028800;
 const CURRENT_EPOCH_TIMESTAMP = Math.floor(Date.now() / 1000);
-const CLAIMABLE_EPOCHS =
-  Math.floor(
-    (CURRENT_EPOCH_TIMESTAMP - START_EPOCH_TIMESTAMP) / ONE_DAY_IN_SECS
-  ) + 1; //TODO check if correct +1
+const CLAIMABLE_EPOCHS = Math.floor(
+  (CURRENT_EPOCH_TIMESTAMP - START_EPOCH_TIMESTAMP) / ONE_DAY_IN_SECS
+);
 const EXPECTED_LICENSES_INFO = [
   {
     licenseId: BigNumber.from(1),
@@ -132,8 +130,15 @@ describe("NDContract", function () {
   let secondUser: SignerWithAddress;
   let backend: SignerWithAddress;
   let maxUnits: number;
+  let COMPUTE_PARAMS = {
+    licenseId: 1,
+    nodeAddress: NODE_ADDRESS,
+    epochs: [1, 2, 3, 4, 5],
+    availabilies: [250, 130, 178, 12, 0],
+  };
+  let snapshotId: string;
 
-  beforeEach(async function () {
+  before(async function () {
     const [deployer, user1, user2, backendSigner] = await ethers.getSigners();
     owner = deployer;
     firstUser = user1;
@@ -155,10 +160,36 @@ describe("NDContract", function () {
     const uniswapContract = await UniswapContract.deploy();
 
     await ndContract.setUniswapRouter(uniswapContract.address);
+    await ndContract.setCompanyWallets(
+      newLpWallet,
+      newExpensesWallet,
+      newMarketingWallet,
+      newGrantsWallet,
+      newCsrWallet
+    );
     await ndContract.setUsdcAddress(USDC_ADDRESS);
 
     await naeuraContract.setNdContract(ndContract.address);
     await naeuraContract.setMndContract(owner.address);
+
+    COMPUTE_PARAMS = {
+      licenseId: 1,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [1, 2, 3, 4, 5],
+      availabilies: [250, 130, 178, 12, 0],
+    };
+    snapshotId = await ethers.provider.send("evm_snapshot", []);
+  });
+
+  beforeEach(async function () {
+    COMPUTE_PARAMS = {
+      licenseId: 1,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [1, 2, 3, 4, 5],
+      availabilies: [250, 130, 178, 12, 0],
+    };
+    await ethers.provider.send("evm_revert", [snapshotId]);
+    snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
 
   /*
@@ -257,7 +288,7 @@ describe("NDContract", function () {
     );
     let signatureBytes = Buffer.from(signature.slice(2), "hex");
     if (signatureBytes[64] < 27) {
-      signatureBytes[64] += 27; // Adjust recovery ID
+      signatureBytes[64] += 27;
     }
 
     return signatureBytes.toString("hex");
@@ -273,9 +304,74 @@ describe("NDContract", function () {
 	....##....########..######.....##.....######.
 	*/
 
-  it("Set base uri", async function () {
+  it("Get licenses", async function () {
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+
+    let result = await ndContract.getLicenses(firstUser.address);
+    expect(EXPECTED_LICENSES_INFO).to.deep.equal(
+      result.map((r) => {
+        return {
+          licenseId: r.licenseId,
+          nodeAddress: r.nodeAddress,
+          totalClaimedAmount: r.totalClaimedAmount,
+          remainingAmount: r.remainingAmount,
+          lastClaimEpoch: r.lastClaimEpoch,
+          claimableEpochs: r.claimableEpochs,
+          assignTimestamp: r.assignTimestamp,
+        };
+      })
+    );
+  });
+
+  it("Get licenses - user has no license", async function () {
+    let result = await ndContract.getLicenses(firstUser.address);
+    expect([]).to.deep.equal(
+      result.map((r) => {
+        return {
+          licenseId: r.licenseId,
+          nodeAddress: r.nodeAddress,
+          totalClaimedAmount: r.totalClaimedAmount,
+          remainingAmount: r.remainingAmount,
+          lastClaimEpoch: r.lastClaimEpoch,
+          claimableEpochs: r.claimableEpochs,
+          assignTimestamp: r.assignTimestamp,
+        };
+      })
+    );
+  });
+
+  it("Set base uri- should work", async function () {
     let baseUri = "PIPPO.com/";
     await ndContract.setBaseURI(baseUri);
+  });
+
+  it("Set base uri - not the owner", async function () {
+    let baseUri = "PIPPO.com/";
+    await expect(
+      ndContract.connect(firstUser).setBaseURI(baseUri)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Set usdc address - not the owner", async function () {
+    await expect(
+      ndContract.connect(firstUser).setUsdcAddress(firstUser.address)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Set uniswap address - not the owner", async function () {
+    let baseUri = "PIPPO.com/";
+    await expect(
+      ndContract.connect(firstUser).setUniswapRouter(firstUser.address)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
   it("Get token uri", async function () {
@@ -310,34 +406,6 @@ describe("NDContract", function () {
     );
   });
 
-  it("Get licenses", async function () {
-    await buyLicenseWithMintAndAllowance(
-      naeuraContract,
-      ndContract,
-      owner,
-      firstUser,
-      500,
-      1,
-      1,
-      await signAddress(backend, firstUser)
-    );
-
-    let result = await ndContract.getLicenses(firstUser.address);
-    expect(EXPECTED_LICENSES_INFO).to.deep.equal(
-      result.map((r) => {
-        return {
-          licenseId: r.licenseId,
-          nodeAddress: r.nodeAddress,
-          totalClaimedAmount: r.totalClaimedAmount,
-          remainingAmount: r.remainingAmount,
-          lastClaimEpoch: r.lastClaimEpoch,
-          claimableEpochs: r.claimableEpochs,
-          assignTimestamp: r.assignTimestamp,
-        };
-      })
-    );
-  });
-
   it("Buy license - should work", async function () {
     let price = await ndContract.getLicensePriceInUSD();
     expect(price).to.equal(500);
@@ -351,8 +419,23 @@ describe("NDContract", function () {
       1,
       await signAddress(backend, firstUser)
     );
-    let result = await ndContract.ownerOf(1);
-    expect(result).to.equal(firstUser.address);
+    expect(firstUser.address).to.equal(await ndContract.ownerOf(1));
+    expect("40050000000000000000").to.deep.equal(
+      await naeuraContract.balanceOf(newLpWallet)
+    );
+    expect("20700000000000000000").to.deep.equal(
+      await naeuraContract.balanceOf(newExpensesWallet)
+    );
+    expect("11250000000000000000").to.deep.equal(
+      await naeuraContract.balanceOf(newMarketingWallet)
+    );
+
+    expect("51900000000000000000").to.deep.equal(
+      await naeuraContract.balanceOf(newGrantsWallet)
+    );
+    expect("25950000000000000000").to.deep.equal(
+      await naeuraContract.balanceOf(newCsrWallet)
+    );
   });
 
   it("Buy license - insufficent balance", async function () {
@@ -417,7 +500,7 @@ describe("NDContract", function () {
         500,
         1,
         1,
-        await signAddress(secondUser, firstUser) //second user is not a signer
+        await signAddress(secondUser, firstUser)
       )
     ).to.be.revertedWith("Invalid signature");
   });
@@ -736,7 +819,7 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
-    expect(
+    await expect(
       ndContract
         .connect(firstUser)
         .claimRewards(
@@ -763,7 +846,7 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
-    expect(
+    await expect(
       ndContract
         .connect(secondUser)
         .claimRewards(
@@ -790,7 +873,7 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
-    expect(
+    await expect(
       ndContract
         .connect(firstUser)
         .claimRewards(
@@ -818,12 +901,12 @@ describe("NDContract", function () {
 
     COMPUTE_PARAMS.nodeAddress = "0xf2e3878c9ab6a377d331e252f6bf3673d8e87323";
     //DO TEST
-    expect(
+    await expect(
       ndContract
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [Buffer.from(await signComputeParams(secondUser), "hex")]
+          [Buffer.from(await signComputeParams(backend), "hex")]
         )
     ).to.be.revertedWith("Invalid node address.");
   });
@@ -844,14 +927,14 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
 
-    COMPUTE_PARAMS.epochs.concat([6]);
+    COMPUTE_PARAMS.epochs = [1, 2, 3, 4, 5, 6, 7, 8];
     //DO TEST
-    expect(
+    await expect(
       ndContract
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [Buffer.from(await signComputeParams(secondUser), "hex")]
+          [Buffer.from(await signComputeParams(backend), "hex")]
         )
     ).to.be.revertedWith("Incorrect number of params.");
   });
@@ -885,6 +968,12 @@ describe("NDContract", function () {
     );
   });
 
+  it("Add signer - not the owner", async function () {
+    await expect(
+      ndContract.connect(firstUser).addSigner(firstUser.address)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
   it("Remove signer -should work", async function () {
     //Add second user as a signer
     await ndContract.removeSigner(backend.address);
@@ -909,6 +998,70 @@ describe("NDContract", function () {
     await expect(
       ndContract.removeSigner(secondUser.address)
     ).to.be.revertedWith("Signer does not exist");
+  });
+
+  it("Add signer - not the owner", async function () {
+    await expect(
+      ndContract.connect(firstUser).removeSigner(firstUser.address)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Pause contract - should work", async function () {
+    await ndContract.connect(owner).pause();
+    await expect(
+      buyLicenseWithMintAndAllowance(
+        naeuraContract,
+        ndContract,
+        owner,
+        firstUser,
+        500,
+        1,
+        1,
+        await signAddress(backend, firstUser)
+      )
+    ).to.be.revertedWith("Pausable: paused");
+  });
+
+  it("Pause contract - not the owner", async function () {
+    await expect(ndContract.connect(firstUser).pause()).to.be.revertedWith(
+      "Ownable: caller is not the owner"
+    );
+  });
+
+  it("Unpause contract - should work", async function () {
+    await ndContract.connect(owner).pause();
+    await expect(
+      buyLicenseWithMintAndAllowance(
+        naeuraContract,
+        ndContract,
+        owner,
+        firstUser,
+        500,
+        1,
+        1,
+        await signAddress(backend, firstUser)
+      )
+    ).to.be.revertedWith("Pausable: paused");
+
+    await ndContract.connect(owner).unpause();
+
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+  });
+
+  it("Unpause contract - not the owner", async function () {
+    await ndContract.connect(owner).pause();
+    await expect(ndContract.connect(firstUser).unpause()).to.be.revertedWith(
+      "Ownable: caller is not the owner"
+    );
   });
 
   it.skip("Buy all license ", async function () {
