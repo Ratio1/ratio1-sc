@@ -10,6 +10,10 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "./NAEURA.sol";
 
+interface IND {
+    function registeredNodeAddresses(address node) external view returns (bool);
+}
+
 struct ComputeRewardsParams {
     uint256 licenseId;
     address nodeAddress;
@@ -96,6 +100,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     Counters.Counter private _supply;
 
     NAEURA private _naeuraToken;
+    IND _ndContract;
 
     uint256 public totalLicensesAssignedAmount;
     address[] public signers;
@@ -196,11 +201,10 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         );
         require(newNodeAddress != address(0), "Invalid node address");
         require(
-            !registeredNodeAddresses[newNodeAddress],
+            !registeredNodeAddresses[newNodeAddress] &&
+                !_ndContract.registeredNodeAddresses(newNodeAddress),
             "Node address already registered"
         );
-
-        // TODO: check if nodeAddress also in ND
 
         // Update the license
         License storage license = licenses[licenseId];
@@ -416,6 +420,10 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         marketingWallet = newMarketingWallet;
         grantsWallet = newGrantsWallet;
         csrWallet = newCsrWallet;
+    }
+
+    function setNDContract(address ndContract_) public onlyOwner {
+        _ndContract = IND(ndContract_);
     }
 
     //.##.....##.####.########.##......##....########.##.....##.##....##..######..########.####..#######..##....##..######.

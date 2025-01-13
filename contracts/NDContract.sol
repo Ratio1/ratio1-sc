@@ -49,6 +49,10 @@ struct LicenseInfo {
     uint256 assignTimestamp;
 }
 
+interface IMND {
+    function registeredNodeAddresses(address node) external view returns (bool);
+}
+
 contract NDContract is
     ERC721Enumerable,
     ERC721URIStorage,
@@ -117,6 +121,7 @@ contract NDContract is
     NAEURA public _naeuraToken;
     IUniswapV2Router02 _uniswapV2Router;
     address _usdcAddr;
+    IMND _mndContract;
     address lpWallet;
     address expensesWallet;
     address marketingWallet;
@@ -283,11 +288,10 @@ contract NDContract is
         );
         require(newNodeAddress != address(0), "Invalid node address");
         require(
-            !registeredNodeAddresses[newNodeAddress],
+            !registeredNodeAddresses[newNodeAddress] &&
+                !_mndContract.registeredNodeAddresses(newNodeAddress),
             "Node address already registered"
         );
-
-        // TODO: check if nodeAddress also in MND
 
         License storage license = licenses[licenseId];
         require(
@@ -628,6 +632,10 @@ contract NDContract is
         marketingWallet = newMarketingWallet;
         grantsWallet = newGrantsWallet;
         csrWallet = newCsrWallet;
+    }
+
+    function setMNDContract(address mndContract_) public onlyOwner {
+        _mndContract = IMND(mndContract_);
     }
 
     //.##.....##.####.########.##......##....########.##.....##.##....##..######..########.####..#######..##....##..######.
