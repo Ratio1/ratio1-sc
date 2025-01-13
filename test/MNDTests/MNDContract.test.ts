@@ -17,7 +17,12 @@ const BigNumber = ethers.BigNumber;
 ..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 */
 
-describe("NDContract", function () {
+const ONE_TOKEN = BigNumber.from(10).pow(18);
+const NODE_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
+const ONE_DAY_IN_SECS = 24 * 60 * 60;
+
+describe("MNDContract", function () {
   /*
     .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
     .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -65,6 +70,22 @@ describe("NDContract", function () {
     ..#######.....##....####.########..######.
     */
 
+  async function linkNode(
+    mndContract: MNDContract,
+    user: SignerWithAddress,
+    licenseId: number
+  ) {
+    await mndContract.connect(user).linkNode(licenseId, NODE_ADDRESS);
+  }
+
+  async function unlinkNode(
+    ndContract: MNDContract,
+    user: SignerWithAddress,
+    licenseId: number
+  ) {
+    await ndContract.connect(user).unlinkNode(licenseId);
+  }
+
   /*
     .########.########..######..########..######.
     ....##....##.......##....##....##....##....##
@@ -107,21 +128,115 @@ describe("NDContract", function () {
     ).to.be.revertedWith("User already has a license");
   });
 
-  it.only("Add license - power limit reached", async function () {
+  it("Add license - power limit reached", async function () {
     const a = await Promise.all(
       (await ethers.getSigners())
-        .slice(10, 23)
+        .slice(7, 20)
         .map((signer) =>
           mndContract
             .connect(owner)
-            .addLicense(signer.address, BigNumber.from("200"))
+            .addLicense(signer.address, ONE_TOKEN.mul("32360679"))
         )
     );
 
-    expect(
+    await expect(
       mndContract
         .connect(owner)
-        .addLicense(firstUser.address, BigNumber.from("20"))
-    ).to.be.revertedWith("Max supply reached");
+        .addLicense(firstUser.address, ONE_TOKEN.mul("32360679"))
+    ).to.be.revertedWith("Max total assigned tokens reached");
+  });
+
+  it("Link node - should work", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+
+    //DO TEST
+    await linkNode(mndContract, firstUser, 1);
+    let result = await mndContract.ownerOf(1);
+    expect(result).to.equal(firstUser.address);
+    expect((await mndContract.licenses(1)).nodeAddress).to.equal(NODE_ADDRESS);
+    expect(await mndContract.registeredNodeAddresses(NODE_ADDRESS)).to.equal(
+      true
+    );
+  });
+
+  it("Link node - address already registered", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+    await linkNode(mndContract, firstUser, 1);
+
+    //DO TEST - try to link again
+    await expect(linkNode(mndContract, firstUser, 1)).to.be.revertedWith(
+      "Node address already registered"
+    );
+  });
+
+  it("Link node - not the owner of the license", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+    await linkNode(mndContract, firstUser, 1);
+
+    //DO TEST - try to link again
+    await expect(linkNode(mndContract, secondUser, 1)).to.be.revertedWith(
+      "Not the owner of the license"
+    );
+  });
+
+  it("Link node - wrong license", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+
+    //DO TEST - try to link with wrong license
+    await expect(linkNode(mndContract, firstUser, 2)).to.be.revertedWith(
+      "ERC721: invalid token ID"
+    );
+  });
+
+  it("Link node - wrong node address", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+
+    //DO TEST - try to link with wrong node address
+    await expect(
+      mndContract.connect(firstUser).linkNode(1, NULL_ADDRESS)
+    ).to.be.revertedWith("Invalid node address");
+  });
+
+  it("Link node - link again before 24hrs", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+    await linkNode(mndContract, firstUser, 1);
+
+    //DO TEST - try to link before 24 hrs
+    await unlinkNode(mndContract, firstUser, 1);
+    await expect(linkNode(mndContract, firstUser, 1)).to.be.revertedWith(
+      "Cannot reassign within 24 hours"
+    );
+  });
+
+  it("Link node - link again after 24hrs", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+    await linkNode(mndContract, firstUser, 1);
+    await unlinkNode(mndContract, firstUser, 1);
+
+    //DO TEST - try to link after 24 hrs
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+    await linkNode(mndContract, firstUser, 1);
   });
 });

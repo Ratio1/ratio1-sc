@@ -40,7 +40,7 @@ const EXPECTED_LICENSES_INFO = [
     totalClaimedAmount: BigNumber.from(0),
     remainingAmount: BigNumber.from("15751888512461059190031"),
     lastClaimEpoch: BigNumber.from(0),
-    claimableEpochs: BigNumber.from("306"),
+    claimableEpochs: BigNumber.from("307"),
     assignTimestamp: BigNumber.from(0),
   },
 ];
