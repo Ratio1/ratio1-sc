@@ -21,6 +21,17 @@ const ONE_TOKEN = BigNumber.from(10).pow(18);
 const NODE_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
 const ONE_DAY_IN_SECS = 24 * 60 * 60;
+const REWARDS_AMOUNT = BigNumber.from("19561168740964714023");
+const COMPUTE_PARAMS = {
+  licenseId: 1,
+  nodeAddress: NODE_ADDRESS,
+  epochs: [1, 2, 3, 4, 5],
+  availabilies: [250, 130, 178, 12, 0],
+};
+const EXPECTED_COMPUTE_REWARDS_RESULT = {
+  licenseId: BigNumber.from(1),
+  rewardsAmount: REWARDS_AMOUNT,
+};
 
 describe("MNDContract", function () {
   /*
@@ -84,6 +95,43 @@ describe("MNDContract", function () {
     licenseId: number
   ) {
     await ndContract.connect(user).unlinkNode(licenseId);
+  }
+
+  async function signComputeParams(signer: SignerWithAddress) {
+    let messageBytes = Buffer.from(COMPUTE_PARAMS.nodeAddress.slice(2), "hex");
+
+    for (const epoch of COMPUTE_PARAMS.epochs) {
+      const epochBytes = ethers.utils.hexZeroPad(
+        ethers.utils.hexlify(epoch),
+        32
+      );
+      messageBytes = Buffer.concat([
+        messageBytes,
+        Buffer.from(epochBytes.slice(2), "hex"),
+      ]);
+    }
+
+    for (const availability of COMPUTE_PARAMS.availabilies) {
+      const availabilityBytes = ethers.utils.hexZeroPad(
+        ethers.utils.hexlify(availability),
+        32
+      );
+      messageBytes = Buffer.concat([
+        messageBytes,
+        Buffer.from(availabilityBytes.slice(2), "hex"),
+      ]);
+    }
+
+    const messageHash = ethers.utils.keccak256(messageBytes);
+    let signature = await signer.signMessage(
+      ethers.utils.arrayify(messageHash)
+    );
+    let signatureBytes = Buffer.from(signature.slice(2), "hex");
+    if (signatureBytes[64] < 27) {
+      signatureBytes[64] += 27; // Adjust recovery ID
+    }
+
+    return signatureBytes.toString("hex");
   }
 
   /*
@@ -238,5 +286,148 @@ describe("MNDContract", function () {
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
     await ethers.provider.send("evm_mine", []);
     await linkNode(mndContract, firstUser, 1);
+  });
+
+  /*it("Calculate rewards", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+    await linkNode(mndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    let result = await mndContract
+      .connect(owner)
+      .calculateRewards(COMPUTE_PARAMS);
+    const formattedResults = result.map((result) => ({
+      licenseId: result.licenseId,
+      rewardsAmount: result.rewardsAmount,
+    }));
+    expect(formattedResults[0]).to.deep.equal(EXPECTED_COMPUTE_REWARDS_RESULT);
+  });*/
+
+  it("Claim rewards - should work", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+    await linkNode(mndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    await mndContract
+      .connect(firstUser)
+      .claimRewards(
+        COMPUTE_PARAMS,
+        Buffer.from(await signComputeParams(oracle), "hex")
+      );
+    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+      REWARDS_AMOUNT
+    );
+  });
+
+  it("Claim rewards - mismatched input arrays length", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+    await linkNode(mndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 30 * 4]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    await expect(
+      mndContract
+        .connect(firstUser)
+        .claimRewards(
+          COMPUTE_PARAMS,
+          Buffer.from(await signComputeParams(oracle), "hex")
+        )
+    ).to.be.revertedWith("Mismatched input arrays length");
+  });
+
+  it("Claim rewards - user does not have the license", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+    await linkNode(mndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    await expect(
+      mndContract
+        .connect(secondUser)
+        .claimRewards(
+          COMPUTE_PARAMS,
+          Buffer.from(await signComputeParams(oracle), "hex")
+        )
+    ).to.be.revertedWith("User does not have the license");
+  });
+
+  it("Claim rewards - invalid signature", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+    await linkNode(mndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    await expect(
+      mndContract
+        .connect(firstUser)
+        .claimRewards(
+          COMPUTE_PARAMS,
+          Buffer.from(await signComputeParams(firstUser), "hex")
+        )
+    ).to.be.revertedWith("Invalid signature");
+  });
+
+  it("Claim rewards - invalid node address.", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+    await linkNode(mndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    COMPUTE_PARAMS.nodeAddress = "0xf2e3878c9ab6a377d331e252f6bf3673d8e87323";
+    //DO TEST
+    await expect(
+      mndContract
+        .connect(firstUser)
+        .claimRewards(
+          COMPUTE_PARAMS,
+          Buffer.from(await signComputeParams(oracle), "hex")
+        )
+    ).to.be.revertedWith("Invalid node address.");
+  });
+
+  it("Claim rewards - incorrect number of params.", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, BigNumber.from("30"));
+    await linkNode(mndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    COMPUTE_PARAMS.epochs.concat([6]);
+    //DO TEST
+    await expect(
+      mndContract
+        .connect(firstUser)
+        .claimRewards(
+          COMPUTE_PARAMS,
+          Buffer.from(await signComputeParams(oracle), "hex")
+        )
+    ).to.be.revertedWith("Incorrect number of params.");
   });
 });

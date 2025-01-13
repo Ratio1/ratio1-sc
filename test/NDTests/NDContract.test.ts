@@ -33,6 +33,12 @@ const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: BigNumber.from(1),
   rewardsAmount: REWARDS_AMOUNT,
 };
+const START_EPOCH_TIMESTAMP = 1710028800;
+const CURRENT_EPOCH_TIMESTAMP = Math.floor(Date.now() / 1000);
+const CLAIMABLE_EPOCHS =
+  Math.floor(
+    (CURRENT_EPOCH_TIMESTAMP - START_EPOCH_TIMESTAMP) / ONE_DAY_IN_SECS
+  ) + 1; //TODO check if correct +1
 const EXPECTED_LICENSES_INFO = [
   {
     licenseId: BigNumber.from(1),
@@ -40,7 +46,7 @@ const EXPECTED_LICENSES_INFO = [
     totalClaimedAmount: BigNumber.from(0),
     remainingAmount: BigNumber.from("15751888512461059190031"),
     lastClaimEpoch: BigNumber.from(0),
-    claimableEpochs: BigNumber.from("307"),
+    claimableEpochs: BigNumber.from(CLAIMABLE_EPOCHS),
     assignTimestamp: BigNumber.from(0),
   },
 ];
@@ -315,6 +321,7 @@ describe("NDContract", function () {
       1,
       await signAddress(backend, firstUser)
     );
+
     let result = await ndContract.getLicenses(firstUser.address);
     expect(EXPECTED_LICENSES_INFO).to.deep.equal(
       result.map((r) => {
