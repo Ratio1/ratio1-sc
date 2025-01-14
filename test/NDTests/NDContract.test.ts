@@ -185,7 +185,7 @@ describe("NDContract", function () {
     snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
 
-  beforeEach(async function () {
+  afterEach(async function () {
     COMPUTE_PARAMS = {
       licenseId: 1,
       nodeAddress: NODE_ADDRESS,
@@ -1071,6 +1071,65 @@ describe("NDContract", function () {
     await expect(ndContract.connect(firstUser).unpause()).to.be.revertedWith(
       "Ownable: caller is not the owner"
     );
+  });
+
+  it("Set minimum requred signatures - should work", async function () {
+    //ERC721
+    await ndContract.setMinimumRequiredSignatures(BigNumber.from(1));
+
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    await ndContract
+      .connect(firstUser)
+      .claimRewards(
+        [COMPUTE_PARAMS],
+        [[Buffer.from(await signComputeParams(backend), "hex")]]
+      );
+    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+      REWARDS_AMOUNT
+    );
+  });
+
+  it("Set minimum requred signatures - should not work", async function () {
+    //ERC721
+    await ndContract.setMinimumRequiredSignatures(BigNumber.from(2));
+
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    await expect(
+      ndContract
+        .connect(firstUser)
+        .claimRewards(
+          [COMPUTE_PARAMS],
+          [[Buffer.from(await signComputeParams(backend), "hex")]]
+        )
+    ).to.be.revertedWith("Insufficient signatures");
   });
 
   it.skip("Buy all license ", async function () {

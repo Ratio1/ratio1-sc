@@ -60,7 +60,7 @@ describe("NEURA contract", function () {
     await ndContract.setUniswapRouter(uniswapContract.address);
     snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
-  beforeEach(async function () {
+  afterEach(async function () {
     await ethers.provider.send("evm_revert", [snapshotId]);
     snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
