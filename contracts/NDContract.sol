@@ -162,12 +162,8 @@ contract NDContract is
         string reason
     );
 
-    constructor(
-        address tokenAddress,
-        address signerAddress
-    ) ERC721("NDLicense", "ND") {
+    constructor(address tokenAddress) ERC721("NDLicense", "ND") {
         _naeuraToken = NAEURA(tokenAddress);
-        addSigner(signerAddress);
         minimumRequiredSignatures = 1;
 
         initializePriceTiers();

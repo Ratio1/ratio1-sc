@@ -141,12 +141,8 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     event SignerAdded(address newSigner);
     event SignerRemoved(address removedSigner);
 
-    constructor(
-        address tokenAddress,
-        address signerAddress
-    ) ERC721("MNDLicense", "MND") {
+    constructor(address tokenAddress) ERC721("MNDLicense", "MND") {
         _naeuraToken = NAEURA(tokenAddress);
-        addSigner(signerAddress);
         minimumRequiredSignatures = 1;
 
         // Mint the first Genesis Node Deed
