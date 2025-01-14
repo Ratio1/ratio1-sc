@@ -321,8 +321,11 @@ contract NDContract is
         if (license.nodeAddress == address(0)) {
             return;
         }
+        require(
+            license.lastClaimEpoch == getCurrentEpoch(),
+            "Cannot unlink before claiming rewards"
+        );
 
-        // TODO: force claim rewards before removing nodeAddress - require last claim epoch == current epoch
         address oldNodeAddress = license.nodeAddress;
         registeredNodeAddresses[license.nodeAddress] = false;
         license.nodeAddress = address(0);

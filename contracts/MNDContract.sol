@@ -238,8 +238,11 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         if (license.nodeAddress == address(0)) {
             return;
         }
+        require(
+            license.lastClaimEpoch == getCurrentEpoch(),
+            "Cannot unlink before claiming rewards"
+        );
 
-        // TODO: force claim rewards before removing nodeAddress
         address oldNodeAddress = license.nodeAddress;
         registeredNodeAddresses[license.nodeAddress] = false;
         license.nodeAddress = address(0);
