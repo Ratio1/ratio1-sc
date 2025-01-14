@@ -34,6 +34,12 @@ const config: HardhatUserConfig = {
     tests: "./test", // Assicurati che il percorso sia corretto
   },
   networks: {
+    hardhat: {
+      chainId: 1337,
+      initialDate: "2024-03-10T00:00:00Z", // 3 marzo 2024, mezzanotte UTC
+    },
+  },
+  /*networks: {
     arbitrum: {
       url: ARBITRUM_MAINNET,
       accounts: [GENESIS, MASTER],
@@ -48,7 +54,7 @@ const config: HardhatUserConfig = {
       chainId: 421614,
       accounts: [GENESIS, MASTER],
     },
-  },
+  },*/
   gasReporter: {
     currency: "EUR",
     enabled: true,

@@ -1,7 +1,10 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { NAEURA, NDContract } from "../../typechain-types";
+import { ERC20, NAEURA, NDContract } from "../../typechain-types";
+
+const ERC20_SOURCE = "@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20";
+
 const BigNumber = ethers.BigNumber;
 
 // npx hardhat test     ---- for gas usage
@@ -20,7 +23,6 @@ const BigNumber = ethers.BigNumber;
 const ONE_TOKEN = BigNumber.from(10).pow(18);
 const ONE_DAY_IN_SECS = 24 * 60 * 60;
 const NODE_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-const USDC_ADDRESS = "0x6f14C02Fc1F78322cFd7d707aB90f18baD3B54f5";
 const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
 const newLpWallet = "0x0000000000000000000000000000000000000001";
 const newExpensesWallet = "0x0000000000000000000000000000000000000002";
@@ -145,10 +147,13 @@ describe("NDContract", function () {
     secondUser = user2;
     backend = backendSigner;
 
-    maxUnits = 5; //TODO change with storage when updated (with maxUnits = 100 it could take up to 95s)
+    maxUnits = 100;
 
     const NAEURAContract = await ethers.getContractFactory("NAEURA");
     naeuraContract = await NAEURAContract.deploy();
+
+    const USDCContract = await ethers.getContractFactory("ERC20Mock");
+    let usdcContract = await USDCContract.deploy();
 
     const NDContract = await ethers.getContractFactory("NDContract");
     ndContract = await NDContract.deploy(naeuraContract.address);
@@ -171,7 +176,11 @@ describe("NDContract", function () {
       newGrantsWallet,
       newCsrWallet
     );
-    await ndContract.setUsdcAddress(USDC_ADDRESS);
+    await ndContract.setUsdcAddress(usdcContract.address);
+    await usdcContract.mint(
+      ndContract.address,
+      BigNumber.from("100").mul(ONE_TOKEN)
+    );
 
     await naeuraContract.setNdContract(ndContract.address);
     await naeuraContract.setMndContract(owner.address);
@@ -298,6 +307,13 @@ describe("NDContract", function () {
     return signatureBytes.toString("hex");
   }
 
+  async function updateTimestamp() {
+    await ethers.provider.send("evm_setNextBlockTimestamp", [
+      CURRENT_EPOCH_TIMESTAMP,
+    ]);
+    await ethers.provider.send("evm_mine", []);
+  }
+
   /*
 	.########.########..######..########..######.
 	....##....##.......##....##....##....##....##
@@ -314,6 +330,7 @@ describe("NDContract", function () {
   });
 
   it("Get licenses", async function () {
+    await updateTimestamp();
     await buyLicenseWithMintAndAllowance(
       naeuraContract,
       ndContract,
@@ -429,7 +446,7 @@ describe("NDContract", function () {
       await signAddress(backend, firstUser)
     );
     expect(firstUser.address).to.equal(await ndContract.ownerOf(1));
-    expect("40050000000000000000").to.deep.equal(
+    expect("40050000000000000001").to.deep.equal(
       await naeuraContract.balanceOf(newLpWallet)
     );
     expect("20700000000000000000").to.deep.equal(
@@ -946,6 +963,93 @@ describe("NDContract", function () {
           [[Buffer.from(await signComputeParams(backend), "hex")]]
         )
     ).to.be.revertedWith("Incorrect number of params.");
+  });
+
+  it("Claim rewards - 0 epoch to claim", async function () {
+    //SETUP WORLD
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    await ndContract
+      .connect(firstUser)
+      .claimRewards(
+        [COMPUTE_PARAMS],
+        [[Buffer.from(await signComputeParams(backend), "hex")]]
+      );
+    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+      REWARDS_AMOUNT
+    );
+    //should not modify amount
+    await ndContract
+      .connect(firstUser)
+      .claimRewards(
+        [COMPUTE_PARAMS],
+        [[Buffer.from(await signComputeParams(backend), "hex")]]
+      );
+    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+      REWARDS_AMOUNT
+    );
+  });
+
+  it("Claim rewards - max release per license", async function () {
+    //SETUP WORLD
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 366 * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    for (let i = 0; i < 366 * 5; i++) {
+      COMPUTE_PARAMS.epochs[i] = i + 1;
+      COMPUTE_PARAMS.availabilies[i] = 255;
+    }
+
+    let expected_result = BigNumber.from("15751888512461059190031");
+    //DO TEST
+    await ndContract
+      .connect(firstUser)
+      .claimRewards(
+        [COMPUTE_PARAMS],
+        [[Buffer.from(await signComputeParams(backend), "hex")]]
+      );
+    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+      expected_result
+    );
+
+    COMPUTE_PARAMS.epochs = [1830];
+    COMPUTE_PARAMS.availabilies = [255];
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+    await ndContract
+      .connect(firstUser)
+      .claimRewards(
+        [COMPUTE_PARAMS],
+        [[Buffer.from(await signComputeParams(backend), "hex")]]
+      );
+    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+      expected_result //should not be changed
+    );
   });
 
   it("Add signer - should work", async function () {

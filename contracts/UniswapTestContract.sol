@@ -26,7 +26,9 @@ contract UNISWAP is Ownable {
         address to,
         uint deadline
     ) public returns (uint, uint, uint) {
-        return (amountA, amountB, 1);
+        uint x = amountA - 1;
+        uint y = amountB - 1;
+        return (x, y, 1);
     }
 
     function swapExactTokensForTokens(

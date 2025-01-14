@@ -181,6 +181,13 @@ describe("MNDContract", function () {
     return signatureBytes.toString("hex");
   }
 
+  async function updateTimestamp() {
+    await ethers.provider.send("evm_setNextBlockTimestamp", [
+      CURRENT_EPOCH_TIMESTAMP,
+    ]);
+    await ethers.provider.send("evm_mine", []);
+  }
+
   /*
     .########.########..######..########..######.
     ....##....##.......##....##....##....##....##
@@ -199,6 +206,7 @@ describe("MNDContract", function () {
   });
 
   it("Get licenses - should work", async function () {
+    await updateTimestamp();
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
@@ -216,18 +224,14 @@ describe("MNDContract", function () {
   });
 
   it("Get licenses - user has no license", async function () {
-    await mndContract
-      .connect(owner)
-      .addLicense(firstUser.address, LICENSE_POWER);
-
     let result = await mndContract.getUserLicense(firstUser.address);
     expect({
-      licenseId: BigNumber.from(1),
+      licenseId: BigNumber.from(0),
       nodeAddress: NULL_ADDRESS,
       totalClaimedAmount: BigNumber.from(0),
-      remainingAmount: BigNumber.from("4854102000000000000000000"),
+      remainingAmount: BigNumber.from(0),
       lastClaimEpoch: BigNumber.from(0),
-      claimableEpochs: BigNumber.from(CLAIMABLE_EPOCHS),
+      claimableEpochs: BigNumber.from(0),
       assignTimestamp: BigNumber.from(0),
     }).to.deep.equal({
       licenseId: result.licenseId,
@@ -264,10 +268,8 @@ describe("MNDContract", function () {
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
-  it.only("Genesis node - owner has ownership", async function () {
+  it("Genesis node - owner has ownership", async function () {
     let ownerOfGenesis = await mndContract.ownerOf(BigNumber.from(0));
-    console.log(owner.address);
-    console.log(await mndContract.owner());
     expect(owner.address).to.equal(ownerOfGenesis);
   });
 
@@ -333,6 +335,39 @@ describe("MNDContract", function () {
         .connect(firstUser)
         .addLicense(firstUser.address, LICENSE_POWER.mul(ONE_TOKEN))
     ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Add license - maximum token supply reached", async function () {
+    for (let i = 0; i < 500; i++) {
+      const user_addr = "0x" + (i + 1).toString(16).padStart(40, "0");
+      await mndContract.connect(owner).addLicense(user_addr, 1);
+    }
+    await expect(
+      mndContract.connect(owner).addLicense(firstUser.address, 1)
+    ).to.be.revertedWith("Maximum token supply reached");
+  });
+
+  it("Add license - max total assigned tokens reached", async function () {
+    //Give all tokens
+    for (let i = 0; i < 13; i++) {
+      const user_addr = "0x" + (i + 1).toString(16).padStart(40, "0");
+      await mndContract
+        .connect(owner)
+        .addLicense(
+          user_addr,
+          ONE_TOKEN.mul(BigNumber.from("3236067976")).div("100")
+        );
+    }
+    await mndContract
+      .connect(owner)
+      .addLicense(
+        secondUser.address,
+        ONE_TOKEN.mul(BigNumber.from("1618033988")).div("1000")
+      );
+    //Should revert
+    await expect(
+      mndContract.connect(owner).addLicense(firstUser.address, 1)
+    ).to.be.revertedWith("Max total assigned tokens reached");
   });
 
   it("Pause contract - should work", async function () {
@@ -511,6 +546,7 @@ describe("MNDContract", function () {
 
   it("Calculate rewards", async function () {
     //SETUP WORLD
+    await updateTimestamp();
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
@@ -530,6 +566,7 @@ describe("MNDContract", function () {
 
   it("Claim rewards - should work", async function () {
     //SETUP WORLD
+    await updateTimestamp();
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
@@ -548,8 +585,9 @@ describe("MNDContract", function () {
     );
   });
 
-  it.only("Claim rewards - genesis mnd claim", async function () {
+  it("Claim rewards - genesis mnd claim", async function () {
     //SETUP WORLD
+    await updateTimestamp();
     await mndContract.linkNode(0, NODE_ADDRESS);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
@@ -568,13 +606,26 @@ describe("MNDContract", function () {
       .claimRewards(COMPUTE_PARAMS, [
         Buffer.from(await signComputeParams(oracle), "hex"),
       ]);
-    expect(await naeuraContract.balanceOf(owner.address)).to.equal(
-      REWARDS_AMOUNT
+    expect(await naeuraContract.balanceOf(newLpWallet)).to.equal(
+      BigNumber.from("878372632333011442385172")
+    );
+    expect(await naeuraContract.balanceOf(newExpensesWallet)).to.equal(
+      BigNumber.from("453990349295713779210313")
+    );
+    expect(await naeuraContract.balanceOf(newMarketingWallet)).to.equal(
+      BigNumber.from("246733885486800966962127")
+    );
+    expect(await naeuraContract.balanceOf(newGrantsWallet)).to.equal(
+      BigNumber.from("1138265658379108460918613")
+    );
+    expect(await naeuraContract.balanceOf(newCsrWallet)).to.equal(
+      BigNumber.from("569132829189554230459306")
     );
   });
 
   it("Claim rewards - 0 epoch to claim", async function () {
     //SETUP WORLD
+    await updateTimestamp();
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
@@ -602,27 +653,29 @@ describe("MNDContract", function () {
     );
   });
 
-  /*it("Claim rewards - cliff not reached", async function () {
+  it("Claim rewards - cliff not reached", async function () {
     //SETUP WORLD
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
     await linkNode(mndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
 
-    //DO TEST
+    //DO TEST - should not claim anything
     await mndContract
       .connect(firstUser)
-      .claimRewards(
-        COMPUTE_PARAMS,
-        Buffer.from(await signComputeParams(oracle), "hex")
-      );
+      .claimRewards(COMPUTE_PARAMS, [
+        Buffer.from(await signComputeParams(oracle), "hex"),
+      ]);
     expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
-      BigNumber.from(0)  await expect(
-      mndContract.connect(owner).addLicense(firstUser.address, LICENSE_POWER)
-    ).to.emit(mndContract, "LicenseCreated");
-  });*/
+      BigNumber.from(0)
+    );
+  });
+
   it("Claim rewards - assigned amount reached", async function () {
     //SETUP WORLD
+    await updateTimestamp();
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
@@ -701,6 +754,7 @@ describe("MNDContract", function () {
 
   it("Claim rewards - invalid node address.", async function () {
     //SETUP WORLD
+    await updateTimestamp();
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
@@ -721,6 +775,7 @@ describe("MNDContract", function () {
 
   it("Claim rewards - incorrect number of params.", async function () {
     //SETUP WORLD
+    await updateTimestamp();
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
@@ -818,6 +873,7 @@ describe("MNDContract", function () {
 
   it("Set minimum requred signatures - should work", async function () {
     //ERC721
+    await updateTimestamp();
     await mndContract.setMinimumRequiredSignatures(BigNumber.from(1));
 
     await mndContract
