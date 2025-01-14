@@ -126,6 +126,7 @@ contract NDContract is
     address csrWallet;
 
     address[] public signers;
+    uint8 public minimumRequiredSignatures;
     mapping(address => bool) isSigner;
     mapping(uint8 => PriceTier) public _priceTiers;
     mapping(uint256 => License) public licenses;
@@ -167,6 +168,7 @@ contract NDContract is
     ) ERC721("NDLicense", "ND") {
         _naeuraToken = NAEURA(tokenAddress);
         addSigner(signerAddress);
+        minimumRequiredSignatures = 1;
 
         initializePriceTiers();
     }
@@ -332,10 +334,10 @@ contract NDContract is
 
     function claimRewards(
         ComputeRewardsParams[] memory computeParams,
-        bytes[] memory signatures
+        bytes[][] memory nodesSignatures
     ) public nonReentrant whenNotPaused {
         require(
-            computeParams.length == signatures.length,
+            computeParams.length == nodesSignatures.length,
             "Mismatched input arrays length"
         );
 
@@ -346,7 +348,11 @@ contract NDContract is
                 "User does not have the license"
             );
             require(
-                verifyRewardsSignature(computeParams[i], signatures[i]),
+                minimumRequiredSignatures <= nodesSignatures[i].length,
+                "Insufficient signatures"
+            );
+            require(
+                verifyRewardsSignatures(computeParams[i], nodesSignatures[i]),
                 "Invalid signature"
             );
 
@@ -634,6 +640,12 @@ contract NDContract is
         _mndContract = IMND(mndContract_);
     }
 
+    function setMinimumRequiredSignatures(
+        uint8 minimumRequiredSignatures_
+    ) public onlyOwner {
+        minimumRequiredSignatures = minimumRequiredSignatures_;
+    }
+
     //.##.....##.####.########.##......##....########.##.....##.##....##..######..########.####..#######..##....##..######.
     //.##.....##..##..##.......##..##..##....##.......##.....##.###...##.##....##....##.....##..##.....##.###...##.##....##
     //.##.....##..##..##.......##..##..##....##.......##.....##.####..##.##..........##.....##..##.....##.####..##.##......
@@ -696,16 +708,21 @@ contract NDContract is
     ///// Signature functions
     using ECDSA for bytes32;
 
-    function verifySignature(
+    function verifySignatures(
         bytes32 ethSignedMessageHash,
-        bytes memory signature
+        bytes[] memory signatures
     ) internal view returns (bool) {
-        return isSigner[ethSignedMessageHash.recover(signature)];
+        for (uint i = 0; i < signatures.length; i++) {
+            if (!isSigner[ethSignedMessageHash.recover(signatures[i])]) {
+                return false;
+            }
+        }
+        return true;
     }
 
-    function verifyRewardsSignature(
+    function verifyRewardsSignatures(
         ComputeRewardsParams memory computeParam,
-        bytes memory signature //TODO allow multiple signers
+        bytes[] memory signatures
     ) public view returns (bool) {
         bytes32 messageHash = keccak256(
             abi.encodePacked(
@@ -715,16 +732,18 @@ contract NDContract is
             )
         );
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
-        return verifySignature(ethSignedMessageHash, signature);
+        return verifySignatures(ethSignedMessageHash, signatures);
     }
 
     function verifyBuyLicenseSignature(
         address addr,
-        bytes memory signature //TODO allow multiple signers
+        bytes memory signature
     ) public view returns (bool) {
         bytes32 messageHash = keccak256(abi.encodePacked(addr));
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
-        return verifySignature(ethSignedMessageHash, signature);
+        bytes[] memory signatures = new bytes[](1);
+        signatures[0] = signature;
+        return verifySignatures(ethSignedMessageHash, signatures);
     }
 
     function addSigner(address newSigner) public onlyOwner {

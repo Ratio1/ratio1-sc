@@ -104,6 +104,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
 
     uint256 public totalLicensesAssignedTokensAmount;
     address[] public signers;
+    uint8 public minimumRequiredSignatures;
     mapping(address => bool) isSigner;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
@@ -146,6 +147,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     ) ERC721("MNDLicense", "MND") {
         _naeuraToken = NAEURA(tokenAddress);
         addSigner(signerAddress);
+        minimumRequiredSignatures = 1;
 
         // Mint the first Genesis Node Deed
         _safeMint(msg.sender, GENESIS_TOKEN_ID); //TODO verify implications of minting id 0
@@ -249,14 +251,18 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
 
     function claimRewards(
         ComputeRewardsParams memory computeParam,
-        bytes memory signature
+        bytes[] memory signatures
     ) public nonReentrant whenNotPaused {
         require(
             ownerOf(computeParam.licenseId) == msg.sender,
             "User does not have the license"
         );
         require(
-            verifyRewardsSignature(computeParam, signature),
+            minimumRequiredSignatures <= signatures.length,
+            "Insufficient signatures"
+        );
+        require(
+            verifyRewardsSignatures(computeParam, signatures),
             "Invalid signature"
         );
 
@@ -432,6 +438,12 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         _ndContract = IND(ndContract_);
     }
 
+    function setMinimumRequiredSignatures(
+        uint8 minimumRequiredSignatures_
+    ) public onlyOwner {
+        minimumRequiredSignatures = minimumRequiredSignatures_;
+    }
+
     //.##.....##.####.########.##......##....########.##.....##.##....##..######..########.####..#######..##....##..######.
     //.##.....##..##..##.......##..##..##....##.......##.....##.###...##.##....##....##.....##..##.....##.###...##.##....##
     //.##.....##..##..##.......##..##..##....##.......##.....##.####..##.##..........##.....##..##.....##.####..##.##......
@@ -482,16 +494,21 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     ///// Signature functions
     using ECDSA for bytes32;
 
-    function verifySignature(
+    function verifySignatures(
         bytes32 ethSignedMessageHash,
-        bytes memory signature
+        bytes[] memory signatures
     ) internal view returns (bool) {
-        return isSigner[ethSignedMessageHash.recover(signature)];
+        for (uint i = 0; i < signatures.length; i++) {
+            if (!isSigner[ethSignedMessageHash.recover(signatures[i])]) {
+                return false;
+            }
+        }
+        return true;
     }
 
-    function verifyRewardsSignature(
+    function verifyRewardsSignatures(
         ComputeRewardsParams memory computeParam,
-        bytes memory signature //TODO allow multiple signers
+        bytes[] memory signatures
     ) public view returns (bool) {
         bytes32 messageHash = keccak256(
             abi.encodePacked(
@@ -501,7 +518,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
             )
         );
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
-        return verifySignature(ethSignedMessageHash, signature);
+        return verifySignatures(ethSignedMessageHash, signatures);
     }
 
     function addSigner(address newSigner) public onlyOwner {
