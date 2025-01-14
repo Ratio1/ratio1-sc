@@ -40,6 +40,7 @@ struct License {
     uint256 lastClaimEpoch;
     uint256 assignTimestamp;
     address lastClaimOracle;
+    bool isBanned;
 }
 
 struct LicenseInfo {
@@ -51,6 +52,7 @@ struct LicenseInfo {
     uint256 claimableEpochs;
     uint256 assignTimestamp;
     address lastClaimOracle;
+    bool isBanned;
 }
 
 contract NDContract is
@@ -287,6 +289,7 @@ contract NDContract is
         );
 
         License storage license = licenses[licenseId];
+        require(!license.isBanned, "License is banned, cannot perform action");
         require(
             license.assignTimestamp + 24 hours < block.timestamp,
             "Cannot reassign within 24 hours"
@@ -317,6 +320,7 @@ contract NDContract is
         if (license.nodeAddress == address(0)) {
             return;
         }
+        require(!license.isBanned, "License is banned, cannot perform action");
         require(
             license.lastClaimEpoch == getCurrentEpoch(),
             "Cannot unlink before claiming rewards"
@@ -356,6 +360,10 @@ contract NDContract is
             require(validSignatures, "Invalid signature");
 
             License storage license = licenses[computeParams[i].licenseId];
+            require(
+                !license.isBanned,
+                "License is banned, cannot perform action"
+            );
             uint256 rewardsAmount = calculateLicenseRewards(
                 license,
                 computeParams[i]
@@ -602,6 +610,7 @@ contract NDContract is
         uint256 batchSize
     ) internal override(ERC721, ERC721Enumerable) whenNotPaused {
         License storage license = licenses[tokenId];
+        require(!license.isBanned, "License is banned, cannot perform action");
         _removeNodeAddress(license, tokenId);
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
     }
@@ -634,6 +643,18 @@ contract NDContract is
         uint8 minimumRequiredSignatures_
     ) public onlyOwner {
         minimumRequiredSignatures = minimumRequiredSignatures_;
+    }
+
+    function banLicense(uint256 licenseId) public onlyOwner {
+        License storage license = licenses[licenseId];
+        require(!license.isBanned, "License is already banned");
+        license.isBanned = true;
+    }
+
+    function unbanLicense(uint256 licenseId) public onlyOwner {
+        License storage license = licenses[licenseId];
+        require(license.isBanned, "License is not banned");
+        license.isBanned = false;
     }
 
     //.##.....##.####.########.##......##....########.##.....##.##....##..######..########.####..#######..##....##..######.
@@ -672,7 +693,8 @@ contract NDContract is
                 lastClaimEpoch: license.lastClaimEpoch,
                 claimableEpochs: claimableEpochs,
                 assignTimestamp: license.assignTimestamp,
-                lastClaimOracle: license.lastClaimOracle
+                lastClaimOracle: license.lastClaimOracle,
+                isBanned: license.isBanned
             });
         }
 
