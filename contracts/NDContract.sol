@@ -104,8 +104,6 @@ contract NDContract is
     uint256 constant GRANTS_WALLET_PERCENTAGE = 34_60;
     uint256 constant CSR_WALLET_PERCENTAGE = 17_30;
 
-    uint256 constant LIQUIDITY_DEADLINE_EXTENSION = 20 minutes; //TODO check if this is needed
-
     //..######..########..#######..########.....###.....######...########
     //.##....##....##....##.....##.##.....##...##.##...##....##..##......
     //.##..........##....##.....##.##.....##..##...##..##........##......
@@ -505,7 +503,7 @@ contract NDContract is
                 0, // Min tokens out
                 0, // Min USDC out
                 address(lpWallet),
-                block.timestamp + LIQUIDITY_DEADLINE_EXTENSION
+                block.timestamp
             );
 
         emit LiquidityAdded(usedAmountNaeura, usedAmountUsdc);
@@ -611,7 +609,6 @@ contract NDContract is
         License storage license = licenses[tokenId];
         _removeNodeAddress(license, tokenId);
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
-        //TODO should check if from or to == address(0) ?
     }
 
     function supportsInterface(
