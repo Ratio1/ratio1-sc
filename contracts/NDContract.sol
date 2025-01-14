@@ -39,7 +39,7 @@ struct License {
     uint256 totalClaimedAmount;
     uint256 lastClaimEpoch;
     uint256 assignTimestamp;
-    //TODO add lastClaimOracle
+    address lastClaimOracle;
 }
 
 struct LicenseInfo {
@@ -50,6 +50,7 @@ struct LicenseInfo {
     uint256 lastClaimEpoch;
     uint256 claimableEpochs;
     uint256 assignTimestamp;
+    address lastClaimOracle;
 }
 
 contract NDContract is
@@ -209,10 +210,11 @@ contract NDContract is
             nLicensesToBuy > 0 && nLicensesToBuy <= MAX_LICENSES_BUYS_PER_TX,
             "Invalid number of licenses"
         );
-        require(
-            verifyBuyLicenseSignature(msg.sender, signature),
-            "Invalid signature"
+        (bool validSignatures, ) = verifyBuyLicenseSignature(
+            msg.sender,
+            signature
         );
+        require(validSignatures, "Invalid signature");
 
         PriceTier storage priceTier = _priceTiers[currentPriceTier];
         uint256 buyableUnits = getPriceTierBuyableUnits(
@@ -347,10 +349,11 @@ contract NDContract is
                 minimumRequiredSignatures <= nodesSignatures[i].length,
                 "Insufficient signatures"
             );
-            require(
-                verifyRewardsSignatures(computeParams[i], nodesSignatures[i]),
-                "Invalid signature"
-            );
+            (
+                bool validSignatures,
+                address firstSigner
+            ) = verifyRewardsSignatures(computeParams[i], nodesSignatures[i]);
+            require(validSignatures, "Invalid signature");
 
             License storage license = licenses[computeParams[i].licenseId];
             uint256 rewardsAmount = calculateLicenseRewards(
@@ -360,6 +363,7 @@ contract NDContract is
 
             license.lastClaimEpoch = getCurrentEpoch();
             license.totalClaimedAmount += rewardsAmount;
+            license.lastClaimOracle = firstSigner;
             totalRewards += rewardsAmount;
         }
 
@@ -677,7 +681,8 @@ contract NDContract is
                     license.totalClaimedAmount,
                 lastClaimEpoch: license.lastClaimEpoch,
                 claimableEpochs: claimableEpochs,
-                assignTimestamp: license.assignTimestamp
+                assignTimestamp: license.assignTimestamp,
+                lastClaimOracle: license.lastClaimOracle
             });
         }
 
@@ -707,19 +712,19 @@ contract NDContract is
     function verifySignatures(
         bytes32 ethSignedMessageHash,
         bytes[] memory signatures
-    ) internal view returns (bool) {
+    ) internal view returns (bool, address) {
         for (uint i = 0; i < signatures.length; i++) {
             if (!isSigner[ethSignedMessageHash.recover(signatures[i])]) {
-                return false;
+                return (false, address(0));
             }
         }
-        return true;
+        return (true, ethSignedMessageHash.recover(signatures[0]));
     }
 
     function verifyRewardsSignatures(
         ComputeRewardsParams memory computeParam,
         bytes[] memory signatures
-    ) public view returns (bool) {
+    ) public view returns (bool, address) {
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 computeParam.nodeAddress,
@@ -734,7 +739,7 @@ contract NDContract is
     function verifyBuyLicenseSignature(
         address addr,
         bytes memory signature
-    ) public view returns (bool) {
+    ) public view returns (bool, address) {
         bytes32 messageHash = keccak256(abi.encodePacked(addr));
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
         bytes[] memory signatures = new bytes[](1);

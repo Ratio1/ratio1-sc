@@ -32,7 +32,7 @@ struct License {
     uint256 totalClaimedAmount;
     uint256 lastClaimEpoch;
     uint256 assignTimestamp;
-    //TODO add lastClaimOracle
+    address lastClaimOracle;
 }
 
 struct LicenseInfo {
@@ -44,6 +44,7 @@ struct LicenseInfo {
     uint256 lastClaimEpoch;
     uint256 claimableEpochs;
     uint256 assignTimestamp;
+    address lastClaimOracle;
 }
 
 //TODO add ERC721URIStorage?
@@ -151,7 +152,8 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
             lastClaimEpoch: 0,
             totalClaimedAmount: 0,
             assignTimestamp: 0,
-            totalAssignedAmount: GENESIS_TOTAL_EMISSION
+            totalAssignedAmount: GENESIS_TOTAL_EMISSION,
+            lastClaimOracle: address(0)
         });
     }
 
@@ -182,7 +184,8 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
             lastClaimEpoch: 0,
             totalClaimedAmount: 0,
             assignTimestamp: 0,
-            totalAssignedAmount: newTotalAssignedAmount
+            totalAssignedAmount: newTotalAssignedAmount,
+            lastClaimOracle: address(0)
         });
 
         emit LicenseCreated(to, tokenId, newTotalAssignedAmount);
@@ -256,16 +259,18 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
             minimumRequiredSignatures <= signatures.length,
             "Insufficient signatures"
         );
-        require(
-            verifyRewardsSignatures(computeParam, signatures),
-            "Invalid signature"
+        (bool validSignatures, address firstSigner) = verifyRewardsSignatures(
+            computeParam,
+            signatures
         );
+        require(validSignatures, "Invalid signature");
 
         License storage license = licenses[computeParam.licenseId];
         uint256 rewardsAmount = calculateLicenseRewards(license, computeParam);
 
         license.lastClaimEpoch = getCurrentEpoch();
         license.totalClaimedAmount += rewardsAmount;
+        license.lastClaimOracle = firstSigner;
 
         if (rewardsAmount > 0) {
             if (computeParam.licenseId == GENESIS_TOKEN_ID) {
@@ -460,7 +465,8 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
                     lastClaimEpoch: 0,
                     claimableEpochs: 0,
                     assignTimestamp: 0,
-                    totalAssignedAmount: 0
+                    totalAssignedAmount: 0,
+                    lastClaimOracle: address(0)
                 });
         }
         uint256 licenseId = tokenOfOwnerByIndex(addr, 0);
@@ -482,7 +488,8 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
                     license.totalClaimedAmount,
                 lastClaimEpoch: license.lastClaimEpoch,
                 claimableEpochs: claimableEpochs,
-                assignTimestamp: license.assignTimestamp
+                assignTimestamp: license.assignTimestamp,
+                lastClaimOracle: license.lastClaimOracle
             });
     }
 
@@ -492,19 +499,19 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     function verifySignatures(
         bytes32 ethSignedMessageHash,
         bytes[] memory signatures
-    ) internal view returns (bool) {
+    ) internal view returns (bool, address) {
         for (uint i = 0; i < signatures.length; i++) {
             if (!isSigner[ethSignedMessageHash.recover(signatures[i])]) {
-                return false;
+                return (false, address(0));
             }
         }
-        return true;
+        return (true, ethSignedMessageHash.recover(signatures[0]));
     }
 
     function verifyRewardsSignatures(
         ComputeRewardsParams memory computeParam,
         bytes[] memory signatures
-    ) public view returns (bool) {
+    ) public view returns (bool, address) {
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 computeParam.nodeAddress,
