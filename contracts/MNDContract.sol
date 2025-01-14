@@ -71,7 +71,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     uint256 constant MAX_TOKEN_SUPPLY = 1618033988 * PRICE_DECIMALS;
 
     uint256 constant MAX_TOKENS_ASSIGNED_PER_LICENSE =
-        (MAX_TOKEN_SUPPLY * 2_00) / MAX_PERCENTAGE; // TODO check
+        (MAX_TOKEN_SUPPLY * 2_00) / MAX_PERCENTAGE;
     uint256 constant MAX_MND_TOTAL_ASSIGNED_TOKENS =
         (MAX_TOKEN_SUPPLY * 26_10) / MAX_PERCENTAGE; // 26.1% of total supply
     uint256 constant MAX_MND_SUPPLY = 500;
@@ -146,7 +146,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         minimumRequiredSignatures = 1;
 
         // Mint the first Genesis Node Deed
-        _safeMint(msg.sender, GENESIS_TOKEN_ID); //TODO verify implications of minting id 0
+        _safeMint(msg.sender, GENESIS_TOKEN_ID);
         licenses[GENESIS_TOKEN_ID] = License({
             nodeAddress: address(0),
             lastClaimEpoch: 0,
