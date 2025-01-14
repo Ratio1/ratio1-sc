@@ -95,8 +95,8 @@ contract NDContract is
     uint256 constant RELEASE_DURATION_YEARS = 5;
     uint256 constant MAX_RELEASE_PER_DAY =
         MAX_RELEASE_PER_LICENSE / RELEASE_DURATION_YEARS / 12 / 30;
-
     uint256 constant MAX_LICENSES_BUYS_PER_TX = 5;
+
     uint256 constant BURN_PERCENTAGE = 20_00;
     uint256 constant LIQUIDITY_PERCENTAGE = 50_00;
     uint256 constant COMPANY_PERCENTAGE = 30_00;
