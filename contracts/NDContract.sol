@@ -156,12 +156,6 @@ contract NDContract is
     event SignerRemoved(address removedSigner);
     event LpAddrChanged(address newlpAddr);
     event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount);
-    event TokenSwapFailed(uint256 tokenAmount, string reason);
-    event LiquidityAdditionFailed(
-        uint256 tokenAmount,
-        uint256 ethAmount,
-        string reason
-    );
 
     constructor(address tokenAddress) ERC721("NDLicense", "ND") {
         _naeuraToken = NAEURA(tokenAddress);
@@ -496,11 +490,10 @@ contract NDContract is
         uint256 halfNaeuraAmount = naeuraAmount / 2;
         uint256 usdcAmount = swapTokensForUsdc(halfNaeuraAmount);
 
-        if (usdcAmount == 0) {
-            //TODO what should happen in case of a failed swap? - revert everything
-            emit LiquidityAdditionFailed(naeuraAmount, 0, "Token swap failed");
-            return;
-        }
+        require(
+            usdcAmount > 0,
+            "Failed to swap NAEURA for USDC, liquidity addition failed."
+        );
 
         (uint256 usedAmountNaeura, uint256 usedAmountUsdc, ) = _uniswapV2Router
             .addLiquidity(
@@ -532,23 +525,14 @@ contract NDContract is
         path[0] = address(_naeuraToken);
         path[1] = _usdcAddr;
 
-        try
-            _uniswapV2Router.swapExactTokensForTokens(
-                amount, // Amount of tokens to swap
-                0, // Minimum amount of tokens to receive
-                path, // Path of tokens to swap
-                address(this), // Address to receive the swapped tokens
-                block.timestamp // Deadline
-            )
-        returns (uint256[] memory amounts) {
-            return amounts[1];
-        } catch Error(string memory reason) {
-            emit TokenSwapFailed(amount, reason);
-            return 0;
-        } catch {
-            emit TokenSwapFailed(amount, "Unknown error during token swap");
-            return 0;
-        }
+        uint256[] memory amounts = _uniswapV2Router.swapExactTokensForTokens(
+            amount, // Amount of tokens to swap
+            0, // Minimum amount of tokens to receive
+            path, // Path of tokens to swap
+            address(this), // Address to receive the swapped tokens
+            block.timestamp // Deadline
+        );
+        return amounts[1];
     }
 
     function getCurrentEpoch() public view returns (uint256) {
