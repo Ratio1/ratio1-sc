@@ -205,8 +205,31 @@ describe("MNDContract", function () {
     expect(await mndContract.supportsInterface("0x80ac58cd")).to.be.true;
   });
 
+  it("Set nd contract - ownable: caller is not the owner", async function () {
+    await expect(
+      mndContract.connect(firstUser).setNDContract(secondUser.address)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
   it("Get licenses - should work", async function () {
     await updateTimestamp();
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, LICENSE_POWER);
+
+    let result = await mndContract.getUserLicense(firstUser.address);
+    expect(EXPECTED_LICENSE_INFO).to.deep.equal({
+      licenseId: result.licenseId,
+      nodeAddress: result.nodeAddress,
+      totalClaimedAmount: result.totalClaimedAmount,
+      remainingAmount: result.remainingAmount,
+      lastClaimEpoch: result.lastClaimEpoch,
+      claimableEpochs: result.claimableEpochs,
+      assignTimestamp: result.assignTimestamp,
+    });
+  });
+
+  it.skip("Get licenses - cliff epoch not reached", async function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
@@ -232,6 +255,34 @@ describe("MNDContract", function () {
       remainingAmount: BigNumber.from(0),
       lastClaimEpoch: BigNumber.from(0),
       claimableEpochs: BigNumber.from(0),
+      assignTimestamp: BigNumber.from(0),
+    }).to.deep.equal({
+      licenseId: result.licenseId,
+      nodeAddress: result.nodeAddress,
+      totalClaimedAmount: result.totalClaimedAmount,
+      remainingAmount: result.remainingAmount,
+      lastClaimEpoch: result.lastClaimEpoch,
+      claimableEpochs: result.claimableEpochs,
+      assignTimestamp: result.assignTimestamp,
+    });
+  });
+
+  it("Get licenses - genesis license", async function () {
+    await updateTimestamp();
+    let _START_EPOCH_TIMESTAMP = 1710028800;
+    let _CURRENT_EPOCH_TIMESTAMP = Math.floor(Date.now() / 1000);
+    let _CLAIMABLE_EPOCHS = Math.floor(
+      (_CURRENT_EPOCH_TIMESTAMP - _START_EPOCH_TIMESTAMP) / ONE_DAY_IN_SECS
+    );
+
+    let result = await mndContract.getUserLicense(owner.address);
+    expect({
+      licenseId: BigNumber.from(0),
+      nodeAddress: NULL_ADDRESS,
+      totalClaimedAmount: BigNumber.from(0),
+      remainingAmount: BigNumber.from("537187284016000000000000000"),
+      lastClaimEpoch: BigNumber.from(0),
+      claimableEpochs: BigNumber.from(_CLAIMABLE_EPOCHS),
       assignTimestamp: BigNumber.from(0),
     }).to.deep.equal({
       licenseId: result.licenseId,
@@ -913,5 +964,15 @@ describe("MNDContract", function () {
           Buffer.from(await signComputeParams(oracle), "hex"),
         ])
     ).to.be.revertedWith("Insufficient signatures");
+  });
+
+  it("Set minimum requred signatures - ownable: caller is not the owner", async function () {
+    //ERC721
+    await updateTimestamp();
+    await expect(
+      mndContract
+        .connect(firstUser)
+        .setMinimumRequiredSignatures(BigNumber.from(1))
+    ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 });

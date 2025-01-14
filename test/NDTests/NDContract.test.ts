@@ -909,6 +909,102 @@ describe("NDContract", function () {
     ).to.be.revertedWith("Invalid signature");
   });
 
+  it("Claim rewards - duplicate signature", async function () {
+    //SETUP WORLD
+    await ndContract.setMinimumRequiredSignatures(2);
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    await expect(
+      ndContract
+        .connect(firstUser)
+        .claimRewards(
+          [COMPUTE_PARAMS],
+          [
+            [
+              Buffer.from(await signComputeParams(backend), "hex"),
+              Buffer.from(await signComputeParams(backend), "hex"),
+            ],
+          ]
+        )
+    ).to.be.revertedWith("Invalid signature");
+  });
+
+  it("Claim rewards - double signature", async function () {
+    //SETUP WORLD
+    await ndContract.setMinimumRequiredSignatures(2);
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ndContract.addSigner(secondUser.address);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    await ndContract
+      .connect(firstUser)
+      .claimRewards(
+        [COMPUTE_PARAMS],
+        [
+          [
+            Buffer.from(await signComputeParams(backend), "hex"),
+            Buffer.from(await signComputeParams(secondUser), "hex"),
+          ],
+        ]
+      );
+    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+      REWARDS_AMOUNT
+    );
+  });
+
+  it("Claim rewards - wrong number signature", async function () {
+    //SETUP WORLD
+    await ndContract.setMinimumRequiredSignatures(2);
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    await expect(
+      ndContract
+        .connect(firstUser)
+        .claimRewards(
+          [COMPUTE_PARAMS],
+          [[Buffer.from(await signComputeParams(backend), "hex")]]
+        )
+    ).to.be.revertedWith("Insufficient signatures");
+  });
+
   it("Claim rewards - invalid node address.", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
@@ -1234,6 +1330,103 @@ describe("NDContract", function () {
           [[Buffer.from(await signComputeParams(backend), "hex")]]
         )
     ).to.be.revertedWith("Insufficient signatures");
+  });
+
+  it("Ban license - should work", async function () {
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+
+    await ndContract.connect(owner).banLicense(1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    await expect(
+      ndContract
+        .connect(firstUser)
+        .claimRewards(
+          [COMPUTE_PARAMS],
+          [[Buffer.from(await signComputeParams(backend), "hex")]]
+        )
+    ).to.be.revertedWith("License is banned, cannot perform action");
+  });
+
+  it("Ban license - already banned", async function () {
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+
+    await ndContract.connect(owner).banLicense(1);
+    await expect(ndContract.connect(owner).banLicense(1)).to.be.revertedWith(
+      "License is already banned"
+    );
+  });
+
+  it("Ban license - not the owner", async function () {
+    await expect(
+      ndContract.connect(firstUser).banLicense(1)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Unban license - should work", async function () {
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ndContract.connect(owner).banLicense(1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    await expect(
+      ndContract
+        .connect(firstUser)
+        .claimRewards(
+          [COMPUTE_PARAMS],
+          [[Buffer.from(await signComputeParams(backend), "hex")]]
+        )
+    ).to.be.revertedWith("License is banned, cannot perform action");
+    await ndContract.connect(owner).unbanLicense(1);
+    await ndContract
+      .connect(firstUser)
+      .claimRewards(
+        [COMPUTE_PARAMS],
+        [[Buffer.from(await signComputeParams(backend), "hex")]]
+      );
+  });
+
+  it("Unban license - not the owner", async function () {
+    await expect(
+      ndContract.connect(firstUser).unbanLicense(1)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Unban license - not banned license", async function () {
+    await expect(ndContract.connect(owner).unbanLicense(1)).to.be.revertedWith(
+      "License is not banned"
+    );
   });
 
   it.skip("Buy all license ", async function () {
