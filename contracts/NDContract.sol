@@ -132,6 +132,8 @@ contract NDContract is
     mapping(uint8 => PriceTier) public _priceTiers;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
+    mapping(address => uint256) public signerSignaturesCount;
+    mapping(address => uint256) public signerAdditionTimestamp;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -350,6 +352,7 @@ contract NDContract is
                 bool validSignatures,
                 address firstSigner
             ) = verifyRewardsSignatures(computeParams[i], nodesSignatures[i]);
+            signerSignaturesCount[firstSigner]++;
             require(validSignatures, "Invalid signature");
 
             License storage license = licenses[computeParams[i].licenseId];
@@ -701,6 +704,7 @@ contract NDContract is
         bytes[] memory signatures
     ) internal view returns (bool, address) {
         for (uint i = 0; i < signatures.length; i++) {
+            //TODO check that all signatures are unique
             if (!isSigner[ethSignedMessageHash.recover(signatures[i])]) {
                 return (false, address(0));
             }
@@ -738,6 +742,8 @@ contract NDContract is
         require(newSigner != address(0), "Invalid signer address");
         require(!isSigner[newSigner], "Signer already exists");
         isSigner[newSigner] = true;
+        signerSignaturesCount[newSigner] = 0;
+        signerAdditionTimestamp[newSigner] = block.timestamp;
         signers.push(newSigner);
         emit SignerAdded(newSigner);
     }

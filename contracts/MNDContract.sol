@@ -114,6 +114,8 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     mapping(address => bool) isSigner;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
+    mapping(address => uint256) public signerSignaturesCount;
+    mapping(address => uint256) public signerAdditionTimestamp;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -266,6 +268,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
             computeParam,
             signatures
         );
+        signerSignaturesCount[firstSigner]++;
         require(validSignatures, "Invalid signature");
 
         License storage license = licenses[computeParam.licenseId];
@@ -530,6 +533,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         require(newSigner != address(0), "Invalid signer address");
         require(!isSigner[newSigner], "Signer already exists");
         isSigner[newSigner] = true;
+        signerAdditionTimestamp[newSigner] = block.timestamp;
         signers.push(newSigner);
         emit SignerAdded(newSigner);
     }
