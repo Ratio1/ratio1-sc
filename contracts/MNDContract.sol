@@ -280,25 +280,25 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
 
         if (rewardsAmount > 0) {
             if (computeParam.licenseId == GENESIS_TOKEN_ID) {
-                _naeuraToken.transfer(
+                _naeuraToken.mint(
                     lpWallet,
                     (rewardsAmount * LP_WALLET_PERCENTAGE) / MAX_PERCENTAGE
                 );
-                _naeuraToken.transfer(
+                _naeuraToken.mint(
                     expensesWallet,
                     (rewardsAmount * EXPENSES_WALLET_PERCENTAGE) /
                         MAX_PERCENTAGE
                 );
-                _naeuraToken.transfer(
+                _naeuraToken.mint(
                     marketingWallet,
                     (rewardsAmount * MARKETING_WALLET_PERCENTAGE) /
                         MAX_PERCENTAGE
                 );
-                _naeuraToken.transfer(
+                _naeuraToken.mint(
                     grantsWallet,
                     (rewardsAmount * GRANTS_WALLET_PERCENTAGE) / MAX_PERCENTAGE
                 );
-                _naeuraToken.transfer(
+                _naeuraToken.mint(
                     csrWallet,
                     (rewardsAmount * CSR_WALLET_PERCENTAGE) / MAX_PERCENTAGE
                 );
