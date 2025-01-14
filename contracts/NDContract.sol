@@ -725,13 +725,20 @@ contract NDContract is
         bytes32 ethSignedMessageHash,
         bytes[] memory signatures
     ) internal view returns (bool, address) {
+        address[] memory seenSigners = new address[](signatures.length);
         for (uint i = 0; i < signatures.length; i++) {
-            //TODO check that all signatures are unique
-            if (!isSigner[ethSignedMessageHash.recover(signatures[i])]) {
+            address signerAddress = ethSignedMessageHash.recover(signatures[i]);
+            if (!isSigner[signerAddress]) {
                 return (false, address(0));
             }
+            for (uint j = 0; j < seenSigners.length; j++) {
+                if (seenSigners[j] == signerAddress) {
+                    return (false, address(0));
+                }
+            }
+            seenSigners[i] = signerAddress;
         }
-        return (true, ethSignedMessageHash.recover(signatures[0]));
+        return (true, seenSigners[0]);
     }
 
     function verifyRewardsSignatures(
