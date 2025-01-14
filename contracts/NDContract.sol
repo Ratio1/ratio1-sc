@@ -462,35 +462,37 @@ contract NDContract is
         return newTokenId;
     }
 
-    function distributePayment(uint256 totalCost) private {
-        uint256 burnAmount = (totalCost * BURN_PERCENTAGE) / MAX_PERCENTAGE;
-        uint256 liquidityAmount = (totalCost * LIQUIDITY_PERCENTAGE) /
+    function distributePayment(uint256 amount) private {
+        uint256 burnAmount = (amount * BURN_PERCENTAGE) / MAX_PERCENTAGE;
+        uint256 liquidityAmount = (amount * LIQUIDITY_PERCENTAGE) /
             MAX_PERCENTAGE;
-        uint256 companyAmount = (totalCost * COMPANY_PERCENTAGE) /
-            MAX_PERCENTAGE;
+        uint256 companyAmount = (amount * COMPANY_PERCENTAGE) / MAX_PERCENTAGE;
 
         _naeuraToken.burn(address(this), burnAmount);
         addLiquidity(liquidityAmount);
-        // Distribute company funds
+        distributeCompanyFunds(companyAmount);
+    }
+
+    function distributeCompanyFunds(uint256 amount) private {
         _naeuraToken.transfer(
             lpWallet,
-            (companyAmount * LP_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+            (amount * LP_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
         _naeuraToken.transfer(
             expensesWallet,
-            (companyAmount * EXPENSES_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+            (amount * EXPENSES_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
         _naeuraToken.transfer(
             marketingWallet,
-            (companyAmount * MARKETING_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+            (amount * MARKETING_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
         _naeuraToken.transfer(
             grantsWallet,
-            (companyAmount * GRANTS_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+            (amount * GRANTS_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
         _naeuraToken.transfer(
             csrWallet,
-            (companyAmount * CSR_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+            (amount * CSR_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
     }
 
