@@ -35,8 +35,9 @@ describe("NEURA contract", function () {
   let secondUser: SignerWithAddress;
   let backend: SignerWithAddress;
   let maxUnits: number;
+  let snapshotId: string;
 
-  beforeEach(async function () {
+  before(async function () {
     const [deployer, user1, user2, backendSigner] = await ethers.getSigners();
     owner = deployer;
     firstUser = user1;
@@ -49,15 +50,19 @@ describe("NEURA contract", function () {
     naeuraContract = await NAEURAContract.deploy();
 
     const NDContract = await ethers.getContractFactory("NDContract");
-    ndContract = await NDContract.deploy(
-      naeuraContract.address,
-      backend.address
-    );
+    ndContract = await NDContract.deploy(naeuraContract.address);
+
+    await ndContract.addSigner(backend.address);
 
     const UniswapContract = await ethers.getContractFactory("UNISWAP");
     const uniswapContract = await UniswapContract.deploy();
 
     await ndContract.setUniswapRouter(uniswapContract.address);
+    snapshotId = await ethers.provider.send("evm_snapshot", []);
+  });
+  beforeEach(async function () {
+    await ethers.provider.send("evm_revert", [snapshotId]);
+    snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
 
   /*

@@ -85,16 +85,12 @@ describe("MNDContract", function () {
     naeuraContract = await NAEURAContract.deploy();
 
     const MNDContract = await ethers.getContractFactory("MNDContract");
-    mndContract = await MNDContract.deploy(
-      naeuraContract.address,
-      oracle.address
-    );
+    mndContract = await MNDContract.deploy(naeuraContract.address);
+    await mndContract.addSigner(oracle.address);
 
     const NDContract = await ethers.getContractFactory("NDContract");
-    let ndContract = await NDContract.deploy(
-      naeuraContract.address,
-      oracle.address
-    );
+    let ndContract = await NDContract.deploy(naeuraContract.address);
+    await ndContract.addSigner(oracle.address);
 
     await mndContract.setNDContract(ndContract.address);
 
@@ -196,6 +192,11 @@ describe("MNDContract", function () {
 
   //TODO generate random users and give all licenses and all power and see error
 
+  it("Supports interface - should work", async function () {
+    //ERC721
+    expect(await mndContract.supportsInterface("0x80ac58cd")).to.be.true;
+  });
+
   it("Get licenses - should work", async function () {
     await mndContract
       .connect(owner)
@@ -273,7 +274,7 @@ describe("MNDContract", function () {
       .addLicense(firstUser.address, LICENSE_POWER);
     let ownerOfLiense = await mndContract.ownerOf(BigNumber.from(1));
     expect(firstUser.address).to.equal(ownerOfLiense);
-    expect(await mndContract.totalLicensesAssignedAmount()).to.be.equal(
+    expect(await mndContract.totalLicensesAssignedTokensAmount()).to.be.equal(
       BigNumber.from("4854102000000000000000000") //TODO should be as variable says BigNumber.from(1)
     );
   });
@@ -522,10 +523,9 @@ describe("MNDContract", function () {
     //DO TEST
     await mndContract
       .connect(firstUser)
-      .claimRewards(
-        COMPUTE_PARAMS,
-        Buffer.from(await signComputeParams(oracle), "hex")
-      );
+      .claimRewards(COMPUTE_PARAMS, [
+        Buffer.from(await signComputeParams(oracle), "hex"),
+      ]);
     expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
       REWARDS_AMOUNT
     );
@@ -543,20 +543,18 @@ describe("MNDContract", function () {
     //DO TEST
     await mndContract
       .connect(firstUser)
-      .claimRewards(
-        COMPUTE_PARAMS,
-        Buffer.from(await signComputeParams(oracle), "hex")
-      );
+      .claimRewards(COMPUTE_PARAMS, [
+        Buffer.from(await signComputeParams(oracle), "hex"),
+      ]);
     expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
       REWARDS_AMOUNT
     );
     //should not modify amount
     await mndContract
       .connect(firstUser)
-      .claimRewards(
-        COMPUTE_PARAMS,
-        Buffer.from(await signComputeParams(oracle), "hex")
-      );
+      .claimRewards(COMPUTE_PARAMS, [
+        Buffer.from(await signComputeParams(oracle), "hex"),
+      ]);
     expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
       REWARDS_AMOUNT
     );
@@ -613,10 +611,9 @@ describe("MNDContract", function () {
     await expect(
       mndContract
         .connect(secondUser)
-        .claimRewards(
-          COMPUTE_PARAMS,
-          Buffer.from(await signComputeParams(oracle), "hex")
-        )
+        .claimRewards(COMPUTE_PARAMS, [
+          Buffer.from(await signComputeParams(oracle), "hex"),
+        ])
     ).to.be.revertedWith("User does not have the license");
   });
 
@@ -633,10 +630,9 @@ describe("MNDContract", function () {
     await expect(
       mndContract
         .connect(firstUser)
-        .claimRewards(
-          COMPUTE_PARAMS,
-          Buffer.from(await signComputeParams(firstUser), "hex")
-        )
+        .claimRewards(COMPUTE_PARAMS, [
+          Buffer.from(await signComputeParams(firstUser), "hex"),
+        ])
     ).to.be.revertedWith("Invalid signature");
   });
 
@@ -654,10 +650,9 @@ describe("MNDContract", function () {
     await expect(
       mndContract
         .connect(firstUser)
-        .claimRewards(
-          COMPUTE_PARAMS,
-          Buffer.from(await signComputeParams(oracle), "hex")
-        )
+        .claimRewards(COMPUTE_PARAMS, [
+          Buffer.from(await signComputeParams(oracle), "hex"),
+        ])
     ).to.be.revertedWith("Invalid node address.");
   });
 
@@ -674,10 +669,9 @@ describe("MNDContract", function () {
     await expect(
       mndContract
         .connect(firstUser)
-        .claimRewards(
-          COMPUTE_PARAMS,
-          Buffer.from(await signComputeParams(oracle), "hex")
-        )
+        .claimRewards(COMPUTE_PARAMS, [
+          Buffer.from(await signComputeParams(oracle), "hex"),
+        ])
     ).to.be.revertedWith("Incorrect number of params.");
   });
 
@@ -740,10 +734,9 @@ describe("MNDContract", function () {
     await expect(
       mndContract
         .connect(firstUser)
-        .claimRewards(
-          COMPUTE_PARAMS,
-          Buffer.from(await signComputeParams(oracle), "hex")
-        )
+        .claimRewards(COMPUTE_PARAMS, [
+          Buffer.from(await signComputeParams(oracle), "hex"),
+        ])
     ).to.be.revertedWith("Invalid signature");
   });
 

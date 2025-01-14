@@ -151,16 +151,12 @@ describe("NDContract", function () {
     naeuraContract = await NAEURAContract.deploy();
 
     const NDContract = await ethers.getContractFactory("NDContract");
-    ndContract = await NDContract.deploy(
-      naeuraContract.address,
-      backend.address
-    );
+    ndContract = await NDContract.deploy(naeuraContract.address);
+    await ndContract.addSigner(backend.address);
 
     const MNDContract = await ethers.getContractFactory("MNDContract");
-    let mndContract = await MNDContract.deploy(
-      naeuraContract.address,
-      backend.address
-    );
+    let mndContract = await MNDContract.deploy(naeuraContract.address);
+    await mndContract.addSigner(backend.address);
 
     await ndContract.setMNDContract(mndContract.address);
 
@@ -311,6 +307,11 @@ describe("NDContract", function () {
 	....##....##.......##....##....##....##....##
 	....##....########..######.....##.....######.
 	*/
+
+  it("Supports interface - should work", async function () {
+    //ERC721
+    expect(await ndContract.supportsInterface("0x80ac58cd")).to.be.true;
+  });
 
   it("Get licenses", async function () {
     await buyLicenseWithMintAndAllowance(
@@ -803,7 +804,7 @@ describe("NDContract", function () {
       .connect(firstUser)
       .claimRewards(
         [COMPUTE_PARAMS],
-        [Buffer.from(await signComputeParams(backend), "hex")]
+        [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
     expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
       REWARDS_AMOUNT
@@ -832,7 +833,7 @@ describe("NDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS, COMPUTE_PARAMS],
-          [Buffer.from(await signComputeParams(backend), "hex")]
+          [[Buffer.from(await signComputeParams(backend), "hex")]]
         )
     ).to.be.revertedWith("Mismatched input arrays length");
   });
@@ -859,7 +860,7 @@ describe("NDContract", function () {
         .connect(secondUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [Buffer.from(await signComputeParams(backend), "hex")]
+          [[Buffer.from(await signComputeParams(backend), "hex")]]
         )
     ).to.be.revertedWith("User does not have the license");
   });
@@ -886,7 +887,7 @@ describe("NDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [Buffer.from(await signComputeParams(secondUser), "hex")]
+          [[Buffer.from(await signComputeParams(secondUser), "hex")]]
         )
     ).to.be.revertedWith("Invalid signature");
   });
@@ -914,7 +915,7 @@ describe("NDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [Buffer.from(await signComputeParams(backend), "hex")]
+          [[Buffer.from(await signComputeParams(backend), "hex")]]
         )
     ).to.be.revertedWith("Invalid node address.");
   });
@@ -942,7 +943,7 @@ describe("NDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [Buffer.from(await signComputeParams(backend), "hex")]
+          [[Buffer.from(await signComputeParams(backend), "hex")]]
         )
     ).to.be.revertedWith("Incorrect number of params.");
   });
