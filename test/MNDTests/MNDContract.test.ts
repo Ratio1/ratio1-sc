@@ -90,6 +90,14 @@ describe("MNDContract", function () {
       oracle.address
     );
 
+    const NDContract = await ethers.getContractFactory("NDContract");
+    let ndContract = await NDContract.deploy(
+      naeuraContract.address,
+      oracle.address
+    );
+
+    await mndContract.setNDContract(ndContract.address);
+
     await naeuraContract.setNdContract(owner.address);
     await naeuraContract.setMndContract(mndContract.address);
 
@@ -356,17 +364,16 @@ describe("MNDContract", function () {
     );
   });
 
-  it.only("Link node - should work", async function () {
+  it("Link node - should work", async function () {
     //SETUP WORLD
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
 
     //DO TEST
-    await expect(linkNode(mndContract, firstUser, 1)).to.emit(
-      mndContract,
-      "LinkNode"
-    );
+    await expect(
+      mndContract.connect(firstUser).linkNode(1, NODE_ADDRESS)
+    ).to.emit(mndContract, "LinkNode");
     let result = await mndContract.ownerOf(1);
     expect(result).to.equal(firstUser.address);
     expect((await mndContract.licenses(1)).nodeAddress).to.equal(NODE_ADDRESS);
@@ -453,6 +460,37 @@ describe("MNDContract", function () {
     await linkNode(mndContract, firstUser, 1);
   });
 
+  it("Unlink node - should work", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 1);
+
+    //DO TEST
+    await expect(mndContract.connect(firstUser).unlinkNode(1)).to.emit(
+      mndContract,
+      "UnlinkNode"
+    );
+    expect((await mndContract.licenses(1)).nodeAddress).to.equal(NULL_ADDRESS);
+    expect(await mndContract.registeredNodeAddresses(NODE_ADDRESS)).to.equal(
+      false
+    );
+  });
+
+  it("Unlink node - not the owner", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 1);
+
+    //DO TEST
+    await expect(
+      mndContract.connect(secondUser).unlinkNode(1)
+    ).to.be.revertedWith("Not the owner of the license");
+  });
+
   it("Calculate rewards", async function () {
     //SETUP WORLD
     await mndContract
@@ -482,6 +520,37 @@ describe("MNDContract", function () {
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
+    await mndContract
+      .connect(firstUser)
+      .claimRewards(
+        COMPUTE_PARAMS,
+        Buffer.from(await signComputeParams(oracle), "hex")
+      );
+    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+      REWARDS_AMOUNT
+    );
+  });
+
+  it("Claim rewards - 0 epoch to claim", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    await mndContract
+      .connect(firstUser)
+      .claimRewards(
+        COMPUTE_PARAMS,
+        Buffer.from(await signComputeParams(oracle), "hex")
+      );
+    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+      REWARDS_AMOUNT
+    );
+    //should not modify amount
     await mndContract
       .connect(firstUser)
       .claimRewards(
@@ -612,21 +681,6 @@ describe("MNDContract", function () {
     ).to.be.revertedWith("Incorrect number of params.");
   });
 
-  it("Unlink node", async function () {
-    //SETUP WORLD
-    await mndContract
-      .connect(owner)
-      .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
-
-    //DO TEST
-    await unlinkNode(mndContract, firstUser, 1);
-    expect((await mndContract.licenses(1)).nodeAddress).to.equal(NULL_ADDRESS);
-    expect(await mndContract.registeredNodeAddresses(NODE_ADDRESS)).to.equal(
-      false
-    );
-  });
-
   it("Transfer - soulbound: Non-transferable token ", async function () {
     //SETUP WORLD
     await mndContract
@@ -641,14 +695,12 @@ describe("MNDContract", function () {
     ).to.be.revertedWith("Soulbound: Non-transferable token");
   });
 
-  it.only("Add signer - should work", async function () {
+  it("Add signer - should work", async function () {
     //ADD second user as a signer
-    await mndContract.addSigner(secondUser.address);
-
-    //Should not be reverted
-    await expect(
-      mndContract.connect(owner).addLicense(firstUser.address, LICENSE_POWER)
-    ).to.emit(mndContract, "LicenseCreated");
+    await expect(mndContract.addSigner(secondUser.address)).to.emit(
+      mndContract,
+      "SignerAdded"
+    );
   });
 
   it("Add signer - invalid signer address", async function () {
@@ -675,7 +727,10 @@ describe("MNDContract", function () {
       .addLicense(firstUser.address, LICENSE_POWER);
 
     //Add second user as a signer
-    await mndContract.removeSigner(oracle.address);
+    await expect(mndContract.removeSigner(oracle.address)).to.emit(
+      mndContract,
+      "SignerRemoved"
+    );
 
     //Should be reverted
     await linkNode(mndContract, firstUser, 1);

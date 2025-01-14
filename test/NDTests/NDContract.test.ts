@@ -156,6 +156,14 @@ describe("NDContract", function () {
       backend.address
     );
 
+    const MNDContract = await ethers.getContractFactory("MNDContract");
+    let mndContract = await MNDContract.deploy(
+      naeuraContract.address,
+      backend.address
+    );
+
+    await ndContract.setMNDContract(mndContract.address);
+
     const UniswapContract = await ethers.getContractFactory("UNISWAP");
     const uniswapContract = await UniswapContract.deploy();
 
