@@ -102,7 +102,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     NAEURA private _naeuraToken;
     IND _ndContract;
 
-    uint256 public totalLicensesAssignedAmount;
+    uint256 public totalLicensesAssignedTokensAmount;
     address[] public signers;
     mapping(address => bool) isSigner;
     mapping(uint256 => License) public licenses;
@@ -168,7 +168,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
             "Invalid license power"
         );
         require(
-            totalLicensesAssignedAmount + newTotalAssignedAmount <=
+            totalLicensesAssignedTokensAmount + newTotalAssignedAmount <=
                 MAX_MND_TOTAL_ASSIGNED_TOKENS,
             "Max total assigned tokens reached"
         );
@@ -179,7 +179,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         require(balanceOf(to) == 0, "User already has a license");
 
         uint256 tokenId = safeMint(to);
-        totalLicensesAssignedAmount += newTotalAssignedAmount;
+        totalLicensesAssignedTokensAmount += newTotalAssignedAmount;
         licenses[tokenId] = License({
             nodeAddress: address(0),
             lastClaimEpoch: 0,
@@ -400,12 +400,18 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         address to,
         uint256 tokenId,
         uint256 batchSize
-    ) internal override whenNotPaused {
+    ) internal override(ERC721Enumerable) whenNotPaused {
         require(
             from == address(0) || to == address(0),
             "Soulbound: Non-transferable token"
         );
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
+    }
+
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view override(ERC721Enumerable) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 
     function setCompanyWallets(

@@ -13,6 +13,9 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "./NAEURA.sol";
 
+interface IMND {
+    function registeredNodeAddresses(address node) external view returns (bool);
+}
 struct ComputeRewardsParams {
     uint256 licenseId;
     address nodeAddress;
@@ -47,10 +50,6 @@ struct LicenseInfo {
     uint256 lastClaimEpoch;
     uint256 claimableEpochs;
     uint256 assignTimestamp;
-}
-
-interface IMND {
-    function registeredNodeAddresses(address node) external view returns (bool);
 }
 
 contract NDContract is
