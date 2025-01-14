@@ -101,6 +101,11 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
 
     NAEURA private _naeuraToken;
     IND _ndContract;
+    address lpWallet;
+    address expensesWallet;
+    address marketingWallet;
+    address grantsWallet;
+    address csrWallet;
 
     uint256 public totalLicensesAssignedTokensAmount;
     address[] public signers;
@@ -108,12 +113,6 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     mapping(address => bool) isSigner;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
-
-    address lpWallet;
-    address expensesWallet;
-    address marketingWallet;
-    address grantsWallet;
-    address csrWallet;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
