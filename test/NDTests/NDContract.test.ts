@@ -828,6 +828,45 @@ describe("NDContract", function () {
     );
   });
 
+  it("Claim rewards with real oracle data", async function () {
+    //SETUP WORLD
+    await ndContract.addSigner("0x129a21A78EBBA79aE78B8f11d5B57102950c1Fc0");
+    await buyLicenseWithMintAndAllowance(
+      naeuraContract,
+      ndContract,
+      owner,
+      firstUser,
+      500,
+      1,
+      1,
+      await signAddress(backend, firstUser)
+    );
+    await ndContract
+      .connect(firstUser)
+      .linkNode(1, "0x1351504af17BFdb80491D9223d6Bcb6BB964DCeD");
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    await ndContract.connect(firstUser).claimRewards(
+      [
+        {
+          licenseId: 1,
+          nodeAddress: "0x1351504af17BFdb80491D9223d6Bcb6BB964DCeD",
+          epochs: [300, 301, 302, 303, 304],
+          availabilies: [255, 254, 254, 0, 0],
+        },
+      ],
+      [
+        [
+          "0x8fe3b49ca60b21866b5f8f909eb6130b4fe6b7458c924e674e3ce713d2967edc4073848916c7ccfb8191da4ab21f99739545c2d71932f8e1538895709d20e7ba1c",
+        ],
+      ]
+    );
+    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+      BigNumber.from("26184511840975573335")
+    );
+  });
+
   it("Claim rewards - mismatched input arrays length", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
