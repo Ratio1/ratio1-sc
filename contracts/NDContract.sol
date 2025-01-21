@@ -136,6 +136,7 @@ contract NDContract is
     mapping(address => bool) public registeredNodeAddresses;
     mapping(address => uint256) public signerSignaturesCount;
     mapping(address => uint256) public signerAdditionTimestamp;
+    mapping(bytes16 => bool) public usedInvoiceUUIDs;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -145,7 +146,12 @@ contract NDContract is
     //.##.........##.##...##.......##...###....##....##....##
     //.########....###....########.##....##....##.....######.
 
-    event LicenseCreated(address indexed to, uint256 indexed tokenId);
+    event LicensesCreated(
+        address indexed to,
+        bytes16 indexed invoiceUuid,
+        uint256 tokenCount,
+        uint256 unitUsdPrice
+    );
     event LinkNode(
         address indexed to,
         uint256 indexed licenseId,
@@ -194,6 +200,7 @@ contract NDContract is
     function buyLicense(
         uint256 nLicensesToBuy,
         uint8 requestedPriceTier,
+        bytes16 invoiceUuid,
         bytes memory signature
     ) public nonReentrant whenNotPaused returns (uint) {
         require(
@@ -208,11 +215,18 @@ contract NDContract is
             nLicensesToBuy > 0 && nLicensesToBuy <= MAX_LICENSES_BUYS_PER_TX,
             "Invalid number of licenses"
         );
+        require(
+            !usedInvoiceUUIDs[invoiceUuid],
+            "Invoice UUID has already been used"
+        );
         (bool validSignatures, ) = verifyBuyLicenseSignature(
             msg.sender,
+            invoiceUuid,
             signature
         );
         require(validSignatures, "Invalid signature");
+
+        usedInvoiceUUIDs[invoiceUuid] = true;
 
         PriceTier storage priceTier = _priceTiers[currentPriceTier];
         uint256 buyableUnits = getPriceTierBuyableUnits(
@@ -247,6 +261,13 @@ contract NDContract is
         } else if (priceTier.soldUnits > priceTier.totalUnits) {
             revert("Price tier sold more than available units");
         }
+
+        emit LicensesCreated(
+            msg.sender,
+            invoiceUuid,
+            mintedTokens.length,
+            priceTier.usdPrice
+        );
 
         return mintedTokens.length;
     }
@@ -457,7 +478,6 @@ contract NDContract is
         );
 
         _safeMint(to, newTokenId);
-        emit LicenseCreated(to, newTokenId);
 
         return newTokenId;
     }
@@ -760,9 +780,10 @@ contract NDContract is
 
     function verifyBuyLicenseSignature(
         address addr,
+        bytes16 invoiceUuid,
         bytes memory signature
     ) public view returns (bool, address) {
-        bytes32 messageHash = keccak256(abi.encodePacked(addr));
+        bytes32 messageHash = keccak256(abi.encodePacked(addr, invoiceUuid));
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
         bytes[] memory signatures = new bytes[](1);
         signatures[0] = signature;
