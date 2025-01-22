@@ -16,6 +16,7 @@ import "./R1.sol";
 interface IMND {
     function registeredNodeAddresses(address node) external view returns (bool);
 }
+
 struct ComputeRewardsParams {
     uint256 licenseId;
     address nodeAddress;
