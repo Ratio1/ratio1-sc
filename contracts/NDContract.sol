@@ -446,6 +446,10 @@ contract NDContract is
                 computeParam.availabilies.length == epochsToClaim,
             "Incorrect number of params."
         );
+        require(
+            computeParam.epochs[computeParam.epochs.length - 1] == currentEpoch,
+            "Invalid epochs"
+        );
 
         for (uint256 i = 0; i < epochsToClaim; i++) {
             licenseRewards +=
