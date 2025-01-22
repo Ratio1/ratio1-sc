@@ -136,7 +136,7 @@ contract NDContract is
     mapping(address => bool) public registeredNodeAddresses;
     mapping(address => uint256) public signerSignaturesCount;
     mapping(address => uint256) public signerAdditionTimestamp;
-    mapping(bytes16 => bool) public usedInvoiceUUIDs;
+    mapping(bytes32 => bool) public usedInvoiceUUIDs;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -148,7 +148,7 @@ contract NDContract is
 
     event LicensesCreated(
         address indexed to,
-        bytes16 indexed invoiceUuid,
+        bytes32 indexed invoiceUuid,
         uint256 tokenCount,
         uint256 unitUsdPrice
     );
@@ -200,7 +200,7 @@ contract NDContract is
     function buyLicense(
         uint256 nLicensesToBuy,
         uint8 requestedPriceTier,
-        bytes16 invoiceUuid,
+        bytes32 invoiceUuid,
         bytes memory signature
     ) public nonReentrant whenNotPaused returns (uint) {
         require(
@@ -780,7 +780,7 @@ contract NDContract is
 
     function verifyBuyLicenseSignature(
         address addr,
-        bytes16 invoiceUuid,
+        bytes32 invoiceUuid,
         bytes memory signature
     ) public view returns (bool, address) {
         bytes32 messageHash = keccak256(abi.encodePacked(addr, invoiceUuid));
