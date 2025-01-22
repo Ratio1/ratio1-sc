@@ -4,14 +4,14 @@ pragma solidity ^0.8.18;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";
 
-contract NAEURA is Ownable, ERC20Capped {
-    // Max supply of NAEURA: 1.618.033.988
+contract R1 is Ownable, ERC20Capped {
+    // Max supply of R1: 1.618.033.988
     uint256 public constant maxSupply = 1618033988 * (10 ** 18);
     address public _mndContract;
     address public _ndContract;
 
     // Constructor will be called on contract creation
-    constructor() ERC20("NAEURA", "NAEURA") ERC20Capped(maxSupply) {}
+    constructor() ERC20("Ratio1", "R1") ERC20Capped(maxSupply) {}
 
     function _canMint() private view returns (bool) {
         return msg.sender == _mndContract || msg.sender == _ndContract;
@@ -32,7 +32,10 @@ contract NAEURA is Ownable, ERC20Capped {
     }
 
     function setMndContract(address mndContract) external onlyOwner {
-        require(_mndContract == address(0), "Master Node Deed address already set");
+        require(
+            _mndContract == address(0),
+            "Master Node Deed address already set"
+        );
         require(mndContract != address(0), "Invalid Master Node Deed address");
         _mndContract = mndContract;
     }

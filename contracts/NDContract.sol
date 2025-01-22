@@ -11,7 +11,7 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
-import "./NAEURA.sol";
+import "./R1.sol";
 
 interface IMND {
     function registeredNodeAddresses(address node) external view returns (bool);
@@ -118,7 +118,7 @@ contract NDContract is
     string private _baseTokenURI;
     uint8 public currentPriceTier;
 
-    NAEURA public _naeuraToken;
+    R1 public _R1Token;
     IUniswapV2Router02 _uniswapV2Router;
     address _usdcAddr;
     IMND _mndContract;
@@ -168,7 +168,7 @@ contract NDContract is
     event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount);
 
     constructor(address tokenAddress) ERC721("NDLicense", "ND") {
-        _naeuraToken = NAEURA(tokenAddress);
+        _R1Token = R1(tokenAddress);
         minimumRequiredSignatures = 1;
 
         initializePriceTiers();
@@ -237,19 +237,19 @@ contract NDContract is
 
         // Check user's balance before attempting transfer
         require(
-            _naeuraToken.balanceOf(msg.sender) >= totalCost,
-            "Insufficient NAEURA balance"
+            _R1Token.balanceOf(msg.sender) >= totalCost,
+            "Insufficient R1 balance"
         );
         // Check user's allowance
         require(
-            _naeuraToken.allowance(msg.sender, address(this)) >= totalCost,
+            _R1Token.allowance(msg.sender, address(this)) >= totalCost,
             "Insufficient allowance"
         );
 
-        // Transfer NAEURA tokens from user to contract
+        // Transfer R1 tokens from user to contract
         require(
-            _naeuraToken.transferFrom(msg.sender, address(this), totalCost),
-            "NAEURA transfer failed"
+            _R1Token.transferFrom(msg.sender, address(this), totalCost),
+            "R1 transfer failed"
         );
         distributePayment(totalCost);
 
@@ -397,7 +397,7 @@ contract NDContract is
         }
 
         if (totalRewards > 0) {
-            _naeuraToken.mint(msg.sender, totalRewards);
+            _R1Token.mint(msg.sender, totalRewards);
         }
     }
 
@@ -492,51 +492,51 @@ contract NDContract is
             MAX_PERCENTAGE;
         uint256 companyAmount = (amount * COMPANY_PERCENTAGE) / MAX_PERCENTAGE;
 
-        _naeuraToken.burn(address(this), burnAmount);
+        _R1Token.burn(address(this), burnAmount);
         addLiquidity(liquidityAmount);
         distributeCompanyFunds(companyAmount);
     }
 
     function distributeCompanyFunds(uint256 amount) private {
-        _naeuraToken.transfer(
+        _R1Token.transfer(
             lpWallet,
             (amount * LP_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
-        _naeuraToken.transfer(
+        _R1Token.transfer(
             expensesWallet,
             (amount * EXPENSES_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
-        _naeuraToken.transfer(
+        _R1Token.transfer(
             marketingWallet,
             (amount * MARKETING_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
-        _naeuraToken.transfer(
+        _R1Token.transfer(
             grantsWallet,
             (amount * GRANTS_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
-        _naeuraToken.transfer(
+        _R1Token.transfer(
             csrWallet,
             (amount * CSR_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
     }
 
     // LP interactions
-    function addLiquidity(uint256 naeuraAmount) private {
-        _naeuraToken.approve(address(_uniswapV2Router), naeuraAmount);
+    function addLiquidity(uint256 r1Amount) private {
+        _R1Token.approve(address(_uniswapV2Router), r1Amount);
 
-        uint256 halfNaeuraAmount = naeuraAmount / 2;
-        uint256 usdcAmount = swapTokensForUsdc(halfNaeuraAmount);
+        uint256 halfR1Amount = r1Amount / 2;
+        uint256 usdcAmount = swapTokensForUsdc(halfR1Amount);
 
         require(
             usdcAmount > 0,
-            "Failed to swap NAEURA for USDC, liquidity addition failed."
+            "Failed to swap R1 for USDC, liquidity addition failed."
         );
 
-        (uint256 usedAmountNaeura, uint256 usedAmountUsdc, ) = _uniswapV2Router
+        (uint256 usedAmountR1, uint256 usedAmountUsdc, ) = _uniswapV2Router
             .addLiquidity(
-                address(_naeuraToken),
+                address(_R1Token),
                 _usdcAddr,
-                halfNaeuraAmount,
+                halfR1Amount,
                 usdcAmount,
                 0, // Min tokens out
                 0, // Min USDC out
@@ -544,13 +544,13 @@ contract NDContract is
                 block.timestamp
             );
 
-        emit LiquidityAdded(usedAmountNaeura, usedAmountUsdc);
+        emit LiquidityAdded(usedAmountR1, usedAmountUsdc);
 
-        uint256 remainingAmountNaeura = halfNaeuraAmount - usedAmountNaeura;
+        uint256 remainingAmountR1 = halfR1Amount - usedAmountR1;
         uint256 remainingAmountUsdc = usdcAmount - usedAmountUsdc;
 
-        if (remainingAmountNaeura > 0) {
-            _naeuraToken.transfer(lpWallet, remainingAmountNaeura);
+        if (remainingAmountR1 > 0) {
+            _R1Token.transfer(lpWallet, remainingAmountR1);
         }
         if (remainingAmountUsdc > 0) {
             IERC20(_usdcAddr).transfer(lpWallet, remainingAmountUsdc);
@@ -559,7 +559,7 @@ contract NDContract is
 
     function swapTokensForUsdc(uint256 amount) private returns (uint256) {
         address[] memory path = new address[](2);
-        path[0] = address(_naeuraToken);
+        path[0] = address(_R1Token);
         path[1] = _usdcAddr;
 
         uint256[] memory amounts = _uniswapV2Router.swapExactTokensForTokens(
@@ -587,8 +587,8 @@ contract NDContract is
 
     function getLicenseTokenPrice() public view returns (uint256 price) {
         uint256 priceInUsdc = getLicensePriceInUSD() * USDC_DECIMALS; // Convert to 6 decimals (USDC format)
-        uint256 naeuraPrice = getTokenPrice(); // Price of 1 NAEURA in USDC (6 decimals)
-        return (priceInUsdc * PRICE_DECIMALS) / naeuraPrice; // Result in NAEURA (18 decimals)
+        uint256 r1Price = getTokenPrice(); // Price of 1 R1 in USDC (6 decimals)
+        return (priceInUsdc * PRICE_DECIMALS) / r1Price; // Result in R1 (18 decimals)
     }
 
     function getLicensePriceInUSD() public view returns (uint256 price) {
@@ -598,7 +598,7 @@ contract NDContract is
     // calculate price based on pair reserves
     function getTokenPrice() public view returns (uint256 price) {
         address[] memory path = new address[](2);
-        path[0] = address(_naeuraToken);
+        path[0] = address(_R1Token);
         path[1] = _usdcAddr;
 
         uint256 priceTokenToUsd = _uniswapV2Router.getAmountsOut(

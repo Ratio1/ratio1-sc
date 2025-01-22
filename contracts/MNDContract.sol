@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "./NAEURA.sol";
+import "./R1.sol";
 
 interface IND {
     function registeredNodeAddresses(address node) external view returns (bool);
@@ -100,7 +100,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
 
     Counters.Counter private _supply;
 
-    NAEURA private _naeuraToken;
+    R1 private _R1Token;
     IND _ndContract;
     address lpWallet;
     address expensesWallet;
@@ -144,7 +144,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     event SignerRemoved(address removedSigner);
 
     constructor(address tokenAddress) ERC721("MNDLicense", "MND") {
-        _naeuraToken = NAEURA(tokenAddress);
+        _R1Token = R1(tokenAddress);
         minimumRequiredSignatures = 1;
 
         // Mint the first Genesis Node Deed
@@ -282,29 +282,29 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
             if (computeParam.licenseId == GENESIS_TOKEN_ID) {
                 mintCompanyFunds(rewardsAmount);
             } else {
-                _naeuraToken.mint(msg.sender, rewardsAmount);
+                _R1Token.mint(msg.sender, rewardsAmount);
             }
         }
     }
 
     function mintCompanyFunds(uint256 amount) private {
-        _naeuraToken.mint(
+        _R1Token.mint(
             lpWallet,
             (amount * LP_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
-        _naeuraToken.mint(
+        _R1Token.mint(
             expensesWallet,
             (amount * EXPENSES_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
-        _naeuraToken.mint(
+        _R1Token.mint(
             marketingWallet,
             (amount * MARKETING_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
-        _naeuraToken.mint(
+        _R1Token.mint(
             grantsWallet,
             (amount * GRANTS_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );
-        _naeuraToken.mint(
+        _R1Token.mint(
             csrWallet,
             (amount * CSR_WALLET_PERCENTAGE) / MAX_PERCENTAGE
         );

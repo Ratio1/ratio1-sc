@@ -3,6 +3,7 @@
 This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
 
 Install dependencies:
+
 ```shell
 npm install
 ```
@@ -18,8 +19,9 @@ npx hardhat run scripts/deploy.ts
 ```
 
 Deployment steps
-1. Deploy NAEURA token SC
+
+1. Deploy R1 token SC
 2. Deploy MND Contract
-3. Whitelist MND Contract in the NAEURA token SC
+3. Whitelist MND Contract in the R1 token SC
 4. Deploy ND Contract
-5. Whitelist ND Contract in the NAEURA token SC
+5. Whitelist ND Contract in the R1 token SC
