@@ -2,13 +2,11 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import {
-  ERC20,
   R1,
   NDContract,
   ILiquidityManager,
 } from "../../typechain-types";
 
-const ERC20_SOURCE = "@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20";
 
 const BigNumber = ethers.BigNumber;
 
@@ -192,7 +190,7 @@ describe("NDContract", function () {
       newGrantsWallet,
       newCsrWallet
     );
-    await ndContract.setLiquidtyManager(liquidityManagerContract.address);
+    await ndContract.setLiquidityManager(liquidityManagerContract.address);
     await usdcContract.mint(
       uniswapContract.address,
       BigNumber.from("500000000000000000000")
@@ -411,7 +409,7 @@ describe("NDContract", function () {
     await expect(
       ndContract
         .connect(firstUser)
-        .setLiquidtyManager(liquidityManagerContract.address)
+        .setLiquidityManager(liquidityManagerContract.address)
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
