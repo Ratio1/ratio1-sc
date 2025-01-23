@@ -30,6 +30,7 @@ contract UniswapLiquidityManager is ILiquidityManager, Ownable {
         address liquidityReceiver
     ) external override returns (uint256, uint256) {
         IERC20 r1Token = IERC20(_r1Addr);
+        r1Token.transferFrom(msg.sender, address(this), r1Amount);
         r1Token.approve(address(_uniswapV2Router), r1Amount);
 
         uint256 halfR1Amount = r1Amount / 2;
@@ -37,6 +38,7 @@ contract UniswapLiquidityManager is ILiquidityManager, Ownable {
 
         require(usdcAmount > 0, "Swap failed");
 
+        IERC20(_usdcAddr).approve(address(_uniswapV2Router), usdcAmount);
         (uint256 usedAmountR1, uint256 usedAmountUsdc, ) = IUniswapV2Router02(
             _uniswapV2Router
         ).addLiquidity(
