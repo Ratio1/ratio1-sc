@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { NAEURA, MNDContract } from "../../typechain-types";
+import { R1, MNDContract } from "../../typechain-types";
 const BigNumber = ethers.BigNumber;
 
 // npx hardhat test     ---- for gas usage
@@ -61,7 +61,7 @@ describe("MNDContract", function () {
     */
 
   let mndContract: MNDContract;
-  let naeuraContract: NAEURA;
+  let r1Contract: R1;
   let owner: SignerWithAddress;
   let firstUser: SignerWithAddress;
   let secondUser: SignerWithAddress;
@@ -81,22 +81,22 @@ describe("MNDContract", function () {
     secondUser = user2;
     oracle = oracleSigner;
 
-    const NAEURAContract = await ethers.getContractFactory("NAEURA");
-    naeuraContract = await NAEURAContract.deploy();
+    const R1Contract = await ethers.getContractFactory("R1");
+    r1Contract = await R1Contract.deploy();
 
     const MNDContract = await ethers.getContractFactory("MNDContract");
-    mndContract = await MNDContract.deploy(naeuraContract.address);
+    mndContract = await MNDContract.deploy(r1Contract.address);
     await mndContract.addSigner(oracle.address);
     await mndContract.setMinimumRequiredSignatures(BigNumber.from(1));
 
     const NDContract = await ethers.getContractFactory("NDContract");
-    let ndContract = await NDContract.deploy(naeuraContract.address);
+    let ndContract = await NDContract.deploy(r1Contract.address);
     await ndContract.addSigner(oracle.address);
 
     await mndContract.setNDContract(ndContract.address);
 
-    await naeuraContract.setNdContract(owner.address);
-    await naeuraContract.setMndContract(mndContract.address);
+    await r1Contract.setNdContract(owner.address);
+    await r1Contract.setMndContract(mndContract.address);
 
     COMPUTE_PARAMS = {
       licenseId: 1,
@@ -331,7 +331,7 @@ describe("MNDContract", function () {
     let ownerOfLiense = await mndContract.ownerOf(BigNumber.from(1));
     expect(firstUser.address).to.equal(ownerOfLiense);
     expect(await mndContract.totalLicensesAssignedTokensAmount()).to.be.equal(
-      BigNumber.from("4854102000000000000000000") //TODO should be as variable says BigNumber.from(1)
+      BigNumber.from("4854102000000000000000000")
     );
   });
 
@@ -631,7 +631,7 @@ describe("MNDContract", function () {
       .claimRewards(COMPUTE_PARAMS, [
         Buffer.from(await signComputeParams(oracle), "hex"),
       ]);
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       REWARDS_AMOUNT
     );
   });
@@ -657,19 +657,19 @@ describe("MNDContract", function () {
       .claimRewards(COMPUTE_PARAMS, [
         Buffer.from(await signComputeParams(oracle), "hex"),
       ]);
-    expect(await naeuraContract.balanceOf(newLpWallet)).to.equal(
+    expect(await r1Contract.balanceOf(newLpWallet)).to.equal(
       BigNumber.from("878372632333011442385172")
     );
-    expect(await naeuraContract.balanceOf(newExpensesWallet)).to.equal(
+    expect(await r1Contract.balanceOf(newExpensesWallet)).to.equal(
       BigNumber.from("453990349295713779210313")
     );
-    expect(await naeuraContract.balanceOf(newMarketingWallet)).to.equal(
+    expect(await r1Contract.balanceOf(newMarketingWallet)).to.equal(
       BigNumber.from("246733885486800966962127")
     );
-    expect(await naeuraContract.balanceOf(newGrantsWallet)).to.equal(
+    expect(await r1Contract.balanceOf(newGrantsWallet)).to.equal(
       BigNumber.from("1138265658379108460918613")
     );
-    expect(await naeuraContract.balanceOf(newCsrWallet)).to.equal(
+    expect(await r1Contract.balanceOf(newCsrWallet)).to.equal(
       BigNumber.from("569132829189554230459306")
     );
   });
@@ -690,7 +690,7 @@ describe("MNDContract", function () {
       .claimRewards(COMPUTE_PARAMS, [
         Buffer.from(await signComputeParams(oracle), "hex"),
       ]);
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       REWARDS_AMOUNT
     );
     //should not modify amount
@@ -699,7 +699,7 @@ describe("MNDContract", function () {
       .claimRewards(COMPUTE_PARAMS, [
         Buffer.from(await signComputeParams(oracle), "hex"),
       ]);
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       REWARDS_AMOUNT
     );
   });
@@ -719,7 +719,7 @@ describe("MNDContract", function () {
       .claimRewards(COMPUTE_PARAMS, [
         Buffer.from(await signComputeParams(oracle), "hex"),
       ]);
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       BigNumber.from(0)
     );
   });
@@ -746,7 +746,7 @@ describe("MNDContract", function () {
       .claimRewards(COMPUTE_PARAMS, [
         Buffer.from(await signComputeParams(oracle), "hex"),
       ]);
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       expected_result
     );
 
@@ -760,7 +760,7 @@ describe("MNDContract", function () {
       .claimRewards(COMPUTE_PARAMS, [
         Buffer.from(await signComputeParams(oracle), "hex"),
       ]);
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       expected_result //should not be changed
     );
   });
@@ -940,7 +940,7 @@ describe("MNDContract", function () {
       .claimRewards(COMPUTE_PARAMS, [
         Buffer.from(await signComputeParams(oracle), "hex"),
       ]);
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       REWARDS_AMOUNT
     );
   });

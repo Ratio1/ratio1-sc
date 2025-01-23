@@ -1,7 +1,12 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { ERC20, NAEURA, NDContract } from "../../typechain-types";
+import {
+  ERC20,
+  R1,
+  NDContract,
+  ILiquidityManager,
+} from "../../typechain-types";
 
 const ERC20_SOURCE = "@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20";
 
@@ -116,17 +121,18 @@ const EXPECTED_PRICE_TIERS = [
 
 describe("NDContract", function () {
   /*
-	.##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
-	.##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
-	.##..##..##.##.....##.##.....##.##.......##.....##....##........##.......####..##.##.......##.....##..##...##.....##.....##..##.....##.####..##
-	.##..##..##.##.....##.########..##.......##.....##....##...####.######...##.##.##.######...########..##.....##....##.....##..##.....##.##.##.##
-	.##..##..##.##.....##.##...##...##.......##.....##....##....##..##.......##..####.##.......##...##...#########....##.....##..##.....##.##..####
-	.##..##..##.##.....##.##....##..##.......##.....##....##....##..##.......##...###.##.......##....##..##.....##....##.....##..##.....##.##...###
-	..###..###...#######..##.....##.########.########......######...########.##....##.########.##.....##.##.....##....##....####..#######..##....##
-	*/
+  .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
+  .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
+  .##..##..##.##.....##.##.....##.##.......##.....##....##........##.......####..##.##.......##.....##..##...##.....##.....##..##.....##.####..##
+  .##..##..##.##.....##.########..##.......##.....##....##...####.######...##.##.##.######...########..##.....##....##.....##..##.....##.##.##.##
+  .##..##..##.##.....##.##...##...##.......##.....##....##....##..##.......##..####.##.......##...##...#########....##.....##..##.....##.##..####
+  .##..##..##.##.....##.##....##..##.......##.....##....##....##..##.......##...###.##.......##....##..##.....##....##.....##..##.....##.##...###
+  ..###..###...#######..##.....##.########.########......######...########.##....##.########.##.....##.##.....##....##....####..#######..##....##
+  */
 
   let ndContract: NDContract;
-  let naeuraContract: NAEURA;
+  let r1Contract: R1;
+  let liquidityManagerContract: ILiquidityManager;
   let owner: SignerWithAddress;
   let firstUser: SignerWithAddress;
   let secondUser: SignerWithAddress;
@@ -139,6 +145,7 @@ describe("NDContract", function () {
     availabilies: [250, 130, 178, 12, 0],
   };
   let snapshotId: string;
+  let invoiceUuid: Buffer;
 
   before(async function () {
     const [deployer, user1, user2, backendSigner] = await ethers.getSigners();
@@ -146,21 +153,22 @@ describe("NDContract", function () {
     firstUser = user1;
     secondUser = user2;
     backend = backendSigner;
+    invoiceUuid = Buffer.from("d18ac3989ae74da398c8ab26de41bb7c");
 
     maxUnits = 100;
 
-    const NAEURAContract = await ethers.getContractFactory("NAEURA");
-    naeuraContract = await NAEURAContract.deploy();
+    const R1Contract = await ethers.getContractFactory("R1");
+    r1Contract = await R1Contract.deploy();
 
     const USDCContract = await ethers.getContractFactory("ERC20Mock");
     let usdcContract = await USDCContract.deploy();
 
     const NDContract = await ethers.getContractFactory("NDContract");
-    ndContract = await NDContract.deploy(naeuraContract.address);
+    ndContract = await NDContract.deploy(r1Contract.address);
     await ndContract.addSigner(backend.address);
 
     const MNDContract = await ethers.getContractFactory("MNDContract");
-    let mndContract = await MNDContract.deploy(naeuraContract.address);
+    let mndContract = await MNDContract.deploy(r1Contract.address);
     await mndContract.addSigner(backend.address);
 
     await ndContract.setMNDContract(mndContract.address);
@@ -168,7 +176,15 @@ describe("NDContract", function () {
     const UniswapContract = await ethers.getContractFactory("UNISWAP");
     const uniswapContract = await UniswapContract.deploy();
 
-    await ndContract.setUniswapRouter(uniswapContract.address);
+    const UniswapLiquidityManagerContract = await ethers.getContractFactory(
+      "UniswapLiquidityManager"
+    );
+    liquidityManagerContract = await UniswapLiquidityManagerContract.deploy(
+      uniswapContract.address,
+      usdcContract.address,
+      r1Contract.address
+    );
+
     await ndContract.setCompanyWallets(
       newLpWallet,
       newExpensesWallet,
@@ -176,14 +192,14 @@ describe("NDContract", function () {
       newGrantsWallet,
       newCsrWallet
     );
-    await ndContract.setUsdcAddress(usdcContract.address);
+    await ndContract.setLiquidtyManager(liquidityManagerContract.address);
     await usdcContract.mint(
-      ndContract.address,
-      BigNumber.from("100").mul(ONE_TOKEN)
+      uniswapContract.address,
+      BigNumber.from("500000000000000000000")
     );
 
-    await naeuraContract.setNdContract(ndContract.address);
-    await naeuraContract.setMndContract(owner.address);
+    await r1Contract.setNdContract(ndContract.address);
+    await r1Contract.setMndContract(owner.address);
 
     COMPUTE_PARAMS = {
       licenseId: 1,
@@ -206,34 +222,35 @@ describe("NDContract", function () {
   });
 
   /*
-	.##.....##.########.####.##........######.
-	.##.....##....##.....##..##.......##....##
-	.##.....##....##.....##..##.......##......
-	.##.....##....##.....##..##........######.
-	.##.....##....##.....##..##.............##
-	.##.....##....##.....##..##.......##....##
-	..#######.....##....####.########..######.
-	*/
+  .##.....##.########.####.##........######.
+  .##.....##....##.....##..##.......##....##
+  .##.....##....##.....##..##.......##......
+  .##.....##....##.....##..##........######.
+  .##.....##....##.....##..##.............##
+  .##.....##....##.....##..##.......##....##
+  ..#######.....##....####.########..######.
+  */
 
   async function buyLicenseWithMintAndAllowance(
-    naeuraContract: NAEURA,
+    r1Contract: R1,
     ndContract: NDContract,
     owner: SignerWithAddress,
     user: SignerWithAddress,
-    numTokens: number,
+    numTokens: bigint,
     numLicenses: number,
     priceTier: number,
     signature: string
   ) {
-    await naeuraContract
-      .connect(owner)
-      .mint(user.address, ONE_TOKEN.mul(numTokens));
-    await naeuraContract
-      .connect(user)
-      .approve(ndContract.address, ONE_TOKEN.mul(numTokens));
+    await r1Contract.connect(owner).mint(user.address, numTokens);
+    await r1Contract.connect(user).approve(ndContract.address, numTokens);
     await ndContract
       .connect(user)
-      .buyLicense(numLicenses, priceTier, Buffer.from(signature, "hex"));
+      .buyLicense(
+        numLicenses,
+        priceTier,
+        invoiceUuid,
+        Buffer.from(signature, "hex")
+      );
   }
 
   async function linkNode(
@@ -254,10 +271,13 @@ describe("NDContract", function () {
 
   async function signAddress(
     signer: SignerWithAddress,
-    user: SignerWithAddress
+    user: SignerWithAddress,
+    invoiceUuid: Buffer
   ) {
     const addressBytes = Buffer.from(user.address.slice(2), "hex");
-    const messageHash = ethers.utils.keccak256(addressBytes);
+
+    const messageBytes = Buffer.concat([addressBytes, invoiceUuid]);
+    const messageHash = ethers.utils.keccak256(messageBytes);
     const signature = await signer.signMessage(
       ethers.utils.arrayify(messageHash)
     );
@@ -315,14 +335,14 @@ describe("NDContract", function () {
   }
 
   /*
-	.########.########..######..########..######.
-	....##....##.......##....##....##....##....##
-	....##....##.......##..........##....##......
-	....##....######....######.....##.....######.
-	....##....##.............##....##..........##
-	....##....##.......##....##....##....##....##
-	....##....########..######.....##.....######.
-	*/
+  .########.########..######..########..######.
+  ....##....##.......##....##....##....##....##
+  ....##....##.......##..........##....##......
+  ....##....######....######.....##.....######.
+  ....##....##.............##....##..........##
+  ....##....##.......##....##....##....##....##
+  ....##....########..######.....##.....######.
+  */
 
   it("Supports interface - should work", async function () {
     //ERC721
@@ -332,14 +352,14 @@ describe("NDContract", function () {
   it("Get licenses", async function () {
     await updateTimestamp();
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
 
     let result = await ndContract.getLicenses(firstUser.address);
@@ -387,16 +407,11 @@ describe("NDContract", function () {
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
-  it("Set usdc address - not the owner", async function () {
+  it("Set liquidity manager address - not the owner", async function () {
     await expect(
-      ndContract.connect(firstUser).setUsdcAddress(firstUser.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
-  it("Set uniswap address - not the owner", async function () {
-    let baseUri = "PIPPO.com/";
-    await expect(
-      ndContract.connect(firstUser).setUniswapRouter(firstUser.address)
+      ndContract
+        .connect(firstUser)
+        .setLiquidtyManager(liquidityManagerContract.address)
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
@@ -405,14 +420,14 @@ describe("NDContract", function () {
     await ndContract.setBaseURI(baseUri);
 
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     let licenseId = 1;
     let result = await ndContract.tokenURI(BigNumber.from(1));
@@ -436,54 +451,52 @@ describe("NDContract", function () {
     let price = await ndContract.getLicensePriceInUSD();
     expect(price).to.equal(500);
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     expect(firstUser.address).to.equal(await ndContract.ownerOf(1));
-    expect("40050000000000000001").to.deep.equal(
-      await naeuraContract.balanceOf(newLpWallet)
+    expect("40050000000000000100").to.deep.equal(
+      await r1Contract.balanceOf(newLpWallet)
     );
     expect("20700000000000000000").to.deep.equal(
-      await naeuraContract.balanceOf(newExpensesWallet)
+      await r1Contract.balanceOf(newExpensesWallet)
     );
     expect("11250000000000000000").to.deep.equal(
-      await naeuraContract.balanceOf(newMarketingWallet)
+      await r1Contract.balanceOf(newMarketingWallet)
     );
 
     expect("51900000000000000000").to.deep.equal(
-      await naeuraContract.balanceOf(newGrantsWallet)
+      await r1Contract.balanceOf(newGrantsWallet)
     );
     expect("25950000000000000000").to.deep.equal(
-      await naeuraContract.balanceOf(newCsrWallet)
+      await r1Contract.balanceOf(newCsrWallet)
     );
   });
 
   it("Buy license - insufficent balance", async function () {
     await expect(
       buyLicenseWithMintAndAllowance(
-        naeuraContract,
+        r1Contract,
         ndContract,
         owner,
         firstUser,
-        499, //since 1 neura = 1 usdc minimum is 500
+        (await ndContract.getLicenseTokenPrice()).toBigInt() - 100n,
         1,
         1,
-        await signAddress(backend, firstUser)
+        await signAddress(backend, firstUser, invoiceUuid)
       )
-    ).to.be.revertedWith("Insufficient NAEURA balance");
+    ).to.be.revertedWith("Insufficient R1 balance");
   });
 
   it("Buy license - insufficent allowance", async function () {
     //Mint tokens
-    await naeuraContract
-      .connect(owner)
-      .mint(firstUser.address, ONE_TOKEN.mul(500));
+    await r1Contract.connect(owner).mint(firstUser.address, ONE_TOKEN.mul(500));
 
     //Buy license without giving allowance
     await expect(
@@ -492,7 +505,8 @@ describe("NDContract", function () {
         .buyLicense(
           1,
           1,
-          Buffer.from(await signAddress(backend, firstUser), "hex")
+          invoiceUuid,
+          Buffer.from(await signAddress(backend, firstUser, invoiceUuid), "hex")
         )
     ).to.be.revertedWith("Insufficient allowance");
   });
@@ -504,14 +518,14 @@ describe("NDContract", function () {
     //DO TEST - try to buy license
     await expect(
       buyLicenseWithMintAndAllowance(
-        naeuraContract,
+        r1Contract,
         ndContract,
         owner,
         firstUser,
-        500,
+        (await ndContract.getLicenseTokenPrice()).toBigInt(),
         1,
         1,
-        await signAddress(backend, firstUser)
+        await signAddress(backend, firstUser, invoiceUuid)
       )
     ).to.be.revertedWith("Pausable: paused");
   });
@@ -519,14 +533,14 @@ describe("NDContract", function () {
   it("Buy license - wrong signature", async function () {
     await expect(
       buyLicenseWithMintAndAllowance(
-        naeuraContract,
+        r1Contract,
         ndContract,
         owner,
         firstUser,
-        500,
+        (await ndContract.getLicenseTokenPrice()).toBigInt(),
         1,
         1,
-        await signAddress(secondUser, firstUser)
+        await signAddress(secondUser, firstUser, invoiceUuid)
       )
     ).to.be.revertedWith("Invalid signature");
   });
@@ -535,14 +549,14 @@ describe("NDContract", function () {
     //DO TEST -try buy 1 license in first tier
     await expect(
       buyLicenseWithMintAndAllowance(
-        naeuraContract,
+        r1Contract,
         ndContract,
         owner,
         firstUser,
-        500,
+        (await ndContract.getLicenseTokenPrice()).toBigInt(),
         1,
         2,
-        await signAddress(backend, firstUser)
+        await signAddress(backend, firstUser, invoiceUuid)
       )
     ).to.be.revertedWith("Not in the right price tier");
   });
@@ -551,14 +565,14 @@ describe("NDContract", function () {
     //DO TEST -try buy 1 license in first tier
     await expect(
       buyLicenseWithMintAndAllowance(
-        naeuraContract,
+        r1Contract,
         ndContract,
         owner,
         firstUser,
-        (await ndContract._priceTiers(1)).usdPrice.toNumber() * maxUnits + 1,
+        (await ndContract.getLicenseTokenPrice()).toBigInt(),
         maxUnits + 1,
         1,
-        await signAddress(backend, firstUser)
+        await signAddress(backend, firstUser, invoiceUuid)
       )
     ).to.be.revertedWith("Invalid number of licenses");
   });
@@ -566,14 +580,14 @@ describe("NDContract", function () {
   it("Link node - should work", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
 
     //DO TEST
@@ -589,14 +603,14 @@ describe("NDContract", function () {
   it("Link node - address already registered", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
 
@@ -609,14 +623,14 @@ describe("NDContract", function () {
   it("Link node - not the owner of the license", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
 
@@ -629,14 +643,14 @@ describe("NDContract", function () {
   it("Link node - wrong license", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
 
     //DO TEST - try to link with wrong license
@@ -648,14 +662,14 @@ describe("NDContract", function () {
   it("Link node - wrong node address", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
 
     //DO TEST - try to link with wrong node address
@@ -667,14 +681,14 @@ describe("NDContract", function () {
   it("Link node - link again before 24hrs", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
 
@@ -688,14 +702,14 @@ describe("NDContract", function () {
   it("Link node - link again after 24hrs", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await unlinkNode(ndContract, firstUser, 1);
@@ -709,14 +723,14 @@ describe("NDContract", function () {
   it("Unlink node", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
 
@@ -731,14 +745,14 @@ describe("NDContract", function () {
   it("Transfer - empty license", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
 
     //DO TEST - transfer empty license
@@ -753,14 +767,14 @@ describe("NDContract", function () {
   it("Transfer - linked license", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
 
@@ -776,14 +790,14 @@ describe("NDContract", function () {
   it("Calculate rewards", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -803,14 +817,14 @@ describe("NDContract", function () {
   it("Claim rewards - should work", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -823,23 +837,23 @@ describe("NDContract", function () {
         [COMPUTE_PARAMS],
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       REWARDS_AMOUNT
     );
   });
 
   it("Claim rewards with real oracle data", async function () {
     //SETUP WORLD
-    await ndContract.addSigner("0x129a21A78EBBA79aE78B8f11d5B57102950c1Fc0");
+    await ndContract.addSigner("0x93B04EF1152D81A0847C2272860a8a5C70280E14");
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await ndContract
       .connect(firstUser)
@@ -852,32 +866,32 @@ describe("NDContract", function () {
         {
           licenseId: 1,
           nodeAddress: "0x1351504af17BFdb80491D9223d6Bcb6BB964DCeD",
-          epochs: [300, 301, 302, 303, 304],
-          availabilies: [255, 254, 254, 0, 0],
+          epochs: [1, 2, 3, 4, 5],
+          availabilies: [0, 0, 0, 0, 0],
         },
       ],
       [
         [
-          "0x8fe3b49ca60b21866b5f8f909eb6130b4fe6b7458c924e674e3ce713d2967edc4073848916c7ccfb8191da4ab21f99739545c2d71932f8e1538895709d20e7ba1c",
+          "0xc17b67684afb68fe25fb7ba6ec7fdf08c4d5fc8970ab03a7b3659a20d5df620314cb35b90deddff9cbc13668cc964e13816be73f308402e9903dae422106ca5d1c",
         ],
       ]
     );
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
-      BigNumber.from("26184511840975573335")
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
+      BigNumber.from("0")
     );
   });
 
   it("Claim rewards - mismatched input arrays length", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -897,14 +911,14 @@ describe("NDContract", function () {
   it("Claim rewards - user does not have the license", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -924,14 +938,14 @@ describe("NDContract", function () {
   it("Claim rewards - invalid signature", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -952,14 +966,14 @@ describe("NDContract", function () {
     //SETUP WORLD
     await ndContract.setMinimumRequiredSignatures(2);
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -985,14 +999,14 @@ describe("NDContract", function () {
     //SETUP WORLD
     await ndContract.setMinimumRequiredSignatures(2);
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ndContract.addSigner(secondUser.address);
@@ -1011,7 +1025,7 @@ describe("NDContract", function () {
           ],
         ]
       );
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       REWARDS_AMOUNT
     );
   });
@@ -1020,14 +1034,14 @@ describe("NDContract", function () {
     //SETUP WORLD
     await ndContract.setMinimumRequiredSignatures(2);
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -1047,14 +1061,14 @@ describe("NDContract", function () {
   it("Claim rewards - invalid node address.", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -1075,14 +1089,14 @@ describe("NDContract", function () {
   it("Claim rewards - incorrect number of params.", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -1103,14 +1117,14 @@ describe("NDContract", function () {
   it("Claim rewards - 0 epoch to claim", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -1123,7 +1137,7 @@ describe("NDContract", function () {
         [COMPUTE_PARAMS],
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       REWARDS_AMOUNT
     );
     //should not modify amount
@@ -1133,7 +1147,7 @@ describe("NDContract", function () {
         [COMPUTE_PARAMS],
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       REWARDS_AMOUNT
     );
   });
@@ -1141,14 +1155,14 @@ describe("NDContract", function () {
   it("Claim rewards - max release per license", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 366 * 5]);
@@ -1167,7 +1181,7 @@ describe("NDContract", function () {
         [COMPUTE_PARAMS],
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       expected_result
     );
 
@@ -1182,7 +1196,7 @@ describe("NDContract", function () {
         [COMPUTE_PARAMS],
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       expected_result //should not be changed
     );
   });
@@ -1193,14 +1207,14 @@ describe("NDContract", function () {
 
     //Should not be reverted
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(secondUser, firstUser) //second user is a signer
+      await signAddress(secondUser, firstUser, invoiceUuid) //second user is a signer
     );
   });
 
@@ -1229,14 +1243,14 @@ describe("NDContract", function () {
     //Should be reverted
     await expect(
       buyLicenseWithMintAndAllowance(
-        naeuraContract,
+        r1Contract,
         ndContract,
         owner,
         firstUser,
-        500,
+        (await ndContract.getLicenseTokenPrice()).toBigInt(),
         1,
         1,
-        await signAddress(backend, firstUser) //second user is not a signer
+        await signAddress(backend, firstUser, invoiceUuid) //second user is not a signer
       )
     ).to.be.revertedWith("Invalid signature");
   });
@@ -1258,14 +1272,14 @@ describe("NDContract", function () {
     await ndContract.connect(owner).pause();
     await expect(
       buyLicenseWithMintAndAllowance(
-        naeuraContract,
+        r1Contract,
         ndContract,
         owner,
         firstUser,
-        500,
+        (await ndContract.getLicenseTokenPrice()).toBigInt(),
         1,
         1,
-        await signAddress(backend, firstUser)
+        await signAddress(backend, firstUser, invoiceUuid)
       )
     ).to.be.revertedWith("Pausable: paused");
   });
@@ -1280,28 +1294,28 @@ describe("NDContract", function () {
     await ndContract.connect(owner).pause();
     await expect(
       buyLicenseWithMintAndAllowance(
-        naeuraContract,
+        r1Contract,
         ndContract,
         owner,
         firstUser,
-        500,
+        (await ndContract.getLicenseTokenPrice()).toBigInt(),
         1,
         1,
-        await signAddress(backend, firstUser)
+        await signAddress(backend, firstUser, invoiceUuid)
       )
     ).to.be.revertedWith("Pausable: paused");
 
     await ndContract.connect(owner).unpause();
 
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
   });
 
@@ -1317,14 +1331,14 @@ describe("NDContract", function () {
     await ndContract.setMinimumRequiredSignatures(BigNumber.from(1));
 
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -1337,7 +1351,7 @@ describe("NDContract", function () {
         [COMPUTE_PARAMS],
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
-    expect(await naeuraContract.balanceOf(firstUser.address)).to.equal(
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
       REWARDS_AMOUNT
     );
   });
@@ -1347,14 +1361,14 @@ describe("NDContract", function () {
     await ndContract.setMinimumRequiredSignatures(BigNumber.from(2));
 
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -1373,14 +1387,14 @@ describe("NDContract", function () {
 
   it("Ban license - should work", async function () {
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
 
     await ndContract.connect(owner).banLicense(1);
@@ -1400,14 +1414,14 @@ describe("NDContract", function () {
 
   it("Ban license - already banned", async function () {
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
 
     await ndContract.connect(owner).banLicense(1);
@@ -1424,14 +1438,14 @@ describe("NDContract", function () {
 
   it("Unban license - should work", async function () {
     await buyLicenseWithMintAndAllowance(
-      naeuraContract,
+      r1Contract,
       ndContract,
       owner,
       firstUser,
-      500,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
       1,
       1,
-      await signAddress(backend, firstUser)
+      await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
     await ndContract.connect(owner).banLicense(1);
@@ -1471,7 +1485,7 @@ describe("NDContract", function () {
   it.skip("Buy all license ", async function () {
     // for gas test remove this function using "it.skip"
     //SETUP WORLD
-    const signedMessage = await signAddress(backend, firstUser);
+    const signedMessage = await signAddress(backend, firstUser, invoiceUuid);
 
     //DO TEST
     for (let i = 1; i <= 12; i++) {
@@ -1481,11 +1495,12 @@ describe("NDContract", function () {
       do {
         if (units > maxUnits) {
           await buyLicenseWithMintAndAllowance(
-            naeuraContract,
+            r1Contract,
             ndContract,
             owner,
             firstUser,
-            tier.usdPrice.toNumber() * maxUnits,
+            (await ndContract.getLicenseTokenPrice()).toBigInt() *
+              BigInt(maxUnits),
             maxUnits,
             i,
             signedMessage
@@ -1493,11 +1508,12 @@ describe("NDContract", function () {
           units -= maxUnits;
         } else {
           await buyLicenseWithMintAndAllowance(
-            naeuraContract,
+            r1Contract,
             ndContract,
             owner,
             firstUser,
-            tier.usdPrice.toNumber() * units,
+            (await ndContract.getLicenseTokenPrice()).toBigInt() *
+              BigInt(units),
             units,
             i,
             signedMessage
@@ -1509,11 +1525,11 @@ describe("NDContract", function () {
 
     await expect(
       buyLicenseWithMintAndAllowance(
-        naeuraContract,
+        r1Contract,
         ndContract,
         owner,
         firstUser,
-        20000,
+        (await ndContract.getLicenseTokenPrice()).toBigInt() * 1000n,
         1,
         12,
         signedMessage
