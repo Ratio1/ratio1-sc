@@ -81,7 +81,6 @@ contract NDContract is
     uint256 constant MAX_PERCENTAGE = 100_00;
     uint8 constant MAX_AVAILABILITY = 255;
 
-    uint256 constant USDC_DECIMALS = 10 ** 6;
     uint256 constant PRICE_DECIMALS = 10 ** 18;
 
     uint256 constant MAX_TOKEN_SUPPLY = 1618033988 * PRICE_DECIMALS;
@@ -549,9 +548,9 @@ contract NDContract is
     }
 
     function getLicenseTokenPrice() public view returns (uint256 price) {
-        uint256 priceInUsdc = getLicensePriceInUSD() * USDC_DECIMALS; // Convert to 6 decimals (USDC format)
-        uint256 r1Price = _liquidityManager.getTokenPrice(); // Price of 1 R1 in USDC (6 decimals)
-        return (priceInUsdc * PRICE_DECIMALS) / r1Price; // Result in R1 (18 decimals)
+        uint256 priceInStablecoin = getLicensePriceInUSD() * PRICE_DECIMALS;
+        uint256 r1Price = _liquidityManager.getTokenPrice();
+        return (priceInStablecoin * PRICE_DECIMALS) / r1Price;
     }
 
     function getLicensePriceInUSD() public view returns (uint256 price) {

@@ -78,7 +78,6 @@ contract UniswapLiquidityManager is ILiquidityManager, Ownable {
         return amounts[1];
     }
 
-    //TODO decide denomination
     function getTokenPrice() external view returns (uint256 price) {
         address[] memory path = new address[](2);
         path[0] = _r1Addr;
@@ -89,6 +88,6 @@ contract UniswapLiquidityManager is ILiquidityManager, Ownable {
             path
         )[1];
 
-        return priceTokenToUsd;
+        return priceTokenToUsd * 10 ** 12; // difference in decimals between R1 and USDC
     }
 }
