@@ -23,5 +23,7 @@ Deployment steps
 1. Deploy R1 token SC
 2. Deploy MND Contract
 3. Whitelist MND Contract in the R1 token SC
-4. Deploy ND Contract
-5. Whitelist ND Contract in the R1 token SC
+4. Deploy Liquidity Manager
+5. Deploy ND Contract
+6. Whitelist ND Contract in the R1 token SC
+7. Set Liquidity Manager SC in ND Contract
