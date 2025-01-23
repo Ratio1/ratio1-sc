@@ -695,7 +695,7 @@ contract NDContract is
     }
 
     // LP setup
-    function setLiquidtyManager(address liquidityManager) public onlyOwner {
+    function setLiquidityManager(address liquidityManager) public onlyOwner {
         _liquidityManager = ILiquidityManager(liquidityManager);
     }
 
