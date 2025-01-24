@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
 
-const TOKENS_RECEIVER = "";
+const TOKENS_RECEIVER = "0x28227b7CC798A98155162037Fec822AA138ac0EB";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -13,7 +13,7 @@ async function main() {
   await ERC20MockContract.deployed();
   console.log("ERC20Mock deployed to:", ERC20MockContract.address);
 
-  await ERC20MockContract.mint(TOKENS_RECEIVER, "1000000000000000000000");
+  await ERC20MockContract.mint(TOKENS_RECEIVER, "500000000000"); // 500k tokens
 }
 
 main()

@@ -20,6 +20,8 @@ const ARBITRUM_SEPOLIA_API_URL =
 const ARBITRUM_MAINNET =
   "https://arb-mainnet.g.alchemy.com/v2/6Q-AFwrpUJu-cO16YX8EjgqLOJVKoXHT";
 
+const BE_SIGNER_PRIVATE_KEY = "";
+
 const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.18",
@@ -37,6 +39,11 @@ const config: HardhatUserConfig = {
     hardhat: {
       chainId: 1337,
       initialDate: "2024-03-10T00:00:00Z", // 3 marzo 2024, mezzanotte UTC
+    },
+    baseSepolia: {
+      chainId: 84532,
+      url: "https://base-sepolia-rpc.publicnode.com",
+      accounts: [BE_SIGNER_PRIVATE_KEY],
     },
   },
   /*networks: {
@@ -58,12 +65,12 @@ const config: HardhatUserConfig = {
   gasReporter: {
     currency: "EUR",
     enabled: true,
-    L2: "arbitrum",
+    //L2: "arbitrum",
     //L1: "ethereum",
-    trackGasDeltas: true,
+    //trackGasDeltas: true,
     coinmarketcap: "fe216009-c5aa-4629-874e-f43901af5108",
     //L1Etherscan:"YF24C96CAMZQIQ1TZV5Q21J1XQWDWDRT93",
-    L2Etherscan: "I32XUBSQGUM2S3CYT2S4S2PPYFSCI23DT2",
+    //L2Etherscan: "I32XUBSQGUM2S3CYT2S4S2PPYFSCI23DT2",
   },
   mocha: {
     timeout: 480000,
