@@ -2,17 +2,25 @@
 pragma solidity ^0.8.18;
 
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./ILiquidityManager.sol";
 
 contract UniswapLiquidityManager is ILiquidityManager, Ownable {
     IUniswapV2Router02 _uniswapV2Router;
+    IUniswapV2Pair _uniswapV2Pair;
     address _usdcAddr;
     address _r1Addr;
 
-    constructor(address uniswapV2Router, address usdcAddr, address r1Addr) {
+    constructor(
+        address uniswapV2Router,
+        address uniswapV2Pair,
+        address usdcAddr,
+        address r1Addr
+    ) {
         _uniswapV2Router = IUniswapV2Router02(uniswapV2Router);
+        _uniswapV2Pair = IUniswapV2Pair(uniswapV2Pair);
         _usdcAddr = usdcAddr;
         _r1Addr = r1Addr;
     }
@@ -81,15 +89,16 @@ contract UniswapLiquidityManager is ILiquidityManager, Ownable {
     }
 
     function getTokenPrice() external view returns (uint256 price) {
-        address[] memory path = new address[](2);
-        path[0] = _r1Addr;
-        path[1] = _usdcAddr;
+        IUniswapV2Pair pair = IUniswapV2Pair(_uniswapV2Pair);
+        (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
 
-        uint256 priceTokenToUsd = _uniswapV2Router.getAmountsOut(
-            10 ** 18,
-            path
-        )[1];
-
-        return priceTokenToUsd * 10 ** 12; // difference in decimals between R1 and USDC
+        // Determinare quale token è R1 e quale USDC
+        if (pair.token0() == _r1Addr) {
+            return
+                (uint256(reserve1) * 10 ** 12 * 10 ** 18) / uint256(reserve0);
+        } else {
+            return
+                (uint256(reserve0) * 10 ** 12 * 10 ** 18) / uint256(reserve1);
+        }
     }
 }
