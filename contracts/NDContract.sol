@@ -75,8 +75,8 @@ contract NDContract is
     //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
     // TODO - change with start date of the protocol
-    uint256 constant startEpochTimestamp = 1710028800; // 2024-03-10 00:00:00 UTC
-    uint256 constant epochDuration = 24 hours;
+    uint256 constant startEpochTimestamp = 1737676800; // 2025-01-24 00:00:00
+    uint256 constant epochDuration = 60 minutes; //TODO 24 hours;
 
     uint256 constant MAX_PERCENTAGE = 100_00;
     uint8 constant MAX_AVAILABILITY = 255;

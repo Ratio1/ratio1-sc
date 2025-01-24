@@ -61,8 +61,8 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
     // TODO - change with start date of the protocol
-    uint256 constant startEpochTimestamp = 1710028800; // 2024-03-10 00:00:00 UTC
-    uint256 constant epochDuration = 24 hours;
+    uint256 constant startEpochTimestamp = 1737676800; // 2025-01-24 00:00:00
+    uint256 constant epochDuration = 60 minutes; //TODO 24 hours;
 
     uint256 constant MAX_PERCENTAGE = 100_00;
     uint8 constant MAX_AVAILABILITY = 255;
@@ -484,6 +484,23 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
             license.lastClaimEpoch >= CLIFF_EPOCHS)
             ? license.lastClaimEpoch
             : CLIFF_EPOCHS;
+
+        uint256 currentEpoch = getCurrentEpoch();
+        if (currentEpoch < firstEpochToClaim) {
+            return
+                LicenseInfo({
+                    licenseId: licenseId,
+                    nodeAddress: license.nodeAddress,
+                    totalAssignedAmount: license.totalAssignedAmount,
+                    totalClaimedAmount: license.totalClaimedAmount,
+                    remainingAmount: license.totalAssignedAmount -
+                        license.totalClaimedAmount,
+                    lastClaimEpoch: license.lastClaimEpoch,
+                    claimableEpochs: 0,
+                    assignTimestamp: license.assignTimestamp,
+                    lastClaimOracle: license.lastClaimOracle
+                });
+        }
         uint256 claimableEpochs = getCurrentEpoch() - firstEpochToClaim;
 
         return
