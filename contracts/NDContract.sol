@@ -185,8 +185,8 @@ contract NDContract is
         _priceTiers[8] = PriceTier(3500, 2584, 0, 2);
         _priceTiers[9] = PriceTier(4000, 4181, 0, 2);
         _priceTiers[10] = PriceTier(5000, 6765, 0, 1);
-        _priceTiers[11] = PriceTier(10000, 10946, 0, 1);
-        _priceTiers[12] = PriceTier(20000, 17711, 0, 1);
+        _priceTiers[11] = PriceTier(7000, 10946, 0, 1);
+        _priceTiers[12] = PriceTier(9500, 17711, 0, 1);
 
         uint256 ndSupply = 0;
         for (uint8 i = 1; i <= LAST_PRICE_TIER; i++) {
