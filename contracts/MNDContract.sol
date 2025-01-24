@@ -361,6 +361,11 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
                 computeParam.availabilies.length == epochsToClaim,
             "Incorrect number of params."
         );
+        require(
+            computeParam.epochs[computeParam.epochs.length - 1] ==
+                currentEpoch - 1,
+            "Invalid epochs"
+        );
 
         uint256 maxRewardsPerEpoch = license.totalAssignedAmount /
             (

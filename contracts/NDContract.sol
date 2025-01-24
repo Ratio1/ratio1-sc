@@ -452,7 +452,8 @@ contract NDContract is
             "Incorrect number of params."
         );
         require(
-            computeParam.epochs[computeParam.epochs.length - 1] == currentEpoch,
+            computeParam.epochs[computeParam.epochs.length - 1] ==
+                currentEpoch - 1,
             "Invalid epochs"
         );
 
