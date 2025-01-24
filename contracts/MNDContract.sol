@@ -330,7 +330,10 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         uint256 currentEpoch = getCurrentEpoch();
         uint256 licenseRewards = 0;
 
-        if (currentEpoch < CLIFF_EPOCHS) {
+        if (
+            currentEpoch < CLIFF_EPOCHS &&
+            computeParam.licenseId != GENESIS_TOKEN_ID
+        ) {
             return 0;
         }
 
