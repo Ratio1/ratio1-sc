@@ -134,6 +134,7 @@ contract NDContract is
     mapping(uint8 => PriceTier) public _priceTiers;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
+    mapping(address => address) public nodeToUser;
     mapping(address => uint256) public signerSignaturesCount;
     mapping(address => uint256) public signerAdditionTimestamp;
     mapping(bytes32 => bool) public usedInvoiceUUIDs;
@@ -325,6 +326,7 @@ contract NDContract is
         license.lastClaimEpoch = getCurrentEpoch();
         license.assignTimestamp = block.timestamp;
         registeredNodeAddresses[newNodeAddress] = true;
+        nodeToUser[newNodeAddress] = msg.sender;
 
         emit LinkNode(msg.sender, licenseId, newNodeAddress);
     }
@@ -353,6 +355,7 @@ contract NDContract is
 
         address oldNodeAddress = license.nodeAddress;
         registeredNodeAddresses[license.nodeAddress] = false;
+        nodeToUser[license.nodeAddress] = address(0);
         license.nodeAddress = address(0);
 
         emit UnlinkNode(msg.sender, licenseId, oldNodeAddress);
