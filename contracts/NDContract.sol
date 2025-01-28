@@ -309,8 +309,7 @@ contract NDContract is
         );
         require(newNodeAddress != address(0), "Invalid node address");
         require(
-            !registeredNodeAddresses[newNodeAddress] &&
-                !_mndContract.registeredNodeAddresses(newNodeAddress),
+            !isNodeAlreadyLinked(newNodeAddress),
             "Node address already registered"
         );
 
@@ -693,6 +692,14 @@ contract NDContract is
             priceTiers[i - 1] = _priceTiers[i];
         }
         return priceTiers;
+    }
+
+    function isNodeAlreadyLinked(
+        address nodeAddress
+    ) public view returns (bool) {
+        return
+            registeredNodeAddresses[nodeAddress] ||
+            _mndContract.registeredNodeAddresses(nodeAddress);
     }
 
     // LP setup

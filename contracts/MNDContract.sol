@@ -203,8 +203,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         );
         require(newNodeAddress != address(0), "Invalid node address");
         require(
-            !registeredNodeAddresses[newNodeAddress] &&
-                !_ndContract.registeredNodeAddresses(newNodeAddress),
+            !isNodeAlreadyLinked(newNodeAddress),
             "Node address already registered"
         );
 
@@ -240,8 +239,10 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         if (license.nodeAddress == address(0)) {
             return;
         }
+        uint256 currentEpoch = getCurrentEpoch();
         require(
-            license.lastClaimEpoch == getCurrentEpoch(),
+            license.lastClaimEpoch == currentEpoch ||
+                currentEpoch < CLIFF_EPOCHS,
             "Cannot unlink before claiming rewards"
         );
 
@@ -524,6 +525,14 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
                 assignTimestamp: license.assignTimestamp,
                 lastClaimOracle: license.lastClaimOracle
             });
+    }
+
+    function isNodeAlreadyLinked(
+        address nodeAddress
+    ) public view returns (bool) {
+        return
+            registeredNodeAddresses[nodeAddress] ||
+            _ndContract.registeredNodeAddresses(nodeAddress);
     }
 
     ///// Signature functions
