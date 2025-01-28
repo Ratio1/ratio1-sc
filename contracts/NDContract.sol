@@ -584,7 +584,11 @@ contract NDContract is
     function tokenURI(
         uint256 tokenId
     ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
-        return super.tokenURI(tokenId);
+        require(
+            _exists(tokenId),
+            "ERC721Metadata: URI query for nonexistent token"
+        );
+        return _baseTokenURI;
     }
 
     function _beforeTokenTransfer(
