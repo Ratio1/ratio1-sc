@@ -75,20 +75,19 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     uint256 constant MAX_MND_TOTAL_ASSIGNED_TOKENS =
         (MAX_TOKEN_SUPPLY * 26_10) / MAX_PERCENTAGE; // 26.1% of total supply
     uint256 constant MAX_MND_SUPPLY = 500;
-    uint256 constant CLIFF_EPOCHS = 30 * 4;
-    uint256 constant VESTING_DURATION_YEARS = 5;
-    uint256 constant VESTING_DURATION_EPOCHS = VESTING_DURATION_YEARS * 365;
+    uint256 constant NO_MINING_EPOCHS = 30 * 4;
+    uint256 constant MINING_DURATION_EPOCHS = 30 * 30;
 
     uint256 constant GENESIS_TOTAL_EMISSION =
-        (MAX_TOKEN_SUPPLY * 33_20) / MAX_PERCENTAGE; // 33.2% of total supply
-    uint256 constant GENESIS_UNLOCK_EPOCHS = 365;
+        (MAX_TOKEN_SUPPLY * 28_90) / MAX_PERCENTAGE; // 28.9% of total supply
+    uint256 constant GENESIS_MINING_EPOCHS = 365;
     uint256 constant GENESIS_TOKEN_ID = 0;
 
-    uint256 constant LP_WALLET_PERCENTAGE = 26_70;
-    uint256 constant EXPENSES_WALLET_PERCENTAGE = 13_80;
-    uint256 constant MARKETING_WALLET_PERCENTAGE = 7_50;
+    uint256 constant LP_WALLET_PERCENTAGE = 26_71;
+    uint256 constant EXPENSES_WALLET_PERCENTAGE = 13_84;
+    uint256 constant MARKETING_WALLET_PERCENTAGE = 7_54;
     uint256 constant GRANTS_WALLET_PERCENTAGE = 34_60;
-    uint256 constant CSR_WALLET_PERCENTAGE = 17_30;
+    uint256 constant CSR_WALLET_PERCENTAGE = 17_31;
 
     //..######..########..#######..########.....###.....######...########
     //.##....##....##....##.....##.##.....##...##.##...##....##..##......
@@ -242,7 +241,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         uint256 currentEpoch = getCurrentEpoch();
         require(
             license.lastClaimEpoch == currentEpoch ||
-                currentEpoch < CLIFF_EPOCHS,
+                currentEpoch < NO_MINING_EPOCHS,
             "Cannot unlink before claiming rewards"
         );
 
@@ -332,7 +331,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         uint256 licenseRewards = 0;
 
         if (
-            currentEpoch < CLIFF_EPOCHS &&
+            currentEpoch < NO_MINING_EPOCHS &&
             computeParam.licenseId != GENESIS_TOKEN_ID
         ) {
             return 0;
@@ -349,9 +348,9 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
 
         uint256 firstEpochToClaim = (computeParam.licenseId ==
             GENESIS_TOKEN_ID ||
-            license.lastClaimEpoch >= CLIFF_EPOCHS)
+            license.lastClaimEpoch >= NO_MINING_EPOCHS)
             ? license.lastClaimEpoch
-            : CLIFF_EPOCHS;
+            : NO_MINING_EPOCHS;
         uint256 epochsToClaim = currentEpoch - firstEpochToClaim;
         if (epochsToClaim == 0) {
             return 0;
@@ -371,8 +370,8 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         uint256 maxRewardsPerEpoch = license.totalAssignedAmount /
             (
                 computeParam.licenseId == GENESIS_TOKEN_ID
-                    ? GENESIS_UNLOCK_EPOCHS
-                    : VESTING_DURATION_EPOCHS
+                    ? GENESIS_MINING_EPOCHS
+                    : MINING_DURATION_EPOCHS
             );
         for (uint256 i = 0; i < epochsToClaim; i++) {
             licenseRewards +=
@@ -490,9 +489,9 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         License memory license = licenses[licenseId];
 
         uint256 firstEpochToClaim = (licenseId == GENESIS_TOKEN_ID ||
-            license.lastClaimEpoch >= CLIFF_EPOCHS)
+            license.lastClaimEpoch >= NO_MINING_EPOCHS)
             ? license.lastClaimEpoch
-            : CLIFF_EPOCHS;
+            : NO_MINING_EPOCHS;
 
         uint256 currentEpoch = getCurrentEpoch();
         if (currentEpoch < firstEpochToClaim) {

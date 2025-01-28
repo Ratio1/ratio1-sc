@@ -90,21 +90,21 @@ contract NDContract is
     uint256 constant MAX_LICENSE_TOKENS_PERCENTAGE = 45_00; // 45% of total supply
     uint256 constant MAX_LICENSE_TOKENS_SUPPLY =
         (MAX_TOKEN_SUPPLY * MAX_LICENSE_TOKENS_PERCENTAGE) / MAX_PERCENTAGE;
-    uint256 constant MAX_RELEASE_PER_LICENSE =
+    uint256 constant MAX_MINING_PER_LICENSE =
         MAX_LICENSE_TOKENS_SUPPLY / MAX_LICENSE_SUPPLY;
-    uint256 constant RELEASE_DURATION_YEARS = 5;
+    uint256 constant MINING_DURATION_EPOCHS = 36 * 30;
     uint256 constant MAX_RELEASE_PER_DAY =
-        MAX_RELEASE_PER_LICENSE / RELEASE_DURATION_YEARS / 12 / 30; // TODO should be 365?
+        MAX_MINING_PER_LICENSE / MINING_DURATION_EPOCHS;
     uint256 constant MAX_LICENSES_BUYS_PER_TX = 5;
 
     uint256 constant BURN_PERCENTAGE = 20_00;
     uint256 constant LIQUIDITY_PERCENTAGE = 50_00;
     uint256 constant COMPANY_PERCENTAGE = 30_00;
-    uint256 constant LP_WALLET_PERCENTAGE = 26_70;
-    uint256 constant EXPENSES_WALLET_PERCENTAGE = 13_80;
-    uint256 constant MARKETING_WALLET_PERCENTAGE = 7_50;
+    uint256 constant LP_WALLET_PERCENTAGE = 26_71;
+    uint256 constant EXPENSES_WALLET_PERCENTAGE = 13_84;
+    uint256 constant MARKETING_WALLET_PERCENTAGE = 7_54;
     uint256 constant GRANTS_WALLET_PERCENTAGE = 34_60;
-    uint256 constant CSR_WALLET_PERCENTAGE = 17_30;
+    uint256 constant CSR_WALLET_PERCENTAGE = 17_31;
 
     //..######..########..#######..########.....###.....######...########
     //.##....##....##....##.....##.##.....##...##.##...##....##..##......
@@ -439,7 +439,7 @@ contract NDContract is
             "Invalid node address."
         );
 
-        if (license.totalClaimedAmount == MAX_RELEASE_PER_LICENSE) {
+        if (license.totalClaimedAmount == MAX_MINING_PER_LICENSE) {
             return 0;
         }
 
@@ -465,7 +465,7 @@ contract NDContract is
                 MAX_AVAILABILITY;
         }
 
-        uint256 maxRemainingClaimAmount = MAX_RELEASE_PER_LICENSE -
+        uint256 maxRemainingClaimAmount = MAX_MINING_PER_LICENSE -
             license.totalClaimedAmount;
         if (licenseRewards > maxRemainingClaimAmount) {
             return maxRemainingClaimAmount;
@@ -671,7 +671,7 @@ contract NDContract is
 
             if (
                 license.lastClaimEpoch < currentEpoch &&
-                license.totalClaimedAmount < MAX_RELEASE_PER_LICENSE
+                license.totalClaimedAmount < MAX_MINING_PER_LICENSE
             ) {
                 claimableEpochs = currentEpoch - license.lastClaimEpoch;
             }
@@ -680,7 +680,7 @@ contract NDContract is
                 licenseId: licenseId,
                 nodeAddress: license.nodeAddress,
                 totalClaimedAmount: license.totalClaimedAmount,
-                remainingAmount: MAX_RELEASE_PER_LICENSE -
+                remainingAmount: MAX_MINING_PER_LICENSE -
                     license.totalClaimedAmount,
                 lastClaimEpoch: license.lastClaimEpoch,
                 claimableEpochs: claimableEpochs,
