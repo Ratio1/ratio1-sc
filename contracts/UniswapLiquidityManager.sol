@@ -17,12 +17,14 @@ contract UniswapLiquidityManager is ILiquidityManager, Ownable {
         address uniswapV2Router,
         address uniswapV2Pair,
         address usdcAddr,
-        address r1Addr
+        address r1Addr,
+        address newOwner
     ) {
         _uniswapV2Router = IUniswapV2Router02(uniswapV2Router);
         _uniswapV2Pair = IUniswapV2Pair(uniswapV2Pair);
         _usdcAddr = usdcAddr;
         _r1Addr = r1Addr;
+        transferOwnership(newOwner);
     }
 
     function setUniswapParams(

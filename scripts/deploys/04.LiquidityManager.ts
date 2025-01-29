@@ -2,6 +2,7 @@ import { ethers } from "hardhat";
 import {
   ND_SC_ADDR,
   R1_TOKEN_ADDR,
+  SAFE_ADDR,
   UNISWAP_V2_PAIR_ADDR,
   UNISWAP_V2_ROUTER_ADDR,
   USDC_TOKEN_ADDR,
@@ -17,14 +18,15 @@ async function main() {
       UNISWAP_V2_ROUTER_ADDR,
       UNISWAP_V2_PAIR_ADDR,
       USDC_TOKEN_ADDR,
-      R1_TOKEN_ADDR
+      R1_TOKEN_ADDR,
+      SAFE_ADDR
     );
   await uniswapLiquidityManagerContract.deployed();
   console.log(
     "UniswapLiquidityManager deployed to:",
     uniswapLiquidityManagerContract.address
   );
-
+  /*
   const NDContractFactory = await ethers.getContractFactory(
     "NDContract",
     deployer
@@ -32,6 +34,7 @@ async function main() {
   const ndContract = NDContractFactory.attach(ND_SC_ADDR);
   await ndContract.setLiquidityManager(uniswapLiquidityManagerContract.address);
   console.log("UniswapLiquidityManager contract address set in ND contract");
+  */
 }
 
 main()

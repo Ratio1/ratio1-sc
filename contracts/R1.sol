@@ -11,7 +11,9 @@ contract R1 is Ownable, ERC20Capped {
     address public _ndContract;
 
     // Constructor will be called on contract creation
-    constructor() ERC20("Ratio1", "R1") ERC20Capped(maxSupply) {}
+    constructor(address newOwner) ERC20("Ratio1", "R1") ERC20Capped(maxSupply) {
+        transferOwnership(newOwner);
+    }
 
     function _canMint() private view returns (bool) {
         return msg.sender == _mndContract || msg.sender == _ndContract;

@@ -61,7 +61,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
     // TODO - change with start date of the protocol
-    uint256 constant startEpochTimestamp = 1737676800; // 2025-01-24 00:00:00
+    uint256 constant startEpochTimestamp = 1738094400; // 2025-01-25 20:00:00
     uint256 constant epochDuration = 60 minutes; //TODO 24 hours;
 
     uint256 constant MAX_PERCENTAGE = 100_00;
@@ -142,12 +142,16 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     event SignerAdded(address newSigner);
     event SignerRemoved(address removedSigner);
 
-    constructor(address tokenAddress) ERC721("MNDLicense", "MND") {
+    constructor(
+        address tokenAddress,
+        address newOwner
+    ) ERC721("MNDLicense", "MND") {
         _R1Token = R1(tokenAddress);
         minimumRequiredSignatures = 1;
+        transferOwnership(newOwner);
 
         // Mint the first Genesis Node Deed
-        _safeMint(msg.sender, GENESIS_TOKEN_ID);
+        _mint(newOwner, GENESIS_TOKEN_ID);
         licenses[GENESIS_TOKEN_ID] = License({
             nodeAddress: address(0),
             lastClaimEpoch: 0,

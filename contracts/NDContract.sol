@@ -75,7 +75,7 @@ contract NDContract is
     //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
     // TODO - change with start date of the protocol
-    uint256 constant startEpochTimestamp = 1737676800; // 2025-01-24 00:00:00
+    uint256 constant startEpochTimestamp = 1738094400; // 2025-01-25 20:00:00
     uint256 constant epochDuration = 60 minutes; //TODO 24 hours;
 
     uint256 constant MAX_PERCENTAGE = 100_00;
@@ -168,9 +168,13 @@ contract NDContract is
     event LpAddrChanged(address newlpAddr);
     event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount);
 
-    constructor(address tokenAddress) ERC721("NDLicense", "ND") {
+    constructor(
+        address tokenAddress,
+        address newOwner
+    ) ERC721("NDLicense", "ND") {
         _R1Token = R1(tokenAddress);
         minimumRequiredSignatures = 1;
+        transferOwnership(newOwner);
 
         initializePriceTiers();
     }

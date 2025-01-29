@@ -1,5 +1,5 @@
 import { ethers } from "hardhat";
-import { R1_TOKEN_ADDR } from "../configs/constants";
+import { R1_TOKEN_ADDR, SAFE_ADDR } from "../configs/constants";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -8,14 +8,15 @@ async function main() {
     "MNDContract",
     deployer
   );
-  const mndContract = await MNDContractFactory.deploy(R1_TOKEN_ADDR);
+  const mndContract = await MNDContractFactory.deploy(R1_TOKEN_ADDR, SAFE_ADDR);
   await mndContract.deployed();
   console.log("MND deployed to:", mndContract.address);
-
+  /*
   const R1ContractFactory = await ethers.getContractFactory("R1", deployer);
   const r1Contract = R1ContractFactory.attach(R1_TOKEN_ADDR);
   await r1Contract.setMndContract(mndContract.address);
   console.log("MND contract address set in R1 contract");
+  */
 }
 
 main()

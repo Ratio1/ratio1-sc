@@ -1,5 +1,5 @@
 import { ethers } from "hardhat";
-import { R1_TOKEN_ADDR } from "../configs/constants";
+import { R1_TOKEN_ADDR, SAFE_ADDR } from "../configs/constants";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -8,14 +8,15 @@ async function main() {
     "NDContract",
     deployer
   );
-  const ndContract = await NDContractFactory.deploy(R1_TOKEN_ADDR);
+  const ndContract = await NDContractFactory.deploy(R1_TOKEN_ADDR, SAFE_ADDR);
   await ndContract.deployed();
   console.log("ND deployed to:", ndContract.address);
-
+  /*
   const R1ContractFactory = await ethers.getContractFactory("R1", deployer);
   const r1Contract = R1ContractFactory.attach(R1_TOKEN_ADDR);
   await r1Contract.setNdContract(ndContract.address);
   console.log("ND contract address set in R1 contract");
+  */
 }
 
 main()
