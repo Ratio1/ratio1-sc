@@ -151,7 +151,8 @@ contract NDContract is
         address indexed to,
         bytes32 indexed invoiceUuid,
         uint256 tokenCount,
-        uint256 unitUsdPrice
+        uint256 unitUsdPrice,
+        uint256 totalR1Cost
     );
     event LinkNode(
         address indexed to,
@@ -276,7 +277,8 @@ contract NDContract is
             msg.sender,
             invoiceUuid,
             mintedTokens.length,
-            priceTier.usdPrice
+            priceTier.usdPrice,
+            totalCost
         );
 
         return mintedTokens.length;
