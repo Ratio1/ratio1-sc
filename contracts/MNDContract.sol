@@ -513,7 +513,10 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
                     lastClaimOracle: license.lastClaimOracle
                 });
         }
-        uint256 claimableEpochs = getCurrentEpoch() - firstEpochToClaim;
+        uint256 claimableEpochs = 0;
+        if (license.nodeAddress != address(0)) {
+            claimableEpochs = getCurrentEpoch() - firstEpochToClaim;
+        }
 
         return
             LicenseInfo({

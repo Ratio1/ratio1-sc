@@ -676,6 +676,7 @@ contract NDContract is
             uint256 claimableEpochs = 0;
 
             if (
+                license.nodeAddress != address(0) &&
                 license.lastClaimEpoch < currentEpoch &&
                 license.totalClaimedAmount < MAX_MINING_PER_LICENSE
             ) {
