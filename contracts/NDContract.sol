@@ -211,6 +211,7 @@ contract NDContract is
     function buyLicense(
         uint256 nLicensesToBuy,
         uint8 requestedPriceTier,
+        uint256 maxAcceptedTokenPerLicense,
         bytes32 invoiceUuid,
         uint256 usdMintLimit,
         bytes memory signature
@@ -245,7 +246,12 @@ contract NDContract is
             priceTier,
             nLicensesToBuy
         );
-        uint256 totalTokenCost = buyableUnits * getLicenseTokenPrice();
+        uint256 licenseTokenPrice = getLicenseTokenPrice();
+        require(
+            licenseTokenPrice <= maxAcceptedTokenPerLicense,
+            "Price exceeds max accepted"
+        );
+        uint256 totalTokenCost = buyableUnits * licenseTokenPrice;
         uint256 totalUsdCost = buyableUnits * priceTier.usdPrice;
 
         // Check user's mint limit
