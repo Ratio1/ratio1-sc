@@ -32,7 +32,6 @@ struct PriceTier {
     uint256 usdPrice; // Price in USD
     uint256 totalUnits; // Number of units available at this stage
     uint256 soldUnits; // Number of units sold at this stage
-    uint256 limitPerWallet; // Limit of units per wallet at this stage
 }
 
 struct License {
@@ -130,13 +129,13 @@ contract NDContract is
     address[] public signers;
     uint8 public minimumRequiredSignatures;
     mapping(address => bool) isSigner;
-    uint256 public limitPerWallet;
     mapping(uint8 => PriceTier) public _priceTiers;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
     mapping(address => address) public nodeToUser;
     mapping(address => uint256) public signerSignaturesCount;
     mapping(address => uint256) public signerAdditionTimestamp;
+    mapping(address => uint256) public userUsdMintedAmount;
     mapping(bytes32 => bool) public usedInvoiceUUIDs;
 
     //.########.##.....##.########.##....##.########..######.
@@ -182,18 +181,18 @@ contract NDContract is
     }
 
     function initializePriceTiers() private {
-        _priceTiers[1] = PriceTier(500, 89, 0, 19);
-        _priceTiers[2] = PriceTier(750, 144, 0, 13);
-        _priceTiers[3] = PriceTier(1000, 233, 0, 9);
-        _priceTiers[4] = PriceTier(1500, 377, 0, 6);
-        _priceTiers[5] = PriceTier(2000, 610, 0, 4);
-        _priceTiers[6] = PriceTier(2500, 987, 0, 3);
-        _priceTiers[7] = PriceTier(3000, 1597, 0, 3);
-        _priceTiers[8] = PriceTier(3500, 2584, 0, 2);
-        _priceTiers[9] = PriceTier(4000, 4181, 0, 2);
-        _priceTiers[10] = PriceTier(5000, 6765, 0, 1);
-        _priceTiers[11] = PriceTier(7000, 10946, 0, 1);
-        _priceTiers[12] = PriceTier(9500, 17711, 0, 1);
+        _priceTiers[1] = PriceTier(500, 89, 0);
+        _priceTiers[2] = PriceTier(750, 144, 0);
+        _priceTiers[3] = PriceTier(1000, 233, 0);
+        _priceTiers[4] = PriceTier(1500, 377, 0);
+        _priceTiers[5] = PriceTier(2000, 610, 0);
+        _priceTiers[6] = PriceTier(2500, 987, 0);
+        _priceTiers[7] = PriceTier(3000, 1597, 0);
+        _priceTiers[8] = PriceTier(3500, 2584, 0);
+        _priceTiers[9] = PriceTier(4000, 4181, 0);
+        _priceTiers[10] = PriceTier(5000, 6765, 0);
+        _priceTiers[11] = PriceTier(7000, 10946, 0);
+        _priceTiers[12] = PriceTier(9500, 17711, 0);
 
         uint256 ndSupply = 0;
         for (uint8 i = 1; i <= LAST_PRICE_TIER; i++) {
@@ -208,6 +207,7 @@ contract NDContract is
         uint256 nLicensesToBuy,
         uint8 requestedPriceTier,
         bytes32 invoiceUuid,
+        uint256 usdMintLimit,
         bytes memory signature
     ) public nonReentrant whenNotPaused returns (uint) {
         require(
@@ -221,11 +221,6 @@ contract NDContract is
         require(
             nLicensesToBuy > 0 && nLicensesToBuy <= MAX_LICENSES_BUYS_PER_TX,
             "Invalid number of licenses"
-        );
-        require(
-            balanceOf(msg.sender) + nLicensesToBuy <=
-                getCurrentLimitPerWallet(),
-            "Exceeds limit per wallet"
         );
         require(
             !usedInvoiceUUIDs[invoiceUuid],
@@ -245,25 +240,22 @@ contract NDContract is
             priceTier,
             nLicensesToBuy
         );
-        uint256 totalCost = nLicensesToBuy * getLicenseTokenPrice();
+        uint256 totalTokenCost = buyableUnits * getLicenseTokenPrice();
+        uint256 totalUsdCost = buyableUnits * priceTier.usdPrice;
 
-        // Check user's balance before attempting transfer
+        // Check user's mint limit
         require(
-            _R1Token.balanceOf(msg.sender) >= totalCost,
-            "Insufficient R1 balance"
+            userUsdMintedAmount[msg.sender] + totalUsdCost <= usdMintLimit,
+            "Exceeds mint limit"
         );
-        // Check user's allowance
-        require(
-            _R1Token.allowance(msg.sender, address(this)) >= totalCost,
-            "Insufficient allowance"
-        );
+        userUsdMintedAmount[msg.sender] += totalUsdCost;
 
         // Transfer R1 tokens from user to contract
         require(
-            _R1Token.transferFrom(msg.sender, address(this), totalCost),
+            _R1Token.transferFrom(msg.sender, address(this), totalTokenCost),
             "R1 transfer failed"
         );
-        distributePayment(totalCost);
+        distributePayment(totalTokenCost);
 
         uint256[] memory mintedTokens = batchMint(msg.sender, buyableUnits);
 
@@ -279,7 +271,7 @@ contract NDContract is
             invoiceUuid,
             mintedTokens.length,
             priceTier.usdPrice,
-            totalCost
+            totalTokenCost
         );
 
         return mintedTokens.length;
@@ -567,13 +559,6 @@ contract NDContract is
         return _priceTiers[currentPriceTier].usdPrice;
     }
 
-    function getCurrentLimitPerWallet() public view returns (uint256) {
-        if (limitPerWallet != 0) {
-            return limitPerWallet;
-        }
-        return _priceTiers[currentPriceTier].limitPerWallet;
-    }
-
     function _burn(
         uint256 tokenId
     ) internal override(ERC721, ERC721URIStorage) {
@@ -638,10 +623,6 @@ contract NDContract is
         uint8 minimumRequiredSignatures_
     ) public onlyOwner {
         minimumRequiredSignatures = minimumRequiredSignatures_;
-    }
-
-    function setLimitPerWallet(uint8 limitPerWallet_) public onlyOwner {
-        limitPerWallet = limitPerWallet_;
     }
 
     function banLicense(uint256 licenseId) public onlyOwner {
