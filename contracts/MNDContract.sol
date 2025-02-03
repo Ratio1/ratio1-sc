@@ -556,6 +556,10 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
             _ndContract.registeredNodeAddresses(nodeAddress);
     }
 
+    function getSigners() public view returns (address[] memory) {
+        return signers;
+    }
+
     ///// Signature functions
     using ECDSA for bytes32;
 

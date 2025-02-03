@@ -711,6 +711,10 @@ contract NDContract is
             _mndContract.registeredNodeAddresses(nodeAddress);
     }
 
+    function getSigners() public view returns (address[] memory) {
+        return signers;
+    }
+
     // LP setup
     function setLiquidityManager(address liquidityManager) public onlyOwner {
         _liquidityManager = ILiquidityManager(liquidityManager);
