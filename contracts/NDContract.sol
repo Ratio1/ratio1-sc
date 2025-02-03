@@ -75,7 +75,7 @@ contract NDContract is
     //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
     // TODO - change with start date of the protocol
-    uint256 constant startEpochTimestamp = 1738094400; // 2025-01-25 20:00:00
+    uint256 constant startEpochTimestamp = 1738767600; // Wednesday 5 February 2025 15:00:00
     uint256 constant epochDuration = 60 minutes; //TODO 24 hours;
 
     uint256 constant MAX_PERCENTAGE = 100_00;
@@ -83,7 +83,7 @@ contract NDContract is
 
     uint256 constant PRICE_DECIMALS = 10 ** 18;
 
-    uint256 constant MAX_TOKEN_SUPPLY = 1618033988 * PRICE_DECIMALS;
+    uint256 constant MAX_TOKEN_SUPPLY = 161803398 * PRICE_DECIMALS;
     uint8 constant LAST_PRICE_TIER = 12;
 
     uint256 constant MAX_LICENSE_SUPPLY = 46224;

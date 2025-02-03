@@ -33,17 +33,17 @@ const config: HardhatUserConfig = {
     },
   },
   paths: {
-    tests: "./test", // Assicurati che il percorso sia corretto
+    tests: "./test",
   },
   networks: {
     hardhat: {
       chainId: 1337,
-      initialDate: "2024-03-10T00:00:00Z", // 3 marzo 2024, mezzanotte UTC
+      initialDate: "2025-02-02T15:00:00Z",
     },
     baseSepolia: {
       chainId: 84532,
       url: "https://base-sepolia-rpc.publicnode.com",
-      accounts: [BE_SIGNER_PRIVATE_KEY],
+      //accounts: [BE_SIGNER_PRIVATE_KEY],
     },
   },
   /*networks: {

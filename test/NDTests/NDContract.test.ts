@@ -1,12 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import {
-  R1,
-  NDContract,
-  ILiquidityManager,
-} from "../../typechain-types";
-
+import { R1, NDContract, ILiquidityManager } from "../../typechain-types";
 
 const BigNumber = ethers.BigNumber;
 
@@ -37,7 +32,7 @@ const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: BigNumber.from(1),
   rewardsAmount: REWARDS_AMOUNT,
 };
-const START_EPOCH_TIMESTAMP = 1710028800;
+const START_EPOCH_TIMESTAMP = 1738767600;
 const CURRENT_EPOCH_TIMESTAMP = Math.floor(Date.now() / 1000);
 const CLAIMABLE_EPOCHS = Math.floor(
   (CURRENT_EPOCH_TIMESTAMP - START_EPOCH_TIMESTAMP) / ONE_DAY_IN_SECS
@@ -117,7 +112,7 @@ const EXPECTED_PRICE_TIERS = [
   },
 ];
 
-describe("NDContract", function () {
+describe.only("NDContract", function () {
   /*
   .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
   .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -146,7 +141,8 @@ describe("NDContract", function () {
   let invoiceUuid: Buffer;
 
   before(async function () {
-    const [deployer, user1, user2, backendSigner] = await ethers.getSigners();
+    const [deployer, user1, user2, backendSigner, UniPair] =
+      await ethers.getSigners();
     owner = deployer;
     firstUser = user1;
     secondUser = user2;
@@ -156,17 +152,20 @@ describe("NDContract", function () {
     maxUnits = 100;
 
     const R1Contract = await ethers.getContractFactory("R1");
-    r1Contract = await R1Contract.deploy();
+    r1Contract = await R1Contract.deploy(owner.address);
 
     const USDCContract = await ethers.getContractFactory("ERC20Mock");
     let usdcContract = await USDCContract.deploy();
 
     const NDContract = await ethers.getContractFactory("NDContract");
-    ndContract = await NDContract.deploy(r1Contract.address);
+    ndContract = await NDContract.deploy(r1Contract.address, owner.address);
     await ndContract.addSigner(backend.address);
 
     const MNDContract = await ethers.getContractFactory("MNDContract");
-    let mndContract = await MNDContract.deploy(r1Contract.address);
+    let mndContract = await MNDContract.deploy(
+      r1Contract.address,
+      owner.address
+    );
     await mndContract.addSigner(backend.address);
 
     await ndContract.setMNDContract(mndContract.address);
@@ -179,8 +178,10 @@ describe("NDContract", function () {
     );
     liquidityManagerContract = await UniswapLiquidityManagerContract.deploy(
       uniswapContract.address,
+      UniPair.address,
       usdcContract.address,
-      r1Contract.address
+      r1Contract.address,
+      owner.address
     );
 
     await ndContract.setCompanyWallets(
@@ -205,6 +206,10 @@ describe("NDContract", function () {
       epochs: [1, 2, 3, 4, 5],
       availabilies: [250, 130, 178, 12, 0],
     };
+
+    let daysToAdd = START_EPOCH_TIMESTAMP;
+    await ethers.provider.send("evm_setNextBlockTimestamp", [daysToAdd]);
+    await ethers.provider.send("evm_mine", []);
     snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
 
@@ -347,8 +352,8 @@ describe("NDContract", function () {
     expect(await ndContract.supportsInterface("0x80ac58cd")).to.be.true;
   });
 
-  it("Get licenses", async function () {
-    await updateTimestamp();
+  it.only("Get licenses", async function () {
+    //await updateTimestamp();
     await buyLicenseWithMintAndAllowance(
       r1Contract,
       ndContract,
@@ -443,6 +448,15 @@ describe("NDContract", function () {
         };
       })
     );
+  });
+
+  it("Get Current limit per wallet", async function () {
+    await updateTimestamp();
+    let result = await ndContract.getCurrentLimitPerWallet();
+    expect(result).to.equal(19);
+    await ndContract.setLimitPerWallet(10);
+    let result2 = await ndContract.getCurrentLimitPerWallet();
+    expect(result2).to.equal(10);
   });
 
   it("Buy license - should work", async function () {

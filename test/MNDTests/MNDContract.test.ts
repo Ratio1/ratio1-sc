@@ -26,28 +26,23 @@ const newMarketingWallet = "0x0000000000000000000000000000000000000003";
 const newGrantsWallet = "0x0000000000000000000000000000000000000004";
 const newCsrWallet = "0x0000000000000000000000000000000000000005";
 const ONE_DAY_IN_SECS = 24 * 60 * 60;
-const REWARDS_AMOUNT = BigNumber.from("5945394875100725221593");
-const LICENSE_POWER = BigNumber.from("4854102").mul(ONE_TOKEN);
+const REWARDS_AMOUNT = BigNumber.from("1205593464052287581697");
+const LICENSE_POWER = BigNumber.from("485410").mul(ONE_TOKEN);
 const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: BigNumber.from(1),
   rewardsAmount: REWARDS_AMOUNT,
 };
 
-const START_EPOCH_TIMESTAMP = 1710028800;
-const CURRENT_EPOCH_TIMESTAMP = Math.floor(Date.now() / 1000);
-const CLAIMABLE_EPOCHS = Math.floor(
-  (CURRENT_EPOCH_TIMESTAMP -
-    (START_EPOCH_TIMESTAMP + 30 * 4 * ONE_DAY_IN_SECS)) /
-    ONE_DAY_IN_SECS
-);
+const START_EPOCH_TIMESTAMP = 1738767600;
+
 const EXPECTED_LICENSE_INFO = {
   licenseId: BigNumber.from(1),
-  nodeAddress: NULL_ADDRESS,
+  nodeAddress: "0x0000000000000000000000000000000000000010",
   totalClaimedAmount: BigNumber.from(0),
-  remainingAmount: BigNumber.from("4854102000000000000000000"),
+  remainingAmount: BigNumber.from("485410000000000000000000"),
   lastClaimEpoch: BigNumber.from(0),
-  claimableEpochs: BigNumber.from(CLAIMABLE_EPOCHS),
-  assignTimestamp: BigNumber.from(0),
+  claimableEpochs: BigNumber.from(1), //FUNCTION updateTimestamp set current chain timestamp to one day after cliff epoch
+  assignTimestamp: BigNumber.from(1738767602),
 };
 describe("MNDContract", function () {
   /*
@@ -69,7 +64,7 @@ describe("MNDContract", function () {
   let COMPUTE_PARAMS = {
     licenseId: 1,
     nodeAddress: NODE_ADDRESS,
-    epochs: [1, 2, 3, 4, 5],
+    epochs: [2, 3, 4, 5, 6],
     availabilies: [250, 130, 178, 12, 0],
   };
   let snapshotId: string;
@@ -82,15 +77,15 @@ describe("MNDContract", function () {
     oracle = oracleSigner;
 
     const R1Contract = await ethers.getContractFactory("R1");
-    r1Contract = await R1Contract.deploy();
+    r1Contract = await R1Contract.deploy(owner.address);
 
     const MNDContract = await ethers.getContractFactory("MNDContract");
-    mndContract = await MNDContract.deploy(r1Contract.address);
+    mndContract = await MNDContract.deploy(r1Contract.address, owner.address);
     await mndContract.addSigner(oracle.address);
     await mndContract.setMinimumRequiredSignatures(BigNumber.from(1));
 
     const NDContract = await ethers.getContractFactory("NDContract");
-    let ndContract = await NDContract.deploy(r1Contract.address);
+    let ndContract = await NDContract.deploy(r1Contract.address, owner.address);
     await ndContract.addSigner(oracle.address);
 
     await mndContract.setNDContract(ndContract.address);
@@ -101,9 +96,14 @@ describe("MNDContract", function () {
     COMPUTE_PARAMS = {
       licenseId: 1,
       nodeAddress: NODE_ADDRESS,
-      epochs: [1, 2, 3, 4, 5],
+      epochs: [121, 122, 123, 124, 125],
       availabilies: [250, 130, 178, 12, 0],
     };
+
+    //ADD TWO DAYS TO REACH START EPOCH
+    let daysToAdd = START_EPOCH_TIMESTAMP;
+    await ethers.provider.send("evm_setNextBlockTimestamp", [daysToAdd]);
+    await ethers.provider.send("evm_mine", []);
     snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
 
@@ -111,7 +111,7 @@ describe("MNDContract", function () {
     COMPUTE_PARAMS = {
       licenseId: 1,
       nodeAddress: NODE_ADDRESS,
-      epochs: [1, 2, 3, 4, 5],
+      epochs: [121, 122, 123, 124, 125],
       availabilies: [250, 130, 178, 12, 0],
     };
     await ethers.provider.send("evm_revert", [snapshotId]);
@@ -182,8 +182,11 @@ describe("MNDContract", function () {
   }
 
   async function updateTimestamp() {
+    let cliffEpochPased = 30 * 4 * ONE_DAY_IN_SECS;
+    let todayCliffEpochPassed =
+      START_EPOCH_TIMESTAMP + cliffEpochPased + ONE_DAY_IN_SECS; //Chain start 2 days before contracts, and we need to be one day afetr cliff epoch
     await ethers.provider.send("evm_setNextBlockTimestamp", [
-      CURRENT_EPOCH_TIMESTAMP,
+      todayCliffEpochPassed,
     ]);
     await ethers.provider.send("evm_mine", []);
   }
@@ -212,10 +215,14 @@ describe("MNDContract", function () {
   });
 
   it("Get licenses - should work", async function () {
-    await updateTimestamp();
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
+
+    await mndContract
+      .connect(firstUser)
+      .linkNode(1, "0x0000000000000000000000000000000000000010");
+    await updateTimestamp();
 
     let result = await mndContract.getUserLicense(firstUser.address);
     expect(EXPECTED_LICENSE_INFO).to.deep.equal({
@@ -229,10 +236,21 @@ describe("MNDContract", function () {
     });
   });
 
-  it.skip("Get licenses - cliff epoch not reached", async function () {
+  it("Get licenses - cliff epoch not reached", async function () {
+    //FAIL due to negative number, TODO check when fixed
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
+
+    let EXPECTED_LICENSE_INFO = {
+      licenseId: BigNumber.from(1),
+      nodeAddress: NULL_ADDRESS,
+      totalClaimedAmount: BigNumber.from(0),
+      remainingAmount: BigNumber.from("485410000000000000000000"),
+      lastClaimEpoch: BigNumber.from(0),
+      claimableEpochs: BigNumber.from(0),
+      assignTimestamp: BigNumber.from(0),
+    };
 
     let result = await mndContract.getUserLicense(firstUser.address);
     expect(EXPECTED_LICENSE_INFO).to.deep.equal({
@@ -268,22 +286,20 @@ describe("MNDContract", function () {
   });
 
   it("Get licenses - genesis license", async function () {
+    await mndContract
+      .connect(owner)
+      .linkNode(0, "0x0000000000000000000000000000000000000010");
     await updateTimestamp();
-    let _START_EPOCH_TIMESTAMP = 1710028800;
-    let _CURRENT_EPOCH_TIMESTAMP = Math.floor(Date.now() / 1000);
-    let _CLAIMABLE_EPOCHS = Math.floor(
-      (_CURRENT_EPOCH_TIMESTAMP - _START_EPOCH_TIMESTAMP) / ONE_DAY_IN_SECS
-    );
 
     let result = await mndContract.getUserLicense(owner.address);
     expect({
       licenseId: BigNumber.from(0),
-      nodeAddress: NULL_ADDRESS,
+      nodeAddress: "0x0000000000000000000000000000000000000010",
       totalClaimedAmount: BigNumber.from(0),
-      remainingAmount: BigNumber.from("537187284016000000000000000"),
+      remainingAmount: BigNumber.from("46761182022000000000000000"),
       lastClaimEpoch: BigNumber.from(0),
-      claimableEpochs: BigNumber.from(_CLAIMABLE_EPOCHS),
-      assignTimestamp: BigNumber.from(0),
+      claimableEpochs: BigNumber.from(121),
+      assignTimestamp: BigNumber.from(1738767601),
     }).to.deep.equal({
       licenseId: result.licenseId,
       nodeAddress: result.nodeAddress,
@@ -331,7 +347,7 @@ describe("MNDContract", function () {
     let ownerOfLiense = await mndContract.ownerOf(BigNumber.from(1));
     expect(firstUser.address).to.equal(ownerOfLiense);
     expect(await mndContract.totalLicensesAssignedTokensAmount()).to.be.equal(
-      BigNumber.from("4854102000000000000000000")
+      BigNumber.from("485410000000000000000000")
     );
   });
 
@@ -359,14 +375,14 @@ describe("MNDContract", function () {
         .map((signer) =>
           mndContract
             .connect(owner)
-            .addLicense(signer.address, ONE_TOKEN.mul("32360679"))
+            .addLicense(signer.address, ONE_TOKEN.mul("3236067"))
         )
     );
 
     await expect(
       mndContract
         .connect(owner)
-        .addLicense(firstUser.address, ONE_TOKEN.mul("32360679"))
+        .addLicense(firstUser.address, ONE_TOKEN.mul("3236067"))
     ).to.be.revertedWith("Max total assigned tokens reached");
   });
 
@@ -406,18 +422,20 @@ describe("MNDContract", function () {
         .connect(owner)
         .addLicense(
           user_addr,
-          ONE_TOKEN.mul(BigNumber.from("3236067976")).div("100")
+          ONE_TOKEN.mul(BigNumber.from("323606796")).div(100)
         );
     }
+
     await mndContract
       .connect(owner)
       .addLicense(
         secondUser.address,
-        ONE_TOKEN.mul(BigNumber.from("1618033988")).div("1000")
+        ONE_TOKEN.mul(BigNumber.from("161803398")).div(1000)
       );
+
     //Should revert
     await expect(
-      mndContract.connect(owner).addLicense(firstUser.address, 1)
+      mndContract.connect(owner).addLicense(firstUser.address, ONE_TOKEN)
     ).to.be.revertedWith("Max total assigned tokens reached");
   });
 
@@ -587,8 +605,7 @@ describe("MNDContract", function () {
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
     await linkNode(mndContract, firstUser, 1);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
-    await ethers.provider.send("evm_mine", []);
+    await updateTimestamp();
     //DO TEST
     await expect(
       mndContract.connect(firstUser).unlinkNode(1)
@@ -602,6 +619,7 @@ describe("MNDContract", function () {
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
     await linkNode(mndContract, firstUser, 1);
+
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
 
@@ -658,19 +676,19 @@ describe("MNDContract", function () {
         Buffer.from(await signComputeParams(oracle), "hex"),
       ]);
     expect(await r1Contract.balanceOf(newLpWallet)).to.equal(
-      BigNumber.from("878372632333011442385172")
+      BigNumber.from("76489386831087123287670")
     );
     expect(await r1Contract.balanceOf(newExpensesWallet)).to.equal(
-      BigNumber.from("453990349295713779210313")
+      BigNumber.from("39633587186156712328766")
     );
     expect(await r1Contract.balanceOf(newMarketingWallet)).to.equal(
-      BigNumber.from("246733885486800966962127")
+      BigNumber.from("21592286660666301369862")
     );
     expect(await r1Contract.balanceOf(newGrantsWallet)).to.equal(
-      BigNumber.from("1138265658379108460918613")
+      BigNumber.from("99083967965391780821916")
     );
     expect(await r1Contract.balanceOf(newCsrWallet)).to.equal(
-      BigNumber.from("569132829189554230459306")
+      BigNumber.from("49570620967656986301369")
     );
   });
 
@@ -735,11 +753,11 @@ describe("MNDContract", function () {
     await ethers.provider.send("evm_mine", []);
 
     for (let i = 0; i < 366 * 5; i++) {
-      COMPUTE_PARAMS.epochs[i] = i + 1;
+      COMPUTE_PARAMS.epochs[i] = 121 + i;
       COMPUTE_PARAMS.availabilies[i] = 255;
     }
 
-    let expected_result = BigNumber.from("4854102000000000000000000");
+    let expected_result = BigNumber.from("485410000000000000000000");
     //DO TEST
     await mndContract
       .connect(firstUser)

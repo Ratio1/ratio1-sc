@@ -61,14 +61,14 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
     // TODO - change with start date of the protocol
-    uint256 constant startEpochTimestamp = 1738094400; // 2025-01-25 20:00:00
-    uint256 constant epochDuration = 60 minutes; //TODO 24 hours;
+    uint256 constant startEpochTimestamp = 1738767600; // Wednesday 5 February 2025 15:00:00
+    uint256 constant epochDuration = 24 hours; //TODO 24 hours;
 
     uint256 constant MAX_PERCENTAGE = 100_00;
     uint8 constant MAX_AVAILABILITY = 255;
 
     uint256 constant PRICE_DECIMALS = 10 ** 18;
-    uint256 constant MAX_TOKEN_SUPPLY = 1618033988 * PRICE_DECIMALS;
+    uint256 constant MAX_TOKEN_SUPPLY = 161803398 * PRICE_DECIMALS;
 
     uint256 constant MAX_TOKENS_ASSIGNED_PER_LICENSE =
         (MAX_TOKEN_SUPPLY * 2_00) / MAX_PERCENTAGE;
