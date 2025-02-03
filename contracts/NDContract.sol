@@ -163,11 +163,16 @@ contract NDContract is
         uint256 indexed licenseId,
         address oldNodeAddress
     );
+    event RewardsClaimed(
+        address indexed to,
+        uint256 indexed licenseId,
+        uint256 rewardsAmount,
+        uint256 totalEpochs
+    );
     event SignerAdded(address newSigner);
     event SignerRemoved(address removedSigner);
     event LpAddrChanged(address newlpAddr);
     event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount);
-    //TODO add event for claim rewards
 
     constructor(
         address tokenAddress,
@@ -400,6 +405,14 @@ contract NDContract is
             license.totalClaimedAmount += rewardsAmount;
             license.lastClaimOracle = firstSigner;
             totalRewards += rewardsAmount;
+            if (rewardsAmount > 0) {
+                emit RewardsClaimed(
+                    msg.sender,
+                    computeParams[i].licenseId,
+                    rewardsAmount,
+                    computeParams[i].epochs.length
+                );
+            }
         }
 
         if (totalRewards > 0) {

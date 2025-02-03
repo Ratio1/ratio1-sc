@@ -140,6 +140,12 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         uint256 indexed licenseId,
         address oldNodeAddress
     );
+    event RewardsClaimed(
+        address indexed to,
+        uint256 indexed licenseId,
+        uint256 rewardsAmount,
+        uint256 totalEpochs
+    );
     event SignerAdded(address newSigner);
     event SignerRemoved(address removedSigner);
 
@@ -286,6 +292,12 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         license.lastClaimOracle = firstSigner;
 
         if (rewardsAmount > 0) {
+            emit RewardsClaimed(
+                msg.sender,
+                computeParam.licenseId,
+                rewardsAmount,
+                computeParam.epochs.length
+            );
             if (computeParam.licenseId == GENESIS_TOKEN_ID) {
                 mintCompanyFunds(rewardsAmount);
             } else {
