@@ -141,8 +141,7 @@ describe.only("NDContract", function () {
   let invoiceUuid: Buffer;
 
   before(async function () {
-    const [deployer, user1, user2, backendSigner, UniPair] =
-      await ethers.getSigners();
+    const [deployer, user1, user2, backendSigner] = await ethers.getSigners();
     owner = deployer;
     firstUser = user1;
     secondUser = user2;
@@ -170,15 +169,25 @@ describe.only("NDContract", function () {
 
     await ndContract.setMNDContract(mndContract.address);
 
-    const UniswapContract = await ethers.getContractFactory("UNISWAP");
-    const uniswapContract = await UniswapContract.deploy();
+    const UniswapMockRouterContract = await ethers.getContractFactory(
+      "UniswapMockRouter"
+    );
+    const uniswapMockRouterContract = await UniswapMockRouterContract.deploy();
+
+    const UniswapMockPairContract = await ethers.getContractFactory(
+      "UniswapMockPair"
+    );
+    const uniswapMockPairContract = await UniswapMockPairContract.deploy(
+      usdcContract.address,
+      r1Contract.address
+    );
 
     const UniswapLiquidityManagerContract = await ethers.getContractFactory(
       "UniswapLiquidityManager"
     );
     liquidityManagerContract = await UniswapLiquidityManagerContract.deploy(
-      uniswapContract.address,
-      UniPair.address,
+      uniswapMockRouterContract.address,
+      uniswapMockPairContract.address,
       usdcContract.address,
       r1Contract.address,
       owner.address
@@ -193,7 +202,7 @@ describe.only("NDContract", function () {
     );
     await ndContract.setLiquidityManager(liquidityManagerContract.address);
     await usdcContract.mint(
-      uniswapContract.address,
+      uniswapMockRouterContract.address,
       BigNumber.from("500000000000000000000")
     );
 
@@ -352,7 +361,7 @@ describe.only("NDContract", function () {
     expect(await ndContract.supportsInterface("0x80ac58cd")).to.be.true;
   });
 
-  it.only("Get licenses", async function () {
+  it("Get licenses", async function () {
     //await updateTimestamp();
     await buyLicenseWithMintAndAllowance(
       r1Contract,

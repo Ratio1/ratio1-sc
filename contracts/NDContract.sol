@@ -168,6 +168,7 @@ contract NDContract is
     event SignerRemoved(address removedSigner);
     event LpAddrChanged(address newlpAddr);
     event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount);
+    //TODO add event for claim rewards
 
     constructor(
         address tokenAddress,

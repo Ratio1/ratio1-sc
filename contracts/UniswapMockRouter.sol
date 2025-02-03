@@ -1,31 +1,22 @@
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.18;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract UNISWAP is Ownable {
+contract UniswapMockRouter is Ownable {
     constructor() {}
-
-    function getAmountsOut(
-        uint amountIn,
-        address[] memory path
-    ) public view returns (uint[] memory) {
-        uint[] memory result = new uint[](2);
-        result[0] = 0;
-        result[1] = 1 * 10 ** 6;
-        return result;
-    }
 
     function addLiquidity(
         address tokenA,
         address tokenB,
         uint amountA,
         uint amountB,
-        uint minAmountA,
-        uint minAmountB,
-        address to,
-        uint deadline
+        uint, // minAmountA
+        uint, // minAmountB
+        address, // to
+        uint // deadline
     ) public returns (uint, uint, uint) {
         IERC20 erc20TokenA = IERC20(tokenA);
         IERC20 erc20TokenB = IERC20(tokenB);
@@ -39,14 +30,14 @@ contract UNISWAP is Ownable {
 
     function swapExactTokensForTokens(
         uint amount,
-        uint minAmount,
+        uint, // minAmount
         address[] memory path,
         address to,
-        uint deadline
+        uint // deadline
     ) public returns (uint[] memory) {
         uint[] memory result = new uint[](2);
         result[0] = 0;
-        result[1] = (amount / 10 ** 18) * 10 ** 6;
+        result[1] = (300000 * amount) / 1000000; // 0.3 USDC per R1
         IERC20(path[0]).transferFrom(msg.sender, address(this), amount);
         IERC20(path[1]).transfer(to, result[1]);
         return result;

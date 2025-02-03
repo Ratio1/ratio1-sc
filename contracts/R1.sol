@@ -5,8 +5,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";
 
 contract R1 is Ownable, ERC20Capped {
-    // Max supply of R1: 1.618.033.988
-    uint256 public constant maxSupply = 1618033988 * (10 ** 18);
+    // Max supply of R1: 161.803.398
+    uint256 public constant maxSupply = 161803398 * (10 ** 18);
     address public _mndContract;
     address public _ndContract;
 
