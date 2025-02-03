@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "./NAEURA.sol";
+import "./R1.sol";
 
-struct NodeAvailability {
-    uint256 epoch;
-    uint256 availability;
+interface IND {
+    function registeredNodeAddresses(address node) external view returns (bool);
 }
 
 struct ComputeRewardsParams {
     uint256 licenseId;
-    string nodeHash;
-    NodeAvailability[] nodeAvailabilities;
+    address nodeAddress;
+    uint256[] epochs;
+    uint8[] availabilies;
 }
 
 struct ComputeRewardsResult {
@@ -27,378 +27,368 @@ struct ComputeRewardsResult {
 }
 
 struct License {
-    bool exists;
-    uint256 licenseId;
-    string nodeHash;
-    uint256 lastClaimCycle;
-    uint256 currentClaimAmount;
-    uint256 licensePower;
+    address nodeAddress;
+    uint256 totalAssignedAmount;
+    uint256 totalClaimedAmount;
+    uint256 lastClaimEpoch;
+    uint256 assignTimestamp;
+    address lastClaimOracle;
 }
 
 struct LicenseInfo {
     uint256 licenseId;
-    string nodeHash;
-    uint256 lastClaimCycle;
-    uint256 currentClaimAmount;
-    uint256 remainingClaimAmount;
-    uint256 currentClaimableCycles;
-    uint256 licensePower;
+    address nodeAddress;
+    uint256 totalAssignedAmount;
+    uint256 totalClaimedAmount;
+    uint256 remainingAmount;
+    uint256 lastClaimEpoch;
+    uint256 claimableEpochs;
+    uint256 assignTimestamp;
+    address lastClaimOracle;
 }
 
-contract MNDContract is ERC721, Pausable, Ownable, ReentrancyGuard {
+//TODO add ERC721URIStorage?
+contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     using SafeMath for uint256;
     using Counters for Counters.Counter;
-    Counters.Counter private _tokenIds;
 
-    NAEURA private _token;
+    //..######...#######..##....##..######..########....###....##....##.########..######.
+    //.##....##.##.....##.###...##.##....##....##......##.##...###...##....##....##....##
+    //.##.......##.....##.####..##.##..........##.....##...##..####..##....##....##......
+    //.##.......##.....##.##.##.##..######.....##....##.....##.##.##.##....##.....######.
+    //.##.......##.....##.##..####.......##....##....#########.##..####....##..........##
+    //.##....##.##.....##.##...###.##....##....##....##.....##.##...###....##....##....##
+    //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
-    uint256 public startCycleTimestamp;
-    address public signer;
-    uint256 public cycleDuration;
-    uint256 public cliffPeriod;
-    uint256 public vestingTotalPeriod;
-    uint256 public genesisUnlockPeriod;
-    uint256 public totalLicenseSupply; // Total supply of master licenses. Takes into account the license power.
+    // TODO - change with start date of the protocol
+    uint256 constant startEpochTimestamp = 1738767600; // Wednesday 5 February 2025 15:00:00
+    uint256 constant epochDuration = 24 hours; //TODO 24 hours;
 
-    // General constants
-    uint8 private constant MAX_AVAILABILITY = 255;
-    uint256 private constant PRICE_DECIMALS = 10 ** 18;
-    uint256 constant MAX_TOKEN_SUPPLY = 1618033988 * PRICE_DECIMALS;
-    uint256 constant MAX_PERCENT = 10000;
+    uint256 constant MAX_PERCENTAGE = 100_00;
+    uint8 constant MAX_AVAILABILITY = 255;
 
-    // Master Node Deeds constants
-    uint256 constant MAX_LICENSE_POWER = 200;
-    uint256 constant MAX_MASTER_LICENSE_SUPPLY = 2680;
-    uint256 constant TOTAL_EMISSION_PER_MASTER_LICENSE = (MAX_TOKEN_SUPPLY /
-        MAX_PERCENT); // 0.01% of total supply
-    uint256 constant VESTING_DURATION_CYCLES = 1825; // 5 years on mainnet
+    uint256 constant PRICE_DECIMALS = 10 ** 18;
+    uint256 constant MAX_TOKEN_SUPPLY = 161803398 * PRICE_DECIMALS;
 
-    // Genesis constants
+    uint256 constant MAX_TOKENS_ASSIGNED_PER_LICENSE =
+        (MAX_TOKEN_SUPPLY * 2_00) / MAX_PERCENTAGE;
+    uint256 constant MAX_MND_TOTAL_ASSIGNED_TOKENS =
+        (MAX_TOKEN_SUPPLY * 26_10) / MAX_PERCENTAGE; // 26.1% of total supply
+    uint256 constant MAX_MND_SUPPLY = 500;
+    uint256 constant NO_MINING_EPOCHS = 30 * 4;
+    uint256 constant MINING_DURATION_EPOCHS = 30 * 30;
+
     uint256 constant GENESIS_TOTAL_EMISSION =
-        (MAX_TOKEN_SUPPLY * 3320) / MAX_PERCENT; // 33.2% of total supply
-    uint256 constant GENESIS_MAX_UNLOCK_CYCLES = 365;
+        (MAX_TOKEN_SUPPLY * 28_90) / MAX_PERCENTAGE; // 28.9% of total supply
+    uint256 constant GENESIS_MINING_EPOCHS = 365;
+    uint256 constant GENESIS_TOKEN_ID = 0;
 
-    string emptyNodeHash = "";
+    uint256 constant LP_WALLET_PERCENTAGE = 26_71;
+    uint256 constant EXPENSES_WALLET_PERCENTAGE = 13_84;
+    uint256 constant MARKETING_WALLET_PERCENTAGE = 7_54;
+    uint256 constant GRANTS_WALLET_PERCENTAGE = 34_60;
+    uint256 constant CSR_WALLET_PERCENTAGE = 17_31;
 
-    // New struct for genesis address
-    struct GenesisNode {
-        string nodeHash;
-        uint256 lastClaimTimestamp;
-        uint256 currentClaimAmount;
-    }
+    //..######..########..#######..########.....###.....######...########
+    //.##....##....##....##.....##.##.....##...##.##...##....##..##......
+    //.##..........##....##.....##.##.....##..##...##..##........##......
+    //..######.....##....##.....##.########..##.....##.##...####.######..
+    //.......##....##....##.....##.##...##...#########.##....##..##......
+    //.##....##....##....##.....##.##....##..##.....##.##....##..##......
+    //..######.....##.....#######..##.....##.##.....##..######...########
 
-    // New mapping for genesis node
-    mapping(address => GenesisNode) public genesisNode;
+    Counters.Counter private _supply;
 
-    // Main mapping: address => licenseId => license
-    mapping(address => mapping(uint256 => License)) public licenses;
+    R1 private _R1Token;
+    IND _ndContract;
+    address lpWallet;
+    address expensesWallet;
+    address marketingWallet;
+    address grantsWallet;
+    address csrWallet;
 
-    // Additional mapping to keep track of user licenses
-    mapping(address => uint256[]) public userLicenses;
+    uint256 public totalLicensesAssignedTokensAmount;
+    address[] public signers;
+    uint8 public minimumRequiredSignatures;
+    mapping(address => bool) isSigner;
+    mapping(uint256 => License) public licenses;
+    mapping(address => bool) public registeredNodeAddresses;
+    mapping(address => uint256) public signerSignaturesCount;
+    mapping(address => uint256) public signerAdditionTimestamp;
 
-    // New mapping to store all registered node hashes
-    mapping(string => bool) public registeredNodeHashes;
+    //.########.##.....##.########.##....##.########..######.
+    //.##.......##.....##.##.......###...##....##....##....##
+    //.##.......##.....##.##.......####..##....##....##......
+    //.######...##.....##.######...##.##.##....##.....######.
+    //.##........##...##..##.......##..####....##..........##
+    //.##.........##.##...##.......##...###....##....##....##
+    //.########....###....########.##....##....##.....######.
 
-    // Events
     event LicenseCreated(
         address indexed to,
         uint256 indexed tokenId,
-        uint256 licensePower
+        uint256 totalAssignedAmount
     );
-    event RegisterNode(
+    event LinkNode(
         address indexed to,
         uint256 indexed licenseId,
-        string nodeHash
+        address nodeAddress
     );
-    event NodeHashRemoved(
+    event UnlinkNode(
         address indexed owner,
         uint256 indexed licenseId,
-        string oldNodeHash
+        address oldNodeAddress
     );
-    event GenesisNodeRegistered(
-        address indexed genesisAddress,
-        string nodeHash
-    );
-    event GenesisRewardsClaimed(address indexed genesisAddress, uint256 amount);
-    event SignerChanged(address newSigner);
+    event SignerAdded(address newSigner);
+    event SignerRemoved(address removedSigner);
 
     constructor(
         address tokenAddress,
-        address signerAddress,
-        uint256 newCycleDuration,
-        uint256 cliffPeriodCycles // should be 120 on mainnet (4 months)
+        address newOwner
     ) ERC721("MNDLicense", "MND") {
-        _token = NAEURA(tokenAddress);
-        signer = signerAddress;
+        _R1Token = R1(tokenAddress);
+        minimumRequiredSignatures = 1;
+        transferOwnership(newOwner);
 
-        // TODO - change with start date of the protocol
-        startCycleTimestamp = 1710028800; // 2024-03-10 00:00:00 UTC
-        cycleDuration = newCycleDuration;
-        cliffPeriod = cliffPeriodCycles * cycleDuration;
-        vestingTotalPeriod = VESTING_DURATION_CYCLES * cycleDuration;
-        genesisUnlockPeriod = GENESIS_MAX_UNLOCK_CYCLES * cycleDuration;
-        totalLicenseSupply = 0;
+        // Mint the first Genesis Node Deed
+        _mint(newOwner, GENESIS_TOKEN_ID);
+        licenses[GENESIS_TOKEN_ID] = License({
+            nodeAddress: address(0),
+            lastClaimEpoch: 0,
+            totalClaimedAmount: 0,
+            assignTimestamp: 0,
+            totalAssignedAmount: GENESIS_TOTAL_EMISSION,
+            lastClaimOracle: address(0)
+        });
     }
 
-    function addLicense(address to, uint256 licensePower) public onlyOwner {
-        _requireNotPaused();
+    function addLicense(
+        address to,
+        uint256 newTotalAssignedAmount
+    ) public onlyOwner whenNotPaused {
         require(
-            licensePower > 0 && licensePower <= MAX_LICENSE_POWER,
+            newTotalAssignedAmount > 0 &&
+                newTotalAssignedAmount <= MAX_TOKENS_ASSIGNED_PER_LICENSE,
             "Invalid license power"
         );
         require(
-            totalLicenseSupply.add(licensePower) <= MAX_MASTER_LICENSE_SUPPLY,
-            "Max supply reached"
+            totalLicensesAssignedTokensAmount + newTotalAssignedAmount <=
+                MAX_MND_TOTAL_ASSIGNED_TOKENS,
+            "Max total assigned tokens reached"
         );
+        require(
+            _supply.current() < MAX_MND_SUPPLY,
+            "Maximum token supply reached"
+        );
+        require(balanceOf(to) == 0, "User already has a license");
 
-        _tokenIds.increment();
-        uint256 newTokenId = _tokenIds.current();
-
-        _safeMint(to, newTokenId);
-        totalLicenseSupply = totalLicenseSupply.add(licensePower);
-
-        licenses[to][newTokenId] = License({
-            exists: true,
-            licenseId: newTokenId,
-            nodeHash: emptyNodeHash,
-            lastClaimCycle: getCurrentCycle(),
-            currentClaimAmount: 0,
-            licensePower: licensePower
+        uint256 tokenId = safeMint(to);
+        totalLicensesAssignedTokensAmount += newTotalAssignedAmount;
+        licenses[tokenId] = License({
+            nodeAddress: address(0),
+            lastClaimEpoch: 0,
+            totalClaimedAmount: 0,
+            assignTimestamp: 0,
+            totalAssignedAmount: newTotalAssignedAmount,
+            lastClaimOracle: address(0)
         });
 
-        userLicenses[to].push(newTokenId);
-
-        emit LicenseCreated(to, newTokenId, licensePower);
+        emit LicenseCreated(to, tokenId, newTotalAssignedAmount);
     }
 
-    function registerNode(uint256 licenseId, string memory nodeHash) public {
-        _requireNotPaused();
-        require(hasLicense(msg.sender, licenseId), "License does not exist");
-
-        // Check if nodeHash already exists
-        require(!registeredNodeHashes[nodeHash], "Node hash already exists");
+    function linkNode(
+        uint256 licenseId,
+        address newNodeAddress
+    ) public whenNotPaused {
+        require(
+            ownerOf(licenseId) == msg.sender,
+            "Not the owner of the license"
+        );
+        require(newNodeAddress != address(0), "Invalid node address");
+        require(
+            !isNodeAlreadyLinked(newNodeAddress),
+            "Node address already registered"
+        );
 
         // Update the license
-        License storage license = licenses[msg.sender][licenseId];
-        license.nodeHash = nodeHash;
-        license.lastClaimCycle = getCurrentCycle();
+        License storage license = licenses[licenseId];
+        require(
+            license.assignTimestamp + 24 hours < block.timestamp,
+            "Cannot reassign within 24 hours"
+        );
 
-        // Add nodeHash to the list
-        registeredNodeHashes[nodeHash] = true;
+        _removeNodeAddress(license, licenseId);
+        license.nodeAddress = newNodeAddress;
+        license.lastClaimEpoch = getCurrentEpoch();
+        license.assignTimestamp = block.timestamp;
+        registeredNodeAddresses[newNodeAddress] = true;
 
-        emit RegisterNode(msg.sender, licenseId, nodeHash);
+        emit LinkNode(msg.sender, licenseId, newNodeAddress);
     }
 
-    function removeNodeHash(uint256 licenseId) public {
-        _requireNotPaused();
-        require(hasLicense(msg.sender, licenseId), "License does not exist");
-        License storage license = licenses[msg.sender][licenseId];
+    function unlinkNode(uint256 licenseId) public whenNotPaused {
+        require(
+            ownerOf(licenseId) == msg.sender,
+            "Not the owner of the license"
+        );
+        License storage license = licenses[licenseId];
+        _removeNodeAddress(license, licenseId);
+    }
 
-        string memory oldNodeHash = license.nodeHash;
-
-        if (bytes(oldNodeHash).length > 0) {
-            registeredNodeHashes[oldNodeHash] = false;
+    function _removeNodeAddress(
+        License storage license,
+        uint256 licenseId
+    ) private {
+        if (license.nodeAddress == address(0)) {
+            return;
         }
+        uint256 currentEpoch = getCurrentEpoch();
+        require(
+            license.lastClaimEpoch == currentEpoch ||
+                currentEpoch < NO_MINING_EPOCHS,
+            "Cannot unlink before claiming rewards"
+        );
 
-        license.nodeHash = "";
+        address oldNodeAddress = license.nodeAddress;
+        registeredNodeAddresses[license.nodeAddress] = false;
+        license.nodeAddress = address(0);
 
-        emit NodeHashRemoved(msg.sender, licenseId, oldNodeHash);
+        emit UnlinkNode(msg.sender, licenseId, oldNodeAddress);
     }
 
     function claimRewards(
-        ComputeRewardsParams[] memory paramsArray,
+        ComputeRewardsParams memory computeParam,
         bytes[] memory signatures
-    ) public nonReentrant {
-        _requireNotPaused();
+    ) public nonReentrant whenNotPaused {
         require(
-            paramsArray.length == signatures.length,
-            "Mismatched input arrays"
-        );
-        for (uint256 i = 0; i < paramsArray.length; i++) {
-            require(
-                verifySignature(
-                    msg.sender,
-                    paramsArray[i].licenseId,
-                    paramsArray[i].nodeHash,
-                    paramsArray[i].nodeAvailabilities,
-                    signatures[i]
-                ),
-                "Invalid signature."
-            );
-        }
-
-        ComputeRewardsResult[] memory rewardsArray = estimateRewards(
-            msg.sender,
-            paramsArray
-        );
-
-        uint256 totalRewards = 0;
-        uint256 currentCycle = getCurrentCycle();
-        for (uint256 i = 0; i < rewardsArray.length; i++) {
-            if (!hasLicense(msg.sender, rewardsArray[i].licenseId)) {
-                continue;
-            }
-
-            License storage license = licenses[msg.sender][
-                rewardsArray[i].licenseId
-            ];
-
-            license.lastClaimCycle = currentCycle;
-            license.currentClaimAmount = license.currentClaimAmount.add(
-                rewardsArray[i].rewardsAmount
-            );
-            totalRewards = totalRewards.add(rewardsArray[i].rewardsAmount);
-        }
-
-        if (totalRewards > 0) {
-            _token.mint(msg.sender, totalRewards);
-        }
-    }
-
-    function estimateRewards(
-        address addr,
-        ComputeRewardsParams[] memory paramsArray
-    ) public view returns (ComputeRewardsResult[] memory) {
-        ComputeRewardsResult[] memory results = new ComputeRewardsResult[](
-            paramsArray.length
-        );
-
-        uint256 currentCycle = getCurrentCycle();
-        uint256 startCycle = getStartCycle();
-        for (uint256 i = 0; i < paramsArray.length; i++) {
-            ComputeRewardsParams memory params = paramsArray[i];
-            uint256 value = 0;
-
-            if (!hasLicense(addr, params.licenseId)) {
-                continue;
-            }
-            License storage license = licenses[addr][params.licenseId];
-
-            require(
-                keccak256(abi.encodePacked(license.nodeHash)) ==
-                    keccak256(abi.encodePacked(params.nodeHash)),
-                "Invalid node hash."
-            );
-
-            uint256 maxClaimableAmount = TOTAL_EMISSION_PER_MASTER_LICENSE.mul(
-                license.licensePower
-            );
-
-            if (maxClaimableAmount == license.currentClaimAmount) {
-                continue;
-            }
-
-            if (
-                license.lastClaimCycle < currentCycle &&
-                license.currentClaimAmount < maxClaimableAmount
-            ) {
-                uint256 cyclesToClaim = currentCycle.sub(
-                    license.lastClaimCycle
-                );
-                require(
-                    params.nodeAvailabilities.length == cyclesToClaim,
-                    "Incorrect number of availabilites."
-                );
-
-                uint256 timeElapsed = (currentCycle.sub(startCycle)).mul(
-                    cycleDuration
-                );
-
-                if (timeElapsed > cliffPeriod) {
-                    uint256 vestingPeriod = timeElapsed.sub(cliffPeriod);
-                    if (vestingPeriod > vestingTotalPeriod) {
-                        vestingPeriod = vestingTotalPeriod;
-                    }
-
-                    uint256 maxRewardsForPeriod = maxClaimableAmount
-                        .mul(vestingPeriod)
-                        .div(vestingTotalPeriod);
-
-                    uint256 totalAvailability = 0;
-                    for (
-                        uint256 j = 0;
-                        j < params.nodeAvailabilities.length;
-                        j++
-                    ) {
-                        totalAvailability = totalAvailability.add(
-                            params.nodeAvailabilities[j].availability
-                        );
-                    }
-
-                    value = maxRewardsForPeriod
-                        .mul(totalAvailability)
-                        .div(MAX_AVAILABILITY)
-                        .div(cyclesToClaim);
-
-                    uint256 maxRemainingClaimableAmount = maxClaimableAmount
-                        .sub(license.currentClaimAmount);
-                    if (value > maxRemainingClaimableAmount) {
-                        value = maxRemainingClaimableAmount;
-                    }
-                }
-            }
-
-            results[i] = ComputeRewardsResult({
-                licenseId: params.licenseId,
-                rewardsAmount: value
-            });
-        }
-
-        return results;
-    }
-
-    function registerGenesisNode(string memory nodeHash) public onlyOwner {
-        genesisNode[msg.sender] = GenesisNode({
-            nodeHash: nodeHash,
-            lastClaimTimestamp: block.timestamp,
-            currentClaimAmount: 0
-        });
-
-        // Add nodeHash to the list
-        registeredNodeHashes[nodeHash] = true;
-
-        emit GenesisNodeRegistered(msg.sender, nodeHash);
-    }
-
-    function claimGenesisRewards() public onlyOwner {
-        require(
-            bytes(genesisNode[msg.sender].nodeHash).length > 0,
-            "Genesis node hash is empty"
+            ownerOf(computeParam.licenseId) == msg.sender,
+            "User does not have the license"
         );
         require(
-            block.timestamp > genesisNode[msg.sender].lastClaimTimestamp,
-            "No rewards to claim yet"
+            minimumRequiredSignatures <= signatures.length,
+            "Insufficient signatures"
         );
-        require(
-            genesisNode[msg.sender].currentClaimAmount < GENESIS_TOTAL_EMISSION,
-            "All rewards have been claimed"
+        (bool validSignatures, address firstSigner) = verifyRewardsSignatures(
+            computeParam,
+            signatures
         );
+        signerSignaturesCount[firstSigner]++;
+        require(validSignatures, "Invalid signature");
 
-        uint256 elapsedTime = block.timestamp.sub(
-            genesisNode[msg.sender].lastClaimTimestamp
-        );
+        License storage license = licenses[computeParam.licenseId];
+        uint256 rewardsAmount = calculateLicenseRewards(license, computeParam);
 
-        uint256 rewardsAmount = GENESIS_TOTAL_EMISSION.mul(elapsedTime).div(
-            genesisUnlockPeriod
-        );
-
-        if (
-            rewardsAmount.add(genesisNode[msg.sender].currentClaimAmount) >
-            GENESIS_TOTAL_EMISSION
-        ) {
-            rewardsAmount = GENESIS_TOTAL_EMISSION.sub(
-                genesisNode[msg.sender].currentClaimAmount
-            );
-        }
+        license.lastClaimEpoch = getCurrentEpoch();
+        license.totalClaimedAmount += rewardsAmount;
+        license.lastClaimOracle = firstSigner;
 
         if (rewardsAmount > 0) {
-            genesisNode[msg.sender].lastClaimTimestamp = block.timestamp;
-            genesisNode[msg.sender].currentClaimAmount = genesisNode[msg.sender]
-                .currentClaimAmount
-                .add(rewardsAmount);
-            _token.mint(msg.sender, rewardsAmount);
-            emit GenesisRewardsClaimed(msg.sender, rewardsAmount);
+            if (computeParam.licenseId == GENESIS_TOKEN_ID) {
+                mintCompanyFunds(rewardsAmount);
+            } else {
+                _R1Token.mint(msg.sender, rewardsAmount);
+            }
         }
+    }
+
+    function mintCompanyFunds(uint256 amount) private {
+        _R1Token.mint(
+            lpWallet,
+            (amount * LP_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
+        _R1Token.mint(
+            expensesWallet,
+            (amount * EXPENSES_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
+        _R1Token.mint(
+            marketingWallet,
+            (amount * MARKETING_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
+        _R1Token.mint(
+            grantsWallet,
+            (amount * GRANTS_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
+        _R1Token.mint(
+            csrWallet,
+            (amount * CSR_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
+    }
+
+    function calculateRewards(
+        ComputeRewardsParams memory paramsArray
+    ) public view returns (ComputeRewardsResult memory) {
+        License storage license = licenses[paramsArray.licenseId];
+        uint256 rewardsAmount = calculateLicenseRewards(license, paramsArray);
+
+        return
+            ComputeRewardsResult({
+                licenseId: paramsArray.licenseId,
+                rewardsAmount: rewardsAmount
+            });
+    }
+
+    function calculateLicenseRewards(
+        License memory license,
+        ComputeRewardsParams memory computeParam
+    ) internal view returns (uint256) {
+        uint256 currentEpoch = getCurrentEpoch();
+        uint256 licenseRewards = 0;
+
+        if (
+            currentEpoch < NO_MINING_EPOCHS &&
+            computeParam.licenseId != GENESIS_TOKEN_ID
+        ) {
+            return 0;
+        }
+
+        require(
+            license.nodeAddress == computeParam.nodeAddress,
+            "Invalid node address."
+        );
+
+        if (license.totalClaimedAmount == license.totalAssignedAmount) {
+            return 0;
+        }
+
+        uint256 firstEpochToClaim = (computeParam.licenseId ==
+            GENESIS_TOKEN_ID ||
+            license.lastClaimEpoch >= NO_MINING_EPOCHS)
+            ? license.lastClaimEpoch
+            : NO_MINING_EPOCHS;
+        uint256 epochsToClaim = currentEpoch - firstEpochToClaim;
+        if (epochsToClaim == 0) {
+            return 0;
+        }
+
+        require(
+            computeParam.epochs.length == epochsToClaim &&
+                computeParam.availabilies.length == epochsToClaim,
+            "Incorrect number of params."
+        );
+        require(
+            computeParam.epochs[computeParam.epochs.length - 1] ==
+                currentEpoch - 1,
+            "Invalid epochs"
+        );
+
+        uint256 maxRewardsPerEpoch = license.totalAssignedAmount /
+            (
+                computeParam.licenseId == GENESIS_TOKEN_ID
+                    ? GENESIS_MINING_EPOCHS
+                    : MINING_DURATION_EPOCHS
+            );
+        for (uint256 i = 0; i < epochsToClaim; i++) {
+            licenseRewards +=
+                (maxRewardsPerEpoch * computeParam.availabilies[i]) /
+                MAX_AVAILABILITY;
+        }
+
+        uint256 maxRemainingClaimAmount = license.totalAssignedAmount -
+            license.totalClaimedAmount;
+        if (licenseRewards > maxRemainingClaimAmount) {
+            return maxRemainingClaimAmount;
+        }
+        return licenseRewards;
     }
 
     function pause() public onlyOwner {
@@ -409,22 +399,26 @@ contract MNDContract is ERC721, Pausable, Ownable, ReentrancyGuard {
         _unpause();
     }
 
-    function getCurrentCycle() public view returns (uint256) {
-        return _calculateCycle(block.timestamp);
+    function safeMint(address to) private returns (uint256) {
+        _supply.increment();
+        uint256 newTokenId = _supply.current();
+        require(newTokenId <= MAX_MND_SUPPLY, "Maximum token supply reached.");
+
+        _safeMint(to, newTokenId);
+        return newTokenId;
     }
 
-    function getStartCycle() public view returns (uint256) {
-        return _calculateCycle(startCycleTimestamp);
+    function getCurrentEpoch() public view returns (uint256) {
+        return _calculateEpoch(block.timestamp);
     }
 
-    function _calculateCycle(uint256 timestamp) private view returns (uint256) {
+    function _calculateEpoch(uint256 timestamp) private pure returns (uint256) {
         require(
-            timestamp >= startCycleTimestamp,
-            "Timestamp is before the start cycle."
+            timestamp >= startEpochTimestamp,
+            "Timestamp is before the start epoch."
         );
 
-        uint256 timeDiff = timestamp.sub(startCycleTimestamp);
-        return timeDiff.div(cycleDuration);
+        return (timestamp - startEpochTimestamp) / epochDuration;
     }
 
     function _beforeTokenTransfer(
@@ -432,97 +426,170 @@ contract MNDContract is ERC721, Pausable, Ownable, ReentrancyGuard {
         address to,
         uint256 tokenId,
         uint256 batchSize
-    ) internal override whenNotPaused {
+    ) internal override(ERC721Enumerable) whenNotPaused {
+        require(
+            from == address(0) || to == address(0),
+            "Soulbound: Non-transferable token"
+        );
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
     }
 
-    ///// View functions
-    function hasLicense(
-        address addr,
-        uint256 licenseId
-    ) public view returns (bool) {
-        return licenses[addr][licenseId].exists;
+    function supportsInterface(
+        bytes4 interfaceId
+    ) public view override(ERC721Enumerable) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 
-    function getLicenses(
+    function setCompanyWallets(
+        address newLpWallet,
+        address newExpensesWallet,
+        address newMarketingWallet,
+        address newGrantsWallet,
+        address newCsrWallet
+    ) public onlyOwner {
+        lpWallet = newLpWallet;
+        expensesWallet = newExpensesWallet;
+        marketingWallet = newMarketingWallet;
+        grantsWallet = newGrantsWallet;
+        csrWallet = newCsrWallet;
+    }
+
+    function setNDContract(address ndContract_) public onlyOwner {
+        _ndContract = IND(ndContract_);
+    }
+
+    function setMinimumRequiredSignatures(
+        uint8 minimumRequiredSignatures_
+    ) public onlyOwner {
+        minimumRequiredSignatures = minimumRequiredSignatures_;
+    }
+
+    //.##.....##.####.########.##......##....########.##.....##.##....##..######..########.####..#######..##....##..######.
+    //.##.....##..##..##.......##..##..##....##.......##.....##.###...##.##....##....##.....##..##.....##.###...##.##....##
+    //.##.....##..##..##.......##..##..##....##.......##.....##.####..##.##..........##.....##..##.....##.####..##.##......
+    //.##.....##..##..######...##..##..##....######...##.....##.##.##.##.##..........##.....##..##.....##.##.##.##..######.
+    //..##...##...##..##.......##..##..##....##.......##.....##.##..####.##..........##.....##..##.....##.##..####.......##
+    //...##.##....##..##.......##..##..##....##.......##.....##.##...###.##....##....##.....##..##.....##.##...###.##....##
+    //....###....####.########..###..###.....##........#######..##....##..######.....##....####..#######..##....##..######.
+
+    function getUserLicense(
         address addr
-    ) public view returns (LicenseInfo[] memory) {
-        uint256[] memory _userLicenses = userLicenses[addr];
-        LicenseInfo[] memory licenseInfos = new LicenseInfo[](
-            _userLicenses.length
-        );
+    ) public view returns (LicenseInfo memory) {
+        if (balanceOf(addr) == 0) {
+            return
+                LicenseInfo({
+                    licenseId: 0,
+                    nodeAddress: address(0),
+                    totalClaimedAmount: 0,
+                    remainingAmount: 0,
+                    lastClaimEpoch: 0,
+                    claimableEpochs: 0,
+                    assignTimestamp: 0,
+                    totalAssignedAmount: 0,
+                    lastClaimOracle: address(0)
+                });
+        }
+        uint256 licenseId = tokenOfOwnerByIndex(addr, 0);
+        License memory license = licenses[licenseId];
 
-        uint256 currentCycle = getCurrentCycle();
+        uint256 firstEpochToClaim = (licenseId == GENESIS_TOKEN_ID ||
+            license.lastClaimEpoch >= NO_MINING_EPOCHS)
+            ? license.lastClaimEpoch
+            : NO_MINING_EPOCHS;
 
-        for (uint256 i = 0; i < _userLicenses.length; i++) {
-            uint256 licenseId = _userLicenses[i];
-            License storage license = licenses[addr][licenseId];
-
-            uint256 cyclesToClaim = 0;
-            if (
-                license.lastClaimCycle >= currentCycle ||
-                license.currentClaimAmount >= TOTAL_EMISSION_PER_MASTER_LICENSE
-            ) {
-                cyclesToClaim = 0;
-            } else {
-                cyclesToClaim = currentCycle - license.lastClaimCycle;
-            }
-
-            licenseInfos[i] = LicenseInfo({
-                licenseId: license.licenseId,
-                nodeHash: license.nodeHash,
-                lastClaimCycle: license.lastClaimCycle,
-                currentClaimAmount: license.currentClaimAmount,
-                remainingClaimAmount: TOTAL_EMISSION_PER_MASTER_LICENSE -
-                    license.currentClaimAmount,
-                currentClaimableCycles: cyclesToClaim,
-                licensePower: license.licensePower
-            });
+        uint256 currentEpoch = getCurrentEpoch();
+        if (currentEpoch < firstEpochToClaim) {
+            return
+                LicenseInfo({
+                    licenseId: licenseId,
+                    nodeAddress: license.nodeAddress,
+                    totalAssignedAmount: license.totalAssignedAmount,
+                    totalClaimedAmount: license.totalClaimedAmount,
+                    remainingAmount: license.totalAssignedAmount -
+                        license.totalClaimedAmount,
+                    lastClaimEpoch: license.lastClaimEpoch,
+                    claimableEpochs: 0,
+                    assignTimestamp: license.assignTimestamp,
+                    lastClaimOracle: license.lastClaimOracle
+                });
+        }
+        uint256 claimableEpochs = 0;
+        if (license.nodeAddress != address(0)) {
+            claimableEpochs = getCurrentEpoch() - firstEpochToClaim;
         }
 
-        return licenseInfos;
+        return
+            LicenseInfo({
+                licenseId: licenseId,
+                nodeAddress: license.nodeAddress,
+                totalAssignedAmount: license.totalAssignedAmount,
+                totalClaimedAmount: license.totalClaimedAmount,
+                remainingAmount: license.totalAssignedAmount -
+                    license.totalClaimedAmount,
+                lastClaimEpoch: license.lastClaimEpoch,
+                claimableEpochs: claimableEpochs,
+                assignTimestamp: license.assignTimestamp,
+                lastClaimOracle: license.lastClaimOracle
+            });
+    }
+
+    function isNodeAlreadyLinked(
+        address nodeAddress
+    ) public view returns (bool) {
+        return
+            registeredNodeAddresses[nodeAddress] ||
+            _ndContract.registeredNodeAddresses(nodeAddress);
     }
 
     ///// Signature functions
     using ECDSA for bytes32;
 
-    function verifySignature(
-        address _to,
-        uint256 _licenseId,
-        string memory _nodeHash,
-        NodeAvailability[] memory _nodeAvailabilities,
-        bytes memory signature
-    ) internal view returns (bool) {
-        bytes32 messageHash = getMessageHash(
-            _to,
-            _licenseId,
-            _nodeHash,
-            _nodeAvailabilities
+    function verifySignatures(
+        bytes32 ethSignedMessageHash,
+        bytes[] memory signatures
+    ) internal view returns (bool, address) {
+        for (uint i = 0; i < signatures.length; i++) {
+            if (!isSigner[ethSignedMessageHash.recover(signatures[i])]) {
+                return (false, address(0));
+            }
+        }
+        return (true, ethSignedMessageHash.recover(signatures[0]));
+    }
+
+    function verifyRewardsSignatures(
+        ComputeRewardsParams memory computeParam,
+        bytes[] memory signatures
+    ) public view returns (bool, address) {
+        bytes32 messageHash = keccak256(
+            abi.encodePacked(
+                computeParam.nodeAddress,
+                computeParam.epochs,
+                computeParam.availabilies
+            )
         );
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
-
-        return ethSignedMessageHash.recover(signature) == signer;
+        return verifySignatures(ethSignedMessageHash, signatures);
     }
 
-    function getMessageHash(
-        address _to,
-        uint256 _licenseId,
-        string memory _nodeHash,
-        NodeAvailability[] memory _nodeAvailabilities
-    ) public pure returns (bytes32) {
-        bytes memory encoded;
-        for (uint i = 0; i < _nodeAvailabilities.length; i++) {
-            encoded = abi.encodePacked(
-                encoded,
-                _nodeAvailabilities[i].epoch,
-                _nodeAvailabilities[i].availability
-            );
+    function addSigner(address newSigner) public onlyOwner {
+        require(newSigner != address(0), "Invalid signer address");
+        require(!isSigner[newSigner], "Signer already exists");
+        isSigner[newSigner] = true;
+        signerAdditionTimestamp[newSigner] = block.timestamp;
+        signers.push(newSigner);
+        emit SignerAdded(newSigner);
+    }
+
+    function removeSigner(address signerToRemove) public onlyOwner {
+        require(isSigner[signerToRemove], "Signer does not exist");
+        isSigner[signerToRemove] = false;
+        for (uint i = 0; i < signers.length; i++) {
+            if (signers[i] == signerToRemove) {
+                signers[i] = signers[signers.length - 1];
+                signers.pop();
+                break;
+            }
         }
-        return keccak256(abi.encodePacked(_to, _licenseId, _nodeHash, encoded));
-    }
-
-    function changeSigner(address newSigner) public onlyOwner {
-        signer = newSigner;
-        emit SignerChanged(newSigner);
+        emit SignerRemoved(signerToRemove);
     }
 }

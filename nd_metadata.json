@@ -1,0 +1,11 @@
+{
+  "name": "ND License",
+  "description": "This is an ND License NFT representing a node license.",
+  "image": "https://gateway.pinata.cloud/ipfs/QmUt8ePqbqfrvAYmVnH4n32iF5TURUEwebR7fiUgqh3P7a",
+  "attributes": [
+    {
+      "trait_type": "License Type",
+      "value": "Node Deed"
+    }
+  ]
+}

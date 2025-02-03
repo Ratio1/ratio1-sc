@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
@@ -10,19 +9,18 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "./NAEURA.sol";
-import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
-import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
+import "./ILiquidityManager.sol";
+import "./R1.sol";
 
-struct NodeAvailability {
-    uint256 epoch;
-    uint256 availability;
+interface IMND {
+    function registeredNodeAddresses(address node) external view returns (bool);
 }
 
 struct ComputeRewardsParams {
     uint256 licenseId;
-    string nodeHash;
-    NodeAvailability[] nodeAvailabilities;
+    address nodeAddress;
+    uint256[] epochs;
+    uint8[] availabilies;
 }
 
 struct ComputeRewardsResult {
@@ -31,35 +29,34 @@ struct ComputeRewardsResult {
 }
 
 struct PriceTier {
-    uint256 price; // Price in USD
-    uint256 units; // Number of units available at this stage
-    uint256 sold; // Number of units sold at this stage
+    uint256 usdPrice; // Price in USD
+    uint256 totalUnits; // Number of units available at this stage
+    uint256 soldUnits; // Number of units sold at this stage
+    uint256 limitPerWallet; // Limit of units per wallet at this stage
 }
 
 struct License {
-    bool exists;
-    uint256 licenseId;
-    string nodeHash;
-    uint256 lastClaimCycle;
-    uint256 currentClaimAmount;
+    address nodeAddress;
+    uint256 totalClaimedAmount;
+    uint256 lastClaimEpoch;
+    uint256 assignTimestamp;
+    address lastClaimOracle;
+    bool isBanned;
 }
 
 struct LicenseInfo {
     uint256 licenseId;
-    string nodeHash;
-    uint256 lastClaimCycle;
-    uint256 currentClaimAmount;
-    uint256 remainingClaimAmount;
-    uint256 currentClaimableCycles;
+    address nodeAddress;
+    uint256 totalClaimedAmount;
+    uint256 remainingAmount;
+    uint256 lastClaimEpoch;
+    uint256 claimableEpochs;
+    uint256 assignTimestamp;
+    address lastClaimOracle;
+    bool isBanned;
 }
 
-abstract contract IERC20Extented is IERC20 {
-    function decimals() public view virtual returns (uint8);
-}
-
-// TODO - Implement an upgradeability pattern for future improvements.
 contract NDContract is
-    ERC721,
     ERC721Enumerable,
     ERC721URIStorage,
     Pausable,
@@ -68,114 +65,139 @@ contract NDContract is
 {
     using SafeMath for uint256;
     using Counters for Counters.Counter;
-    Counters.Counter private _tokenIds;
 
-    NAEURA public _token;
+    //..######...#######..##....##..######..########....###....##....##.########..######.
+    //.##....##.##.....##.###...##.##....##....##......##.##...###...##....##....##....##
+    //.##.......##.....##.####..##.##..........##.....##...##..####..##....##....##......
+    //.##.......##.....##.##.##.##..######.....##....##.....##.##.##.##....##.....######.
+    //.##.......##.....##.##..####.......##....##....#########.##..####....##..........##
+    //.##....##.##.....##.##...###.##....##....##....##.....##.##...###....##....##....##
+    //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
-    uint8 public currentPriceTier;
-    uint256 public startCycleTimestamp;
-    address[] public signers;
-    mapping(address => uint) index;
-    uint256 public cycleDuration;
+    // TODO - change with start date of the protocol
+    uint256 constant startEpochTimestamp = 1738767600; // Wednesday 5 February 2025 15:00:00
+    uint256 constant epochDuration = 60 minutes; //TODO 24 hours;
 
-    IUniswapV2Router02 _uniswapV2Router;
-    IUniswapV2Pair _uniswapV2Pair;
-    address _usdcAddr;
+    uint256 constant MAX_PERCENTAGE = 100_00;
+    uint8 constant MAX_AVAILABILITY = 255;
 
-    string private _baseTokenURI;
+    uint256 constant PRICE_DECIMALS = 10 ** 18;
 
-    // General constants
-    uint8 private constant MAX_AVAILABILITY = 255;
-    uint256 private constant USDC_DECIMALS = 10 ** 6;
-    uint256 private constant PRICE_DECIMALS = 10 ** 18;
-    uint256 constant MAX_TOKEN_SUPPLY = 1618033988 * PRICE_DECIMALS;
-    uint256 constant MAX_PERCENT = 10000;
+    uint256 constant MAX_TOKEN_SUPPLY = 161803398 * PRICE_DECIMALS;
+    uint8 constant LAST_PRICE_TIER = 12;
 
-    // Node deed constants
     uint256 constant MAX_LICENSE_SUPPLY = 46224;
-    uint256 constant MAX_LICENSE_TOKENS_PERCENT = 4000; // 40% of total supply
+    uint256 constant MAX_LICENSE_TOKENS_PERCENTAGE = 45_00; // 45% of total supply
     uint256 constant MAX_LICENSE_TOKENS_SUPPLY =
-        (MAX_TOKEN_SUPPLY * MAX_LICENSE_TOKENS_PERCENT) / MAX_PERCENT;
-    uint256 constant MAX_RELEASE_PER_LICENSE =
+        (MAX_TOKEN_SUPPLY * MAX_LICENSE_TOKENS_PERCENTAGE) / MAX_PERCENTAGE;
+    uint256 constant MAX_MINING_PER_LICENSE =
         MAX_LICENSE_TOKENS_SUPPLY / MAX_LICENSE_SUPPLY;
+    uint256 constant MINING_DURATION_EPOCHS = 36 * 30;
     uint256 constant MAX_RELEASE_PER_DAY =
-        MAX_RELEASE_PER_LICENSE / 5 / 12 / 30; // 5 years
+        MAX_MINING_PER_LICENSE / MINING_DURATION_EPOCHS;
+    uint256 constant MAX_LICENSES_BUYS_PER_TX = 5;
 
-    uint256 private constant MAX_LICENSES_BUYS_PER_TX = 5;
-    uint256 private constant BURN_PERCENT = 2000;
-    uint256 private constant LIQUIDITY_PERCENT = 5000;
-    uint256 private constant EXPENSES_PERCENT = 3000; // 30%
-    uint256 private constant LIQUIDITY_DEADLINE_EXTENSION = 20 minutes;
+    uint256 constant BURN_PERCENTAGE = 20_00;
+    uint256 constant LIQUIDITY_PERCENTAGE = 50_00;
+    uint256 constant COMPANY_PERCENTAGE = 30_00;
+    uint256 constant LP_WALLET_PERCENTAGE = 26_71;
+    uint256 constant EXPENSES_WALLET_PERCENTAGE = 13_84;
+    uint256 constant MARKETING_WALLET_PERCENTAGE = 7_54;
+    uint256 constant GRANTS_WALLET_PERCENTAGE = 34_60;
+    uint256 constant CSR_WALLET_PERCENTAGE = 17_31;
 
+    //..######..########..#######..########.....###.....######...########
+    //.##....##....##....##.....##.##.....##...##.##...##....##..##......
+    //.##..........##....##.....##.##.....##..##...##..##........##......
+    //..######.....##....##.....##.########..##.....##.##...####.######..
+    //.......##....##....##.....##.##...##...#########.##....##..##......
+    //.##....##....##....##.....##.##....##..##.....##.##....##..##......
+    //..######.....##.....#######..##.....##.##.....##..######...########
+
+    Counters.Counter private _supply;
+    string private _baseTokenURI;
+    uint8 public currentPriceTier;
+
+    R1 public _R1Token;
+    ILiquidityManager _liquidityManager;
+    IMND _mndContract;
+    address lpWallet;
+    address expensesWallet;
+    address marketingWallet;
+    address grantsWallet;
+    address csrWallet;
+
+    address[] public signers;
+    uint8 public minimumRequiredSignatures;
+    mapping(address => bool) isSigner;
+    uint256 public limitPerWallet;
     mapping(uint8 => PriceTier) public _priceTiers;
+    mapping(uint256 => License) public licenses;
+    mapping(address => bool) public registeredNodeAddresses;
+    mapping(address => address) public nodeToUser;
+    mapping(address => uint256) public signerSignaturesCount;
+    mapping(address => uint256) public signerAdditionTimestamp;
+    mapping(bytes32 => bool) public usedInvoiceUUIDs;
 
-    // Main mapping: address => licenseId => License
-    mapping(address => mapping(uint256 => License)) public licenses;
+    //.########.##.....##.########.##....##.########..######.
+    //.##.......##.....##.##.......###...##....##....##....##
+    //.##.......##.....##.##.......####..##....##....##......
+    //.######...##.....##.######...##.##.##....##.....######.
+    //.##........##...##..##.......##..####....##..........##
+    //.##.........##.##...##.......##...###....##....##....##
+    //.########....###....########.##....##....##.....######.
 
-    // Additional mapping to keep track of user licenses
-    mapping(address => uint256[]) public userLicenses;
-
-    // New mapping to store all registered node hashes
-    mapping(string => bool) public registeredNodeHashes;
-
-    event LicenseCreated(address indexed to, uint256 indexed tokenId);
-    event RegisterNode(
+    event LicensesCreated(
+        address indexed to,
+        bytes32 indexed invoiceUuid,
+        uint256 tokenCount,
+        uint256 unitUsdPrice,
+        uint256 totalR1Cost
+    );
+    event LinkNode(
         address indexed to,
         uint256 indexed licenseId,
-        string nodeHash
+        address nodeAddress
     );
-    event NodeHashRemoved(
+    event UnlinkNode(
         address indexed owner,
         uint256 indexed licenseId,
-        string oldNodeHash
+        address oldNodeAddress
     );
-
     event SignerAdded(address newSigner);
-    event SignerRemoved(address signerToRemove);
+    event SignerRemoved(address removedSigner);
     event LpAddrChanged(address newlpAddr);
-    event FeesWithdrawn(address to, uint256 amount);
-    event TokensBurned(uint256 amount);
     event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount);
-    event TokenSwapFailed(uint256 tokenAmount, string reason);
-    event LiquidityAdditionFailed(
-        uint256 tokenAmount,
-        uint256 ethAmount,
-        string reason
-    );
+    //TODO add event for claim rewards
 
     constructor(
         address tokenAddress,
-        address signerAddress,
-        uint256 newCycleDuration
+        address newOwner
     ) ERC721("NDLicense", "ND") {
-        _token = NAEURA(tokenAddress);
-        index[signerAddress] = signers.length;
-        signers.push(signerAddress);
-
-        // TODO - change with start date of the protocol
-        startCycleTimestamp = 1710028800; // 2024-03-10 00:00:00 UTC
-        cycleDuration = newCycleDuration;
+        _R1Token = R1(tokenAddress);
+        minimumRequiredSignatures = 1;
+        transferOwnership(newOwner);
 
         initializePriceTiers();
     }
 
     function initializePriceTiers() private {
-        _priceTiers[1] = PriceTier(500, 89, 0);
-        _priceTiers[2] = PriceTier(750, 144, 0);
-        _priceTiers[3] = PriceTier(1000, 233, 0);
-        _priceTiers[4] = PriceTier(1500, 377, 0);
-        _priceTiers[5] = PriceTier(2000, 610, 0);
-        _priceTiers[6] = PriceTier(2500, 987, 0);
-        _priceTiers[7] = PriceTier(3000, 1597, 0);
-        _priceTiers[8] = PriceTier(3500, 2584, 0);
-        _priceTiers[9] = PriceTier(4000, 4181, 0);
-        _priceTiers[10] = PriceTier(5000, 6765, 0);
-        _priceTiers[11] = PriceTier(10000, 10946, 0);
-        _priceTiers[12] = PriceTier(20000, 17711, 0);
+        _priceTiers[1] = PriceTier(500, 89, 0, 19);
+        _priceTiers[2] = PriceTier(750, 144, 0, 13);
+        _priceTiers[3] = PriceTier(1000, 233, 0, 9);
+        _priceTiers[4] = PriceTier(1500, 377, 0, 6);
+        _priceTiers[5] = PriceTier(2000, 610, 0, 4);
+        _priceTiers[6] = PriceTier(2500, 987, 0, 3);
+        _priceTiers[7] = PriceTier(3000, 1597, 0, 3);
+        _priceTiers[8] = PriceTier(3500, 2584, 0, 2);
+        _priceTiers[9] = PriceTier(4000, 4181, 0, 2);
+        _priceTiers[10] = PriceTier(5000, 6765, 0, 1);
+        _priceTiers[11] = PriceTier(7000, 10946, 0, 1);
+        _priceTiers[12] = PriceTier(9500, 17711, 0, 1);
 
         uint256 ndSupply = 0;
-        for (uint8 i = 1; i <= 12; i++) {
-            ndSupply += _priceTiers[i].units;
+        for (uint8 i = 1; i <= LAST_PRICE_TIER; i++) {
+            ndSupply += _priceTiers[i].totalUnits;
         }
         require(ndSupply == MAX_LICENSE_SUPPLY, "Invalid license supply");
 
@@ -183,230 +205,279 @@ contract NDContract is
     }
 
     function buyLicense(
-        uint256 numberOfLicenses
-        // TODO: add price tier as parameter in order to avoid buying more expensive tiers
-    ) public nonReentrant returns (uint) {
-        _requireNotPaused();
-        require(currentPriceTier <= 12, "All licenses have been sold");
-
+        uint256 nLicensesToBuy,
+        uint8 requestedPriceTier,
+        bytes32 invoiceUuid,
+        bytes memory signature
+    ) public nonReentrant whenNotPaused returns (uint) {
         require(
-            numberOfLicenses > 0 &&
-                numberOfLicenses <= MAX_LICENSES_BUYS_PER_TX,
+            currentPriceTier <= LAST_PRICE_TIER,
+            "All licenses have been sold"
+        );
+        require(
+            requestedPriceTier == currentPriceTier,
+            "Not in the right price tier"
+        );
+        require(
+            nLicensesToBuy > 0 && nLicensesToBuy <= MAX_LICENSES_BUYS_PER_TX,
             "Invalid number of licenses"
         );
+        require(
+            balanceOf(msg.sender) + nLicensesToBuy <=
+                getCurrentLimitPerWallet(),
+            "Exceeds limit per wallet"
+        );
+        require(
+            !usedInvoiceUUIDs[invoiceUuid],
+            "Invoice UUID has already been used"
+        );
+        (bool validSignatures, ) = verifyBuyLicenseSignature(
+            msg.sender,
+            invoiceUuid,
+            signature
+        );
+        require(validSignatures, "Invalid signature");
 
-        PriceTier memory priceTier = _priceTiers[currentPriceTier];
-        uint256 availableUnits = priceTier.units.sub(priceTier.sold);
+        usedInvoiceUUIDs[invoiceUuid] = true;
 
-        if (availableUnits < numberOfLicenses) {
-            numberOfLicenses = availableUnits;
-        }
-
-        uint256 pricePerLicense = getLicensePrice();
-        uint256 totalCost = numberOfLicenses.mul(pricePerLicense);
+        PriceTier storage priceTier = _priceTiers[currentPriceTier];
+        uint256 buyableUnits = getPriceTierBuyableUnits(
+            priceTier,
+            nLicensesToBuy
+        );
+        uint256 totalCost = nLicensesToBuy * getLicenseTokenPrice();
 
         // Check user's balance before attempting transfer
-        uint256 userBalance = _token.balanceOf(msg.sender);
-        require(userBalance >= totalCost, "Insufficient NAEURA balance");
-
-        // Check allowance
-        uint256 allowance = _token.allowance(msg.sender, address(this));
-        require(allowance >= totalCost, "Insufficient allowance");
-
-        // Transfer NAEURA tokens from user to contract
         require(
-            _token.transferFrom(msg.sender, address(this), totalCost),
-            "Transfer failed"
+            _R1Token.balanceOf(msg.sender) >= totalCost,
+            "Insufficient R1 balance"
+        );
+        // Check user's allowance
+        require(
+            _R1Token.allowance(msg.sender, address(this)) >= totalCost,
+            "Insufficient allowance"
         );
 
-        handlePayment(totalCost);
+        // Transfer R1 tokens from user to contract
+        require(
+            _R1Token.transferFrom(msg.sender, address(this), totalCost),
+            "R1 transfer failed"
+        );
+        distributePayment(totalCost);
 
-        uint256 currentCycle = getCurrentCycle();
-        for (uint i = 1; i <= numberOfLicenses; i++) {
-            uint256 tokenId = safeMint(msg.sender);
+        uint256[] memory mintedTokens = batchMint(msg.sender, buyableUnits);
 
-            // TODO: reduce/refactor structure size
-            // TODO: maybe batch minting
-
-            licenses[msg.sender][tokenId] = License({
-                exists: true,
-                licenseId: tokenId,
-                nodeHash: "",
-                lastClaimCycle: currentCycle,
-                currentClaimAmount: 0
-            });
-
-            userLicenses[msg.sender].push(tokenId);
-        }
-
-        priceTier.sold = priceTier.sold.add(numberOfLicenses);
-
-        if (priceTier.sold == priceTier.units) {
+        priceTier.soldUnits += mintedTokens.length;
+        if (priceTier.soldUnits == priceTier.totalUnits) {
             currentPriceTier++;
-        } else if (priceTier.sold > priceTier.units) {
+        } else if (priceTier.soldUnits > priceTier.totalUnits) {
             revert("Price tier sold more than available units");
         }
 
-        return numberOfLicenses;
+        emit LicensesCreated(
+            msg.sender,
+            invoiceUuid,
+            mintedTokens.length,
+            priceTier.usdPrice,
+            totalCost
+        );
+
+        return mintedTokens.length;
     }
 
-    function registerNode(uint256 licenseId, string memory nodeHash) public {
-        _requireNotPaused();
-        require(hasLicense(msg.sender, licenseId), "License does not exist");
-
-        // Check if nodeHash already exists
-        require(!registeredNodeHashes[nodeHash], "Node hash already exists");
-
-        // TODO: check if nodeAddress also in MND
-
-        // TODO: check if 24h from last assign
-
-        // TODO: check if nodeAddress is already asigned then remove it
-
-        // Update the license
-        License storage license = licenses[msg.sender][licenseId];
-        license.nodeHash = nodeHash;
-        license.lastClaimCycle = getCurrentCycle();
-
-        // Add nodeHash to the list
-        registeredNodeHashes[nodeHash] = true;
-
-        emit RegisterNode(msg.sender, licenseId, nodeHash);
+    function getPriceTierBuyableUnits(
+        PriceTier memory tier,
+        uint256 requestedUnits
+    ) private pure returns (uint256) {
+        uint256 buyableUnits = tier.totalUnits - tier.soldUnits;
+        return buyableUnits >= requestedUnits ? requestedUnits : buyableUnits;
     }
 
-    function removeNodeHash(uint256 licenseId) public {
-        _requireNotPaused();
-        require(hasLicense(msg.sender, licenseId), "License does not exist");
-        License storage license = licenses[msg.sender][licenseId];
+    function batchMint(
+        address to,
+        uint256 quantity
+    ) private returns (uint256[] memory) {
+        uint256[] memory tokenIds = new uint256[](quantity);
 
-        // TODO: force claim rewards before removing nodeAddress
-
-        string memory oldNodeHash = license.nodeHash;
-
-        if (bytes(oldNodeHash).length > 0) {
-            registeredNodeHashes[oldNodeHash] = false;
+        for (uint256 i = 0; i < quantity; i++) {
+            uint256 tokenId = safeMint(to);
+            tokenIds[i] = tokenId;
         }
 
-        license.nodeHash = "";
+        return tokenIds;
+    }
 
-        emit NodeHashRemoved(msg.sender, licenseId, oldNodeHash);
+    function linkNode(
+        uint256 licenseId,
+        address newNodeAddress
+    ) public whenNotPaused {
+        require(
+            ownerOf(licenseId) == msg.sender,
+            "Not the owner of the license"
+        );
+        require(newNodeAddress != address(0), "Invalid node address");
+        require(
+            !isNodeAlreadyLinked(newNodeAddress),
+            "Node address already registered"
+        );
+
+        License storage license = licenses[licenseId];
+        require(!license.isBanned, "License is banned, cannot perform action");
+        require(
+            license.assignTimestamp + 24 hours < block.timestamp,
+            "Cannot reassign within 24 hours"
+        );
+
+        _removeNodeAddress(license, licenseId);
+        license.nodeAddress = newNodeAddress;
+        license.lastClaimEpoch = getCurrentEpoch();
+        license.assignTimestamp = block.timestamp;
+        registeredNodeAddresses[newNodeAddress] = true;
+        nodeToUser[newNodeAddress] = msg.sender;
+
+        emit LinkNode(msg.sender, licenseId, newNodeAddress);
+    }
+
+    function unlinkNode(uint256 licenseId) public whenNotPaused {
+        require(
+            ownerOf(licenseId) == msg.sender,
+            "Not the owner of the license"
+        );
+        License storage license = licenses[licenseId];
+        _removeNodeAddress(license, licenseId);
+    }
+
+    function _removeNodeAddress(
+        License storage license,
+        uint256 licenseId
+    ) private {
+        if (license.nodeAddress == address(0)) {
+            return;
+        }
+        require(!license.isBanned, "License is banned, cannot perform action");
+        require(
+            license.lastClaimEpoch == getCurrentEpoch(),
+            "Cannot unlink before claiming rewards"
+        );
+
+        address oldNodeAddress = license.nodeAddress;
+        registeredNodeAddresses[license.nodeAddress] = false;
+        nodeToUser[license.nodeAddress] = address(0);
+        license.nodeAddress = address(0);
+
+        emit UnlinkNode(msg.sender, licenseId, oldNodeAddress);
     }
 
     function claimRewards(
-        ComputeRewardsParams[] memory paramsArray,
-        bytes[] memory signatures
-    ) public nonReentrant {
-        _requireNotPaused();
+        ComputeRewardsParams[] memory computeParams,
+        bytes[][] memory nodesSignatures
+    ) public nonReentrant whenNotPaused {
         require(
-            paramsArray.length == signatures.length,
-            "Mismatched input arrays"
-        );
-        for (uint256 i = 0; i < paramsArray.length; i++) {
-            require(
-                verifySignature(
-                    msg.sender,
-                    paramsArray[i].licenseId,
-                    paramsArray[i].nodeHash,
-                    paramsArray[i].nodeAvailabilities,
-                    signatures[i]
-                ),
-                "Invalid signature."
-            );
-        }
-
-        ComputeRewardsResult[] memory rewardsArray = estimateRewards(
-            msg.sender,
-            paramsArray
+            computeParams.length == nodesSignatures.length,
+            "Mismatched input arrays length"
         );
 
-        // TODO: remove below loop - just use a totalRewards variable
         uint256 totalRewards = 0;
-        for (uint256 i = 0; i < rewardsArray.length; i++) {
-            if (!hasLicense(msg.sender, rewardsArray[i].licenseId)) {
-                continue;
-            }
+        for (uint256 i = 0; i < computeParams.length; i++) {
+            require(
+                ownerOf(computeParams[i].licenseId) == msg.sender,
+                "User does not have the license"
+            );
+            require(
+                minimumRequiredSignatures <= nodesSignatures[i].length,
+                "Insufficient signatures"
+            );
+            (
+                bool validSignatures,
+                address firstSigner
+            ) = verifyRewardsSignatures(computeParams[i], nodesSignatures[i]);
+            signerSignaturesCount[firstSigner]++;
+            require(validSignatures, "Invalid signature");
 
-            License storage license = licenses[msg.sender][
-                rewardsArray[i].licenseId
-            ];
+            License storage license = licenses[computeParams[i].licenseId];
+            require(
+                !license.isBanned,
+                "License is banned, cannot perform action"
+            );
+            uint256 rewardsAmount = calculateLicenseRewards(
+                license,
+                computeParams[i]
+            );
 
-            license.lastClaimCycle = getCurrentCycle();
-            license.currentClaimAmount += rewardsArray[i].rewardsAmount;
-            totalRewards += rewardsArray[i].rewardsAmount;
+            license.lastClaimEpoch = getCurrentEpoch();
+            license.totalClaimedAmount += rewardsAmount;
+            license.lastClaimOracle = firstSigner;
+            totalRewards += rewardsAmount;
         }
 
         if (totalRewards > 0) {
-            _token.mint(msg.sender, totalRewards);
+            _R1Token.mint(msg.sender, totalRewards);
         }
     }
 
-    function estimateRewards(
-        address addr, // TODO: remove this parameter
-        ComputeRewardsParams[] memory paramsArray
+    function calculateRewards(
+        ComputeRewardsParams[] memory computeParams
     ) public view returns (ComputeRewardsResult[] memory) {
         ComputeRewardsResult[] memory results = new ComputeRewardsResult[](
-            paramsArray.length
+            computeParams.length
         );
 
-        uint256 currentCycle = getCurrentCycle();
-        for (uint256 i = 0; i < paramsArray.length; i++) {
-            ComputeRewardsParams memory params = paramsArray[i];
-            uint256 value = 0;
-
-            if (!hasLicense(addr, params.licenseId)) {
-                continue;
-            }
-            License storage license = licenses[addr][params.licenseId];
-            require( // TODO: remove this check
-                keccak256(abi.encodePacked(license.nodeHash)) ==
-                    keccak256(abi.encodePacked(params.nodeHash)),
-                "Invalid node hash."
-            );
-
-            if (
-                license.lastClaimCycle < currentCycle &&
-                license.currentClaimAmount < MAX_RELEASE_PER_LICENSE
-            ) {
-                uint256 cyclesToClaim = currentCycle.sub(
-                    license.lastClaimCycle
-                );
-                require(
-                    params.nodeAvailabilities.length == cyclesToClaim,
-                    "Incorrect number of availabilites."
-                );
-
-                for (uint256 j = 0; j < cyclesToClaim; j++) {
-                    value = value.add(
-                        MAX_RELEASE_PER_DAY
-                            .mul(params.nodeAvailabilities[j].availability)
-                            .div(MAX_AVAILABILITY)
-                    );
-                }
-
-                uint256 maxRemainingClaimAmount = MAX_RELEASE_PER_LICENSE.sub(
-                    license.currentClaimAmount
-                );
-                if (value > maxRemainingClaimAmount) {
-                    value = maxRemainingClaimAmount;
-                }
-            }
-
+        for (uint256 i = 0; i < computeParams.length; i++) {
+            ComputeRewardsParams memory params = computeParams[i];
+            License memory license = licenses[params.licenseId];
             results[i] = ComputeRewardsResult({
                 licenseId: params.licenseId,
-                rewardsAmount: value
+                rewardsAmount: calculateLicenseRewards(license, params)
             });
         }
 
         return results;
     }
 
-    function withdrawFees(uint256 amount) public onlyOwner {
-        require(amount > 0, "Amount must be greater than 0");
-        uint256 contractBalance = _token.balanceOf(address(this));
-        require(amount <= contractBalance, "Insufficient balance");
+    function calculateLicenseRewards(
+        License memory license,
+        ComputeRewardsParams memory computeParam
+    ) internal view returns (uint256) {
+        uint256 currentEpoch = getCurrentEpoch();
+        uint256 licenseRewards = 0;
 
-        require(_token.transfer(owner(), amount), "Transfer failed");
-        emit FeesWithdrawn(owner(), amount);
+        require(
+            license.nodeAddress == computeParam.nodeAddress,
+            "Invalid node address."
+        );
+
+        if (license.totalClaimedAmount == MAX_MINING_PER_LICENSE) {
+            return 0;
+        }
+
+        uint256 epochsToClaim = currentEpoch - license.lastClaimEpoch;
+        if (epochsToClaim == 0) {
+            return 0;
+        }
+
+        require(
+            computeParam.epochs.length == epochsToClaim &&
+                computeParam.availabilies.length == epochsToClaim,
+            "Incorrect number of params."
+        );
+        require(
+            computeParam.epochs[computeParam.epochs.length - 1] ==
+                currentEpoch - 1,
+            "Invalid epochs"
+        );
+
+        for (uint256 i = 0; i < epochsToClaim; i++) {
+            licenseRewards +=
+                (MAX_RELEASE_PER_DAY * computeParam.availabilies[i]) /
+                MAX_AVAILABILITY;
+        }
+
+        uint256 maxRemainingClaimAmount = MAX_MINING_PER_LICENSE -
+            license.totalClaimedAmount;
+        if (licenseRewards > maxRemainingClaimAmount) {
+            return maxRemainingClaimAmount;
+        }
+        return licenseRewards;
     }
 
     function pause() public onlyOwner {
@@ -418,140 +489,89 @@ contract NDContract is
     }
 
     function safeMint(address to) private returns (uint256) {
-        _tokenIds.increment();
-        uint256 newTokenId = _tokenIds.current();
+        _supply.increment();
+        uint256 newTokenId = _supply.current();
+        require(
+            newTokenId <= MAX_LICENSE_SUPPLY,
+            "Maximum token supply reached."
+        );
 
         _safeMint(to, newTokenId);
-        emit LicenseCreated(to, newTokenId);
 
         return newTokenId;
     }
 
-    function handlePayment(uint256 totalCost) private {
-        uint256 burnAmount = totalCost.mul(BURN_PERCENT).div(MAX_PERCENT);
-        uint256 liquidityAmount = totalCost.mul(LIQUIDITY_PERCENT).div(
-            MAX_PERCENT
-        );
+    function distributePayment(uint256 amount) private {
+        uint256 burnAmount = (amount * BURN_PERCENTAGE) / MAX_PERCENTAGE;
+        uint256 liquidityAmount = (amount * LIQUIDITY_PERCENTAGE) /
+            MAX_PERCENTAGE;
+        uint256 companyAmount = (amount * COMPANY_PERCENTAGE) / MAX_PERCENTAGE;
 
-        // Burn 20% of _token from the contract's balance
-        _token.burn(address(this), burnAmount);
-        emit TokensBurned(burnAmount);
-
-        // Add liquidity with 50% of _token
+        _R1Token.burn(address(this), burnAmount);
         addLiquidity(liquidityAmount);
+        distributeCompanyFunds(companyAmount);
+    }
 
-        // The remaining 30% stays in the contract
-        // TODO: last 30% should go to owner
+    function distributeCompanyFunds(uint256 amount) private {
+        _R1Token.transfer(
+            lpWallet,
+            (amount * LP_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
+        _R1Token.transfer(
+            expensesWallet,
+            (amount * EXPENSES_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
+        _R1Token.transfer(
+            marketingWallet,
+            (amount * MARKETING_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
+        _R1Token.transfer(
+            grantsWallet,
+            (amount * GRANTS_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
+        _R1Token.transfer(
+            csrWallet,
+            (amount * CSR_WALLET_PERCENTAGE) / MAX_PERCENTAGE
+        );
     }
 
     // LP interactions
-    function addLiquidity(uint256 tokenAmount) private {
-        _token.approve(address(_uniswapV2Router), tokenAmount);
+    function addLiquidity(uint256 r1Amount) private {
+        _R1Token.approve(address(_liquidityManager), r1Amount);
+        (uint256 usedAmountR1, uint256 usedAmountUsdc) = _liquidityManager
+            .addLiquidity(r1Amount, lpWallet);
 
-        uint256 halfTokenAmount = tokenAmount.div(2);
-        uint256 ethAmount = swapTokensForETH(halfTokenAmount);
-
-        if (ethAmount == 0) {
-            emit LiquidityAdditionFailed(tokenAmount, 0, "Token swap failed");
-            return;
-        }
-
-        (bool success, bytes memory result) = address(_uniswapV2Router).call{
-            value: ethAmount
-        }(
-            abi.encodeWithSelector(
-                _uniswapV2Router.addLiquidityETH.selector,
-                address(_token),
-                halfTokenAmount,
-                0, // Accept any amount of tokens
-                0, // Accept any amount of ETH
-                address(this),
-                block.timestamp + LIQUIDITY_DEADLINE_EXTENSION
-            )
-        );
-
-        if (success) {
-            (uint256 amountToken, uint256 amountETH, ) = abi.decode(
-                result,
-                (uint256, uint256, uint256)
-            );
-            emit LiquidityAdded(amountToken, amountETH);
-        } else {
-            emit LiquidityAdditionFailed(
-                halfTokenAmount,
-                ethAmount,
-                "Liquidity addition failed"
-            );
-            // Attempt to rescue the swapped ETH
-            (bool rescueSuccess, ) = payable(owner()).call{value: ethAmount}(
-                ""
-            );
-            require(rescueSuccess, "ETH rescue failed");
-        }
+        emit LiquidityAdded(usedAmountR1, usedAmountUsdc);
     }
 
-    function swapTokensForETH(uint256 amount) private returns (uint256) {
-        address[] memory path = new address[](2);
-        path[0] = address(_token);
-        path[1] = _uniswapV2Router.WETH();
-
-        try
-            _uniswapV2Router.swapExactTokensForETH(
-                amount,
-                0,
-                path,
-                address(this),
-                block.timestamp
-            )
-        returns (uint256[] memory amounts) {
-            return amounts[1];
-        } catch Error(string memory reason) {
-            emit TokenSwapFailed(amount, reason);
-            return 0;
-        } catch {
-            emit TokenSwapFailed(amount, "Unknown error during token swap");
-            return 0;
-        }
+    function getCurrentEpoch() public view returns (uint256) {
+        return _calculateEpoch(block.timestamp);
     }
 
-    function getCurrentCycle() public view returns (uint256) {
-        return _calculateCycle(block.timestamp);
-    }
-
-    function _calculateCycle(uint256 timestamp) private view returns (uint256) {
+    function _calculateEpoch(uint256 timestamp) private pure returns (uint256) {
         require(
-            timestamp >= startCycleTimestamp,
-            "Timestamp is before the start cycle."
+            timestamp >= startEpochTimestamp,
+            "Timestamp is before the start epoch."
         );
 
-        return timestamp.sub(startCycleTimestamp).div(cycleDuration);
+        return (timestamp - startEpochTimestamp) / epochDuration;
     }
 
-    function getLicensePrice() public view returns (uint256 price) {
-        PriceTier memory priceTier = _priceTiers[currentPriceTier];
-        uint256 priceInUsd = priceTier.price * USDC_DECIMALS; // Convert to 6 decimals (USDC format)
-        uint256 naeuraPrice = getTokenPrice(); // Price of 1 NAEURA in USDC (6 decimals)
-        return priceInUsd.mul(PRICE_DECIMALS).div(naeuraPrice); // Result in NAEURA (18 decimals)
+    function getLicenseTokenPrice() public view returns (uint256 price) {
+        uint256 priceInStablecoin = getLicensePriceInUSD() * PRICE_DECIMALS;
+        uint256 r1Price = _liquidityManager.getTokenPrice();
+        return (priceInStablecoin * PRICE_DECIMALS) / r1Price;
     }
 
     function getLicensePriceInUSD() public view returns (uint256 price) {
-        PriceTier memory priceTier = _priceTiers[currentPriceTier];
-        return priceTier.price;
+        return _priceTiers[currentPriceTier].usdPrice;
     }
 
-    // calculate price based on pair reserves
-    function getTokenPrice() public view returns (uint256 price) {
-        address[] memory path = new address[](3);
-        path[0] = address(_token);
-        path[1] = _uniswapV2Router.WETH();
-        path[2] = _usdcAddr;
-
-        uint256 priceTokenToUsd = _uniswapV2Router.getAmountsOut(
-            10 ** 18,
-            path
-        )[2];
-
-        return priceTokenToUsd;
+    function getCurrentLimitPerWallet() public view returns (uint256) {
+        if (limitPerWallet != 0) {
+            return limitPerWallet;
+        }
+        return _priceTiers[currentPriceTier].limitPerWallet;
     }
 
     function _burn(
@@ -571,7 +591,11 @@ contract NDContract is
     function tokenURI(
         uint256 tokenId
     ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
-        return super.tokenURI(tokenId);
+        require(
+            _exists(tokenId),
+            "ERC721Metadata: URI query for nonexistent token"
+        );
+        return _baseTokenURI;
     }
 
     function _beforeTokenTransfer(
@@ -580,156 +604,194 @@ contract NDContract is
         uint256 tokenId,
         uint256 batchSize
     ) internal override(ERC721, ERC721Enumerable) whenNotPaused {
+        License storage license = licenses[tokenId];
+        require(!license.isBanned, "License is banned, cannot perform action");
+        _removeNodeAddress(license, tokenId);
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
-
-        if (from != address(0) && to != address(0)) {
-            // Transfer of existing token
-            License storage license = licenses[from][tokenId];
-            if (bytes(license.nodeHash).length > 0) {
-                registeredNodeHashes[license.nodeHash] = false;
-                license.nodeHash = "";
-            }
-        }
     }
 
     function supportsInterface(
         bytes4 interfaceId
-    )
-        public
-        view
-        override(ERC721, ERC721Enumerable, ERC721URIStorage)
-        returns (bool)
-    {
+    ) public view override(ERC721Enumerable, ERC721URIStorage) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 
-    ///// View functions
-    function hasLicense(
-        address addr,
-        uint256 licenseId
-    ) public view returns (bool) {
-        return licenses[addr][licenseId].exists;
+    function setCompanyWallets(
+        address newLpWallet,
+        address newExpensesWallet,
+        address newMarketingWallet,
+        address newGrantsWallet,
+        address newCsrWallet
+    ) public onlyOwner {
+        lpWallet = newLpWallet;
+        expensesWallet = newExpensesWallet;
+        marketingWallet = newMarketingWallet;
+        grantsWallet = newGrantsWallet;
+        csrWallet = newCsrWallet;
     }
+
+    function setMNDContract(address mndContract_) public onlyOwner {
+        _mndContract = IMND(mndContract_);
+    }
+
+    function setMinimumRequiredSignatures(
+        uint8 minimumRequiredSignatures_
+    ) public onlyOwner {
+        minimumRequiredSignatures = minimumRequiredSignatures_;
+    }
+
+    function setLimitPerWallet(uint8 limitPerWallet_) public onlyOwner {
+        limitPerWallet = limitPerWallet_;
+    }
+
+    function banLicense(uint256 licenseId) public onlyOwner {
+        License storage license = licenses[licenseId];
+        require(!license.isBanned, "License is already banned");
+        license.isBanned = true;
+    }
+
+    function unbanLicense(uint256 licenseId) public onlyOwner {
+        License storage license = licenses[licenseId];
+        require(license.isBanned, "License is not banned");
+        license.isBanned = false;
+    }
+
+    //.##.....##.####.########.##......##....########.##.....##.##....##..######..########.####..#######..##....##..######.
+    //.##.....##..##..##.......##..##..##....##.......##.....##.###...##.##....##....##.....##..##.....##.###...##.##....##
+    //.##.....##..##..##.......##..##..##....##.......##.....##.####..##.##..........##.....##..##.....##.####..##.##......
+    //.##.....##..##..######...##..##..##....######...##.....##.##.##.##.##..........##.....##..##.....##.##.##.##..######.
+    //..##...##...##..##.......##..##..##....##.......##.....##.##..####.##..........##.....##..##.....##.##..####.......##
+    //...##.##....##..##.......##..##..##....##.......##.....##.##...###.##....##....##.....##..##.....##.##...###.##....##
+    //....###....####.########..###..###.....##........#######..##....##..######.....##....####..#######..##....##..######.
 
     function getLicenses(
         address addr
     ) public view returns (LicenseInfo[] memory) {
-        uint256[] memory _userLicenses = userLicenses[addr];
-        LicenseInfo[] memory licenseInfos = new LicenseInfo[](
-            _userLicenses.length
-        );
+        uint256 balance = balanceOf(addr);
+        LicenseInfo[] memory licensesInfo = new LicenseInfo[](balance);
+        uint256 currentEpoch = getCurrentEpoch();
 
-        for (uint256 i = 0; i < _userLicenses.length; i++) {
-            uint256 licenseId = _userLicenses[i];
-            License storage license = licenses[addr][licenseId];
-            uint256 cyclesToClaim = 0;
-            uint256 currentCycle = getCurrentCycle();
+        for (uint256 i = 0; i < balance; i++) {
+            uint256 licenseId = tokenOfOwnerByIndex(addr, i);
+            License memory license = licenses[licenseId];
+            uint256 claimableEpochs = 0;
 
             if (
-                license.lastClaimCycle >= currentCycle ||
-                license.currentClaimAmount >= MAX_RELEASE_PER_LICENSE
+                license.nodeAddress != address(0) &&
+                license.lastClaimEpoch < currentEpoch &&
+                license.totalClaimedAmount < MAX_MINING_PER_LICENSE
             ) {
-                cyclesToClaim = 0;
-            } else {
-                cyclesToClaim = currentCycle - license.lastClaimCycle;
+                claimableEpochs = currentEpoch - license.lastClaimEpoch;
             }
 
-            licenseInfos[i] = LicenseInfo({
-                licenseId: license.licenseId,
-                nodeHash: license.nodeHash,
-                lastClaimCycle: license.lastClaimCycle,
-                currentClaimAmount: license.currentClaimAmount,
-                remainingClaimAmount: MAX_RELEASE_PER_LICENSE -
-                    license.currentClaimAmount,
-                currentClaimableCycles: cyclesToClaim
+            licensesInfo[i] = LicenseInfo({
+                licenseId: licenseId,
+                nodeAddress: license.nodeAddress,
+                totalClaimedAmount: license.totalClaimedAmount,
+                remainingAmount: MAX_MINING_PER_LICENSE -
+                    license.totalClaimedAmount,
+                lastClaimEpoch: license.lastClaimEpoch,
+                claimableEpochs: claimableEpochs,
+                assignTimestamp: license.assignTimestamp,
+                lastClaimOracle: license.lastClaimOracle,
+                isBanned: license.isBanned
             });
         }
 
-        return licenseInfos;
+        return licensesInfo;
+    }
+
+    function getPriceTiers() public view returns (PriceTier[] memory) {
+        PriceTier[] memory priceTiers = new PriceTier[](LAST_PRICE_TIER);
+        for (uint8 i = 1; i <= LAST_PRICE_TIER; i++) {
+            priceTiers[i - 1] = _priceTiers[i];
+        }
+        return priceTiers;
+    }
+
+    function isNodeAlreadyLinked(
+        address nodeAddress
+    ) public view returns (bool) {
+        return
+            registeredNodeAddresses[nodeAddress] ||
+            _mndContract.registeredNodeAddresses(nodeAddress);
     }
 
     // LP setup
-    function setUniswapRouter(address uniswapV2Router_) public onlyOwner {
-        _uniswapV2Router = IUniswapV2Router02(uniswapV2Router_);
-    }
-
-    function setUniswapPair(address uniswapV2Pair_) public onlyOwner {
-        _uniswapV2Pair = IUniswapV2Pair(uniswapV2Pair_);
-    }
-
-    function set_usdcAddress(address usdcAddr_) public onlyOwner {
-        _usdcAddr = usdcAddr_;
+    function setLiquidityManager(address liquidityManager) public onlyOwner {
+        _liquidityManager = ILiquidityManager(liquidityManager);
     }
 
     ///// Signature functions
     using ECDSA for bytes32;
 
-    function verifySignature(
-        address _to,
-        uint256 _licenseId,
-        string memory _nodeHash,
-        NodeAvailability[] memory _nodeAvailabilities,
-        bytes memory signature
-    ) internal view returns (bool) {
-        bytes32 messageHash = getMessageHash(
-            _to,
-            _licenseId,
-            _nodeHash,
-            _nodeAvailabilities
-        );
-        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
-
-        bool verified = false;
-        // TODO: 
-        // mapping(address => bool) signers;
-        // require(signers[receivedSigner], "Invalid signer");
-        // require(ethSignedMessageHash.recover(signature) == receivedSigner)
-        for (uint i = 0; i < signers.length; i++) {
-            address signer = signers[i];
-            if (ethSignedMessageHash.recover(signature) == signer) {
-                verified = true;
-                break;
+    function verifySignatures(
+        bytes32 ethSignedMessageHash,
+        bytes[] memory signatures
+    ) internal view returns (bool, address) {
+        address[] memory seenSigners = new address[](signatures.length);
+        for (uint i = 0; i < signatures.length; i++) {
+            address signerAddress = ethSignedMessageHash.recover(signatures[i]);
+            if (!isSigner[signerAddress]) {
+                return (false, address(0));
             }
+            for (uint j = 0; j < seenSigners.length; j++) {
+                if (seenSigners[j] == signerAddress) {
+                    return (false, address(0));
+                }
+            }
+            seenSigners[i] = signerAddress;
         }
-
-        return verified;
+        return (true, seenSigners[0]);
     }
 
-    function getMessageHash(
-        address _to,
-        uint256 _licenseId,
-        string memory _nodeHash,
-        NodeAvailability[] memory _nodeAvailabilities
-    ) public pure returns (bytes32) {
-        bytes memory encoded;
-        // TODO: Corrent to simple keccak256(abi.encodePacked(node, epochs, epochs_vals));
-        for (uint i = 0; i < _nodeAvailabilities.length; i++) {
-            encoded = abi.encodePacked(
-                encoded,
-                _nodeAvailabilities[i].epoch,
-                _nodeAvailabilities[i].availability
-            );
-        }
-        return keccak256(abi.encodePacked(_to, _licenseId, _nodeHash, encoded));
+    function verifyRewardsSignatures(
+        ComputeRewardsParams memory computeParam,
+        bytes[] memory signatures
+    ) public view returns (bool, address) {
+        bytes32 messageHash = keccak256(
+            abi.encodePacked(
+                computeParam.nodeAddress,
+                computeParam.epochs,
+                computeParam.availabilies
+            )
+        );
+        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
+        return verifySignatures(ethSignedMessageHash, signatures);
+    }
+
+    function verifyBuyLicenseSignature(
+        address addr,
+        bytes32 invoiceUuid,
+        bytes memory signature
+    ) public view returns (bool, address) {
+        bytes32 messageHash = keccak256(abi.encodePacked(addr, invoiceUuid));
+        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
+        bytes[] memory signatures = new bytes[](1);
+        signatures[0] = signature;
+        return verifySignatures(ethSignedMessageHash, signatures);
     }
 
     function addSigner(address newSigner) public onlyOwner {
-        if (newSigner != address(0)) {
-            index[newSigner] = signers.length;
-            signers.push(newSigner);
-            emit SignerAdded(newSigner);
-        }
+        require(newSigner != address(0), "Invalid signer address");
+        require(!isSigner[newSigner], "Signer already exists");
+        isSigner[newSigner] = true;
+        signerSignaturesCount[newSigner] = 0;
+        signerAdditionTimestamp[newSigner] = block.timestamp;
+        signers.push(newSigner);
+        emit SignerAdded(newSigner);
     }
 
     function removeSigner(address signerToRemove) public onlyOwner {
-        uint index_signer = index[signerToRemove];
-        if (signerToRemove != address(0) && index_signer > 0) {
-            delete signers[index_signer];
-            index[signerToRemove] = 0;
-            emit SignerRemoved(signerToRemove);
+        require(isSigner[signerToRemove], "Signer does not exist");
+        isSigner[signerToRemove] = false;
+        for (uint i = 0; i < signers.length; i++) {
+            if (signers[i] == signerToRemove) {
+                signers[i] = signers[signers.length - 1];
+                signers.pop();
+                break;
+            }
         }
+        emit SignerRemoved(signerToRemove);
     }
-
-    // Needed for the contract to receive ETH from LP in case of adding liquidity error
-    receive() external payable {}
 }
