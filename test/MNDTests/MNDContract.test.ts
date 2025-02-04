@@ -210,6 +210,11 @@ describe("MNDContract", function () {
     expect(await mndContract.supportsInterface("0x80ac58cd")).to.be.true;
   });
 
+  it("Get Signers", async function () {
+    let result = await mndContract.getSigners();
+    expect(result[0]).to.be.equal(oracle.address);
+  });
+
   it("Set nd contract - ownable: caller is not the owner", async function () {
     await expect(
       mndContract.connect(firstUser).setNDContract(secondUser.address)
