@@ -94,7 +94,6 @@ contract NDContract is
     uint256 constant MINING_DURATION_EPOCHS = 36 * 30;
     uint256 constant MAX_RELEASE_PER_DAY =
         MAX_MINING_PER_LICENSE / MINING_DURATION_EPOCHS;
-    uint256 constant MAX_LICENSES_BUYS_PER_TX = 5;
 
     uint256 constant BURN_PERCENTAGE = 20_00;
     uint256 constant LIQUIDITY_PERCENTAGE = 50_00;
@@ -224,10 +223,7 @@ contract NDContract is
             requestedPriceTier == currentPriceTier,
             "Not in the right price tier"
         );
-        require(
-            nLicensesToBuy > 0 && nLicensesToBuy <= MAX_LICENSES_BUYS_PER_TX,
-            "Invalid number of licenses"
-        );
+        require(nLicensesToBuy > 0, "Invalid number of licenses");
         require(
             !usedInvoiceUUIDs[invoiceUuid],
             "Invoice UUID has already been used"
