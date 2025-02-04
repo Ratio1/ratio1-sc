@@ -581,10 +581,6 @@ contract NDContract is
         super._burn(tokenId);
     }
 
-    function _baseURI() internal view virtual override returns (string memory) {
-        return _baseTokenURI;
-    }
-
     function setBaseURI(string memory baseURI) public onlyOwner {
         _baseTokenURI = baseURI;
     }
