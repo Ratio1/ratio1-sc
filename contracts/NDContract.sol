@@ -235,6 +235,7 @@ contract NDContract is
         (bool validSignatures, ) = verifyBuyLicenseSignature(
             msg.sender,
             invoiceUuid,
+            usdMintLimit,
             signature
         );
         require(validSignatures, "Invalid signature");
@@ -767,9 +768,12 @@ contract NDContract is
     function verifyBuyLicenseSignature(
         address addr,
         bytes32 invoiceUuid,
+        uint256 usdMintLimit,
         bytes memory signature
     ) public view returns (bool, address) {
-        bytes32 messageHash = keccak256(abi.encodePacked(addr, invoiceUuid));
+        bytes32 messageHash = keccak256(
+            abi.encodePacked(addr, invoiceUuid, usdMintLimit)
+        );
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
         bytes[] memory signatures = new bytes[](1);
         signatures[0] = signature;
