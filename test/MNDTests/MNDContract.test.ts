@@ -215,6 +215,30 @@ describe("MNDContract", function () {
     expect(result[0]).to.be.equal(oracle.address);
   });
 
+  it("Set base uri- should work", async function () {
+    let baseUri = "PIPPO.com/";
+    await mndContract.setBaseURI(baseUri);
+  });
+
+  it("Set base uri - not the owner", async function () {
+    let baseUri = "PIPPO.com/";
+    await expect(
+      mndContract.connect(firstUser).setBaseURI(baseUri)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Get token uri", async function () {
+    let baseUri = "PIPPO.com/";
+    await mndContract.setBaseURI(baseUri);
+
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, LICENSE_POWER);
+
+    let result = await mndContract.tokenURI(BigNumber.from(1));
+    expect(baseUri).to.equal(result);
+  });
+
   it("Set nd contract - ownable: caller is not the owner", async function () {
     await expect(
       mndContract.connect(firstUser).setNDContract(secondUser.address)
