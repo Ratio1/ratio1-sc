@@ -100,11 +100,13 @@ describe("MNDContract", function () {
       availabilies: [250, 130, 178, 12, 0],
     };
 
+    snapshotId = await ethers.provider.send("evm_snapshot", []);
+  });
+  beforeEach(async function () {
     //ADD TWO DAYS TO REACH START EPOCH
     let daysToAdd = START_EPOCH_TIMESTAMP;
     await ethers.provider.send("evm_setNextBlockTimestamp", [daysToAdd]);
     await ethers.provider.send("evm_mine", []);
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
 
   afterEach(async function () {
@@ -237,7 +239,6 @@ describe("MNDContract", function () {
   });
 
   it("Get licenses - cliff epoch not reached", async function () {
-    //FAIL due to negative number, TODO check when fixed
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);

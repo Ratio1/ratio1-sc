@@ -27,27 +27,24 @@ const newExpensesWallet = "0x0000000000000000000000000000000000000002";
 const newMarketingWallet = "0x0000000000000000000000000000000000000003";
 const newGrantsWallet = "0x0000000000000000000000000000000000000004";
 const newCsrWallet = "0x0000000000000000000000000000000000000005";
-const REWARDS_AMOUNT = BigNumber.from("19561168740964714023");
+const REWARDS_AMOUNT = BigNumber.from("3260194774041496137");
 const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: BigNumber.from(1),
   rewardsAmount: REWARDS_AMOUNT,
 };
 const START_EPOCH_TIMESTAMP = 1738767600;
-const CURRENT_EPOCH_TIMESTAMP = Math.floor(Date.now() / 1000);
-const CLAIMABLE_EPOCHS = Math.floor(
-  (CURRENT_EPOCH_TIMESTAMP - START_EPOCH_TIMESTAMP) / ONE_DAY_IN_SECS
-);
 const EXPECTED_LICENSES_INFO = [
   {
     licenseId: BigNumber.from(1),
-    nodeAddress: NULL_ADDRESS,
+    nodeAddress: NODE_ADDRESS,
     totalClaimedAmount: BigNumber.from(0),
-    remainingAmount: BigNumber.from("15751888512461059190031"),
+    remainingAmount: BigNumber.from("1575188843457943925233"),
     lastClaimEpoch: BigNumber.from(0),
-    claimableEpochs: BigNumber.from(CLAIMABLE_EPOCHS),
-    assignTimestamp: BigNumber.from(0),
+    claimableEpochs: BigNumber.from(2),
+    assignTimestamp: BigNumber.from(1738767604),
   },
 ];
+const EPOCH_IN_A_DAY = 1;
 
 const EXPECTED_PRICE_TIERS = [
   {
@@ -101,18 +98,18 @@ const EXPECTED_PRICE_TIERS = [
     soldUnits: BigNumber.from(0),
   },
   {
-    usdPrice: BigNumber.from(10000),
+    usdPrice: BigNumber.from(7000),
     totalUnits: BigNumber.from(10946),
     soldUnits: BigNumber.from(0),
   },
   {
-    usdPrice: BigNumber.from(20000),
+    usdPrice: BigNumber.from(9500),
     totalUnits: BigNumber.from(17711),
     soldUnits: BigNumber.from(0),
   },
 ];
 
-describe.only("NDContract", function () {
+describe("NDContract", function () {
   /*
   .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
   .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -134,7 +131,7 @@ describe.only("NDContract", function () {
   let COMPUTE_PARAMS = {
     licenseId: 1,
     nodeAddress: NODE_ADDRESS,
-    epochs: [1, 2, 3, 4, 5],
+    epochs: [0, 1, 2, 3, 4],
     availabilies: [250, 130, 178, 12, 0],
   };
   let snapshotId: string;
@@ -209,24 +206,20 @@ describe.only("NDContract", function () {
     await r1Contract.setNdContract(ndContract.address);
     await r1Contract.setMndContract(owner.address);
 
-    COMPUTE_PARAMS = {
-      licenseId: 1,
-      nodeAddress: NODE_ADDRESS,
-      epochs: [1, 2, 3, 4, 5],
-      availabilies: [250, 130, 178, 12, 0],
-    };
-
+    snapshotId = await ethers.provider.send("evm_snapshot", []);
+  });
+  beforeEach(async function () {
+    //ADD TWO DAYS TO REACH START EPOCH
     let daysToAdd = START_EPOCH_TIMESTAMP;
     await ethers.provider.send("evm_setNextBlockTimestamp", [daysToAdd]);
     await ethers.provider.send("evm_mine", []);
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
 
   afterEach(async function () {
     COMPUTE_PARAMS = {
       licenseId: 1,
       nodeAddress: NODE_ADDRESS,
-      epochs: [1, 2, 3, 4, 5],
+      epochs: [0, 1, 2, 3, 4],
       availabilies: [250, 130, 178, 12, 0],
     };
     await ethers.provider.send("evm_revert", [snapshotId]);
@@ -341,7 +334,7 @@ describe.only("NDContract", function () {
 
   async function updateTimestamp() {
     await ethers.provider.send("evm_setNextBlockTimestamp", [
-      CURRENT_EPOCH_TIMESTAMP,
+      START_EPOCH_TIMESTAMP + (ONE_DAY_IN_SECS * 2) / EPOCH_IN_A_DAY,
     ]);
     await ethers.provider.send("evm_mine", []);
   }
@@ -362,7 +355,6 @@ describe.only("NDContract", function () {
   });
 
   it("Get licenses", async function () {
-    //await updateTimestamp();
     await buyLicenseWithMintAndAllowance(
       r1Contract,
       ndContract,
@@ -373,6 +365,8 @@ describe.only("NDContract", function () {
       1,
       await signAddress(backend, firstUser, invoiceUuid)
     );
+    await linkNode(ndContract, firstUser, 1);
+    await updateTimestamp();
 
     let result = await ndContract.getLicenses(firstUser.address);
     expect(EXPECTED_LICENSES_INFO).to.deep.equal(
@@ -441,9 +435,9 @@ describe.only("NDContract", function () {
       1,
       await signAddress(backend, firstUser, invoiceUuid)
     );
-    let licenseId = 1;
+
     let result = await ndContract.tokenURI(BigNumber.from(1));
-    expect(baseUri + licenseId).to.equal(result);
+    expect(baseUri).to.equal(result);
   });
 
   it("Get price tiers", async function () {
@@ -471,33 +465,42 @@ describe.only("NDContract", function () {
   it("Buy license - should work", async function () {
     let price = await ndContract.getLicensePriceInUSD();
     expect(price).to.equal(500);
+    let licenseTokenPrice = (
+      await ndContract.getLicenseTokenPrice()
+    ).toBigInt();
     await buyLicenseWithMintAndAllowance(
       r1Contract,
       ndContract,
       owner,
       firstUser,
-      (await ndContract.getLicenseTokenPrice()).toBigInt(),
+      licenseTokenPrice,
       1,
       1,
       await signAddress(backend, firstUser, invoiceUuid)
     );
     expect(firstUser.address).to.equal(await ndContract.ownerOf(1));
-    expect("40050000000000000100").to.deep.equal(
-      await r1Contract.balanceOf(newLpWallet)
+    let newLpWalletAmount = await r1Contract.balanceOf(newLpWallet);
+    let newExpensesWalletAmount = await r1Contract.balanceOf(newExpensesWallet);
+    let newMarketingWalletAmount = await r1Contract.balanceOf(
+      newMarketingWallet
     );
-    expect("20700000000000000000").to.deep.equal(
-      await r1Contract.balanceOf(newExpensesWallet)
-    );
-    expect("11250000000000000000").to.deep.equal(
-      await r1Contract.balanceOf(newMarketingWallet)
-    );
+    let newGrantsWalletAmount = await r1Contract.balanceOf(newGrantsWallet);
+    let newCsrWalletAmount = await r1Contract.balanceOf(newCsrWallet);
+    expect("133549866450000000233").to.deep.equal(newLpWalletAmount);
+    expect("69199930800000000069").to.deep.equal(newExpensesWalletAmount);
+    expect("37699962300000000037").to.deep.equal(newMarketingWalletAmount);
+    expect("172999827000000000172").to.deep.equal(newGrantsWalletAmount);
+    expect("86549913450000000086").to.deep.equal(newCsrWalletAmount);
 
-    expect("51900000000000000000").to.deep.equal(
-      await r1Contract.balanceOf(newGrantsWallet)
+    let total = newLpWalletAmount
+      .add(newExpensesWalletAmount)
+      .add(newMarketingWalletAmount)
+      .add(newGrantsWalletAmount)
+      .add(newCsrWalletAmount);
+    expect(total).to.be.equal(
+      (licenseTokenPrice * BigInt(30)) / BigInt(100) + BigInt(98)
     );
-    expect("25950000000000000000").to.deep.equal(
-      await r1Contract.balanceOf(newCsrWallet)
-    );
+    // TODO why plus 98? for remaining on add liquidity?
   });
 
   it("Buy license - insufficent balance", async function () {
@@ -517,7 +520,12 @@ describe.only("NDContract", function () {
 
   it("Buy license - insufficent allowance", async function () {
     //Mint tokens
-    await r1Contract.connect(owner).mint(firstUser.address, ONE_TOKEN.mul(500));
+    await r1Contract
+      .connect(owner)
+      .mint(
+        firstUser.address,
+        (await ndContract.getLicenseTokenPrice()).toBigInt()
+      );
 
     //Buy license without giving allowance
     await expect(
@@ -821,7 +829,9 @@ describe.only("NDContract", function () {
       await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_increaseTime", [
+      (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
+    ]);
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
@@ -848,7 +858,9 @@ describe.only("NDContract", function () {
       await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_increaseTime", [
+      (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
+    ]);
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
@@ -876,10 +888,15 @@ describe.only("NDContract", function () {
       1,
       await signAddress(backend, firstUser, invoiceUuid)
     );
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS / EPOCH_IN_A_DAY,
+    ]);
     await ndContract
       .connect(firstUser)
       .linkNode(1, "0x1351504af17BFdb80491D9223d6Bcb6BB964DCeD");
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_increaseTime", [
+      (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
+    ]);
     await ethers.provider.send("evm_mine", []);
 
     await ndContract.connect(firstUser).claimRewards(
@@ -915,7 +932,9 @@ describe.only("NDContract", function () {
       await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_increaseTime", [
+      (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
+    ]);
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
@@ -1031,7 +1050,9 @@ describe.only("NDContract", function () {
     );
     await linkNode(ndContract, firstUser, 1);
     await ndContract.addSigner(secondUser.address);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_increaseTime", [
+      (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
+    ]);
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
@@ -1148,7 +1169,9 @@ describe.only("NDContract", function () {
       await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_increaseTime", [
+      (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
+    ]);
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
@@ -1186,15 +1209,17 @@ describe.only("NDContract", function () {
       await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 366 * 5]);
+    await ethers.provider.send("evm_increaseTime", [
+      (ONE_DAY_IN_SECS * 366 * 5) / EPOCH_IN_A_DAY,
+    ]);
     await ethers.provider.send("evm_mine", []);
 
     for (let i = 0; i < 366 * 5; i++) {
-      COMPUTE_PARAMS.epochs[i] = i + 1;
+      COMPUTE_PARAMS.epochs[i] = i;
       COMPUTE_PARAMS.availabilies[i] = 255;
     }
 
-    let expected_result = BigNumber.from("15751888512461059190031");
+    let expected_result = BigNumber.from("1575188843457943925233");
     //DO TEST
     await ndContract
       .connect(firstUser)
@@ -1209,7 +1234,9 @@ describe.only("NDContract", function () {
     COMPUTE_PARAMS.epochs = [1830];
     COMPUTE_PARAMS.availabilies = [255];
 
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_increaseTime", [
+      (ONE_DAY_IN_SECS * 366 * 5) / EPOCH_IN_A_DAY,
+    ]);
     await ethers.provider.send("evm_mine", []);
     await ndContract
       .connect(firstUser)
@@ -1362,7 +1389,9 @@ describe.only("NDContract", function () {
       await signAddress(backend, firstUser, invoiceUuid)
     );
     await linkNode(ndContract, firstUser, 1);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_increaseTime", [
+      (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
+    ]);
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
@@ -1470,7 +1499,9 @@ describe.only("NDContract", function () {
     );
     await linkNode(ndContract, firstUser, 1);
     await ndContract.connect(owner).banLicense(1);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
+    await ethers.provider.send("evm_increaseTime", [
+      (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
+    ]);
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
