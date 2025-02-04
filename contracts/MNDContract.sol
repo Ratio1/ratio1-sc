@@ -113,6 +113,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     mapping(address => bool) isSigner;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
+    mapping(address => address) public nodeToUser;
     mapping(address => uint256) public signerSignaturesCount;
     mapping(address => uint256) public signerAdditionTimestamp;
 
@@ -222,6 +223,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         license.lastClaimEpoch = getCurrentEpoch();
         license.assignTimestamp = block.timestamp;
         registeredNodeAddresses[newNodeAddress] = true;
+        nodeToUser[newNodeAddress] = msg.sender;
 
         emit LinkNode(msg.sender, licenseId, newNodeAddress);
     }
@@ -251,6 +253,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
 
         address oldNodeAddress = license.nodeAddress;
         registeredNodeAddresses[license.nodeAddress] = false;
+        nodeToUser[license.nodeAddress] = address(0);
         license.nodeAddress = address(0);
 
         emit UnlinkNode(msg.sender, licenseId, oldNodeAddress);
