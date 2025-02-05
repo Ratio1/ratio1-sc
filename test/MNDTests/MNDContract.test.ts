@@ -1053,4 +1053,92 @@ describe("MNDContract", function () {
         .setMinimumRequiredSignatures(BigNumber.from(1))
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
+
+  it("Transfer - empty license", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, LICENSE_POWER);
+
+    //DO TEST - transfer empty license
+    await mndContract
+      .connect(owner)
+      .initiateTransfer(firstUser.address, secondUser.address);
+    await mndContract
+      .connect(firstUser)
+      .transferFrom(firstUser.address, secondUser.address, 2);
+    let result = await mndContract.ownerOf(2);
+    expect(result).to.equal(secondUser.address);
+    expect((await mndContract.licenses(2)).nodeAddress).to.equal(NULL_ADDRESS);
+  });
+
+  it("Transfer - linked license", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await mndContract
+      .connect(owner)
+      .initiateTransfer(firstUser.address, secondUser.address);
+
+    //DO TEST - transfer linked license
+    await mndContract
+      .connect(firstUser)
+      .transferFrom(firstUser.address, secondUser.address, 2);
+    let result = await mndContract.ownerOf(2);
+    expect(result).to.equal(secondUser.address);
+    expect((await mndContract.licenses(2)).nodeAddress).to.equal(NODE_ADDRESS);
+  });
+
+  it("Transfer - Soulbound", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, LICENSE_POWER);
+
+    //DO TEST - transfer empty license
+    await expect(
+      mndContract
+        .connect(firstUser)
+        .transferFrom(firstUser.address, secondUser.address, 2)
+    ).to.be.revertedWith("Soulbound: Non-transferable token");
+  });
+
+  it("Burn - empty license", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, LICENSE_POWER);
+
+    //DO TEST - transfer empty license
+    await mndContract.connect(owner).initiateBurn(firstUser.address);
+    await mndContract.connect(firstUser).burn(2);
+  });
+
+  it("Burn - linked license", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await mndContract.connect(owner).initiateBurn(firstUser.address);
+
+    //DO TEST - transfer linked license
+    await mndContract.connect(firstUser).burn(2);
+  });
+
+  it("Burn - Soulbound", async function () {
+    //SETUP WORLD
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, LICENSE_POWER);
+
+    //DO TEST - transfer empty license
+    await expect(mndContract.connect(firstUser).burn(2)).to.be.revertedWith(
+      "Soulbound: Non-transferable token"
+    );
+  });
 });

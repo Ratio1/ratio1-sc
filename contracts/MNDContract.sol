@@ -124,6 +124,9 @@ contract MNDContract is
     mapping(address => uint256) public signerSignaturesCount;
     mapping(address => uint256) public signerAdditionTimestamp;
 
+    mapping(address => address) public initiatedTransferReceiver;
+    mapping(address => bool) public initiatedBurn;
+
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
     //.##.......##.....##.##.......####..##....##....##......
@@ -410,6 +413,14 @@ contract MNDContract is
         return licenseRewards;
     }
 
+    function initiateTransfer(address from, address to) public onlyOwner {
+        initiatedTransferReceiver[from] = to;
+    }
+
+    function initiateBurn(address from) public onlyOwner {
+        initiatedBurn[from] = true;
+    }
+
     function pause() public onlyOwner {
         _pause();
     }
@@ -460,6 +471,11 @@ contract MNDContract is
         return _baseTokenURI;
     }
 
+    function burn(uint256 tokenId) public whenNotPaused {
+        require(ownerOf(tokenId) == msg.sender, "Not the owner of the license");
+        _burn(tokenId);
+    }
+
     function _beforeTokenTransfer(
         address from,
         address to,
@@ -467,9 +483,22 @@ contract MNDContract is
         uint256 batchSize
     ) internal override(ERC721, ERC721Enumerable) whenNotPaused {
         require(
-            from == address(0) || to == address(0),
+            from == address(0) ||
+                (to == address(0) && initiatedBurn[from]) ||
+                (to != address(0) && initiatedTransferReceiver[from] == to),
             "Soulbound: Non-transferable token"
         );
+        delete initiatedTransferReceiver[from];
+        delete initiatedBurn[from];
+        if (to == address(0)) {
+            License memory license = licenses[tokenId];
+            uint256 remainingAmount = license.totalAssignedAmount -
+                license.totalClaimedAmount;
+            totalLicensesAssignedTokensAmount -= remainingAmount;
+            registeredNodeAddresses[license.nodeAddress] = false;
+            nodeToLicenseId[license.nodeAddress] = 0;
+            delete licenses[tokenId];
+        }
         super._beforeTokenTransfer(from, to, tokenId, batchSize);
     }
 
