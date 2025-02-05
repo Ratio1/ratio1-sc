@@ -2,6 +2,7 @@
 pragma solidity ^0.8.18;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -47,8 +48,13 @@ struct LicenseInfo {
     address lastClaimOracle;
 }
 
-//TODO add ERC721URIStorage?
-contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
+contract MNDContract is
+    ERC721Enumerable,
+    ERC721URIStorage,
+    Pausable,
+    Ownable,
+    ReentrancyGuard
+{
     using SafeMath for uint256;
     using Counters for Counters.Counter;
 
@@ -98,6 +104,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     //..######.....##.....#######..##.....##.##.....##..######...########
 
     Counters.Counter private _supply;
+    string public _baseTokenURI;
 
     R1 private _R1Token;
     IND _ndContract;
@@ -113,7 +120,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
     mapping(address => bool) isSigner;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
-    mapping(address => address) public nodeToUser;
+    mapping(address => uint256) public nodeToLicenseId;
     mapping(address => uint256) public signerSignaturesCount;
     mapping(address => uint256) public signerAdditionTimestamp;
 
@@ -139,6 +146,12 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         address indexed owner,
         uint256 indexed licenseId,
         address oldNodeAddress
+    );
+    event RewardsClaimed(
+        address indexed to,
+        uint256 indexed licenseId,
+        uint256 rewardsAmount,
+        uint256 totalEpochs
     );
     event SignerAdded(address newSigner);
     event SignerRemoved(address removedSigner);
@@ -223,7 +236,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         license.lastClaimEpoch = getCurrentEpoch();
         license.assignTimestamp = block.timestamp;
         registeredNodeAddresses[newNodeAddress] = true;
-        nodeToUser[newNodeAddress] = msg.sender;
+        nodeToLicenseId[newNodeAddress] = licenseId;
 
         emit LinkNode(msg.sender, licenseId, newNodeAddress);
     }
@@ -253,7 +266,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
 
         address oldNodeAddress = license.nodeAddress;
         registeredNodeAddresses[license.nodeAddress] = false;
-        nodeToUser[license.nodeAddress] = address(0);
+        nodeToLicenseId[license.nodeAddress] = 0;
         license.nodeAddress = address(0);
 
         emit UnlinkNode(msg.sender, licenseId, oldNodeAddress);
@@ -286,6 +299,12 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         license.lastClaimOracle = firstSigner;
 
         if (rewardsAmount > 0) {
+            emit RewardsClaimed(
+                msg.sender,
+                computeParam.licenseId,
+                rewardsAmount,
+                computeParam.epochs.length
+            );
             if (computeParam.licenseId == GENESIS_TOKEN_ID) {
                 mintCompanyFunds(rewardsAmount);
             } else {
@@ -424,12 +443,32 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         return (timestamp - startEpochTimestamp) / epochDuration;
     }
 
+    function _burn(
+        uint256 tokenId
+    ) internal override(ERC721, ERC721URIStorage) {
+        super._burn(tokenId);
+    }
+
+    function setBaseURI(string memory baseURI) public onlyOwner {
+        _baseTokenURI = baseURI;
+    }
+
+    function tokenURI(
+        uint256 tokenId
+    ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
+        require(
+            _exists(tokenId),
+            "ERC721Metadata: URI query for nonexistent token"
+        );
+        return _baseTokenURI;
+    }
+
     function _beforeTokenTransfer(
         address from,
         address to,
         uint256 tokenId,
         uint256 batchSize
-    ) internal override(ERC721Enumerable) whenNotPaused {
+    ) internal override(ERC721, ERC721Enumerable) whenNotPaused {
         require(
             from == address(0) || to == address(0),
             "Soulbound: Non-transferable token"
@@ -439,7 +478,7 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
 
     function supportsInterface(
         bytes4 interfaceId
-    ) public view override(ERC721Enumerable) returns (bool) {
+    ) public view override(ERC721Enumerable, ERC721URIStorage) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
 
@@ -542,6 +581,10 @@ contract MNDContract is ERC721Enumerable, Pausable, Ownable, ReentrancyGuard {
         return
             registeredNodeAddresses[nodeAddress] ||
             _ndContract.registeredNodeAddresses(nodeAddress);
+    }
+
+    function getSigners() public view returns (address[] memory) {
+        return signers;
     }
 
     ///// Signature functions

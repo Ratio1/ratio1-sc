@@ -210,6 +210,35 @@ describe("MNDContract", function () {
     expect(await mndContract.supportsInterface("0x80ac58cd")).to.be.true;
   });
 
+  it("Get Signers", async function () {
+    let result = await mndContract.getSigners();
+    expect(result[0]).to.be.equal(oracle.address);
+  });
+
+  it("Set base uri- should work", async function () {
+    let baseUri = "PIPPO.com/";
+    await mndContract.setBaseURI(baseUri);
+  });
+
+  it("Set base uri - not the owner", async function () {
+    let baseUri = "PIPPO.com/";
+    await expect(
+      mndContract.connect(firstUser).setBaseURI(baseUri)
+    ).to.be.revertedWith("Ownable: caller is not the owner");
+  });
+
+  it("Get token uri", async function () {
+    let baseUri = "PIPPO.com/";
+    await mndContract.setBaseURI(baseUri);
+
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, LICENSE_POWER);
+
+    let result = await mndContract.tokenURI(BigNumber.from(1));
+    expect(baseUri).to.equal(result);
+  });
+
   it("Set nd contract - ownable: caller is not the owner", async function () {
     await expect(
       mndContract.connect(firstUser).setNDContract(secondUser.address)
@@ -861,6 +890,45 @@ describe("MNDContract", function () {
           Buffer.from(await signComputeParams(oracle), "hex"),
         ])
     ).to.be.revertedWith("Incorrect number of params.");
+  });
+
+  it("Claim rewards - full history claim with 5 oracles", async function () {
+    //SETUP WORLD
+    let [oracle1, oracle2, oracle3, oracle4, oracle5] = (
+      await ethers.getSigners()
+    ).slice(15, 20);
+    await mndContract.addSigner(oracle1.address);
+    await mndContract.addSigner(oracle2.address);
+    await mndContract.addSigner(oracle3.address);
+    await mndContract.addSigner(oracle4.address);
+    await mndContract.addSigner(oracle5.address);
+    await updateTimestamp();
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 366 * 5]);
+    await ethers.provider.send("evm_mine", []);
+
+    for (let i = 0; i < 366 * 5; i++) {
+      COMPUTE_PARAMS.epochs[i] = 121 + i;
+      COMPUTE_PARAMS.availabilies[i] = 255;
+    }
+
+    let expected_result = BigNumber.from("485410000000000000000000");
+    //DO TEST
+    await mndContract
+      .connect(firstUser)
+      .claimRewards(COMPUTE_PARAMS, [
+        Buffer.from(await signComputeParams(oracle1), "hex"),
+        Buffer.from(await signComputeParams(oracle2), "hex"),
+        Buffer.from(await signComputeParams(oracle3), "hex"),
+        Buffer.from(await signComputeParams(oracle4), "hex"),
+        Buffer.from(await signComputeParams(oracle5), "hex"),
+      ]);
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
+      expected_result
+    );
   });
 
   it("Transfer - soulbound: Non-transferable token ", async function () {

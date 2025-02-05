@@ -1,0 +1,11 @@
+{
+    "name": "MND License",
+    "description": "This is a Master Node Deed License NFT representing a node license.",
+    "image": "https://gateway.pinata.cloud/ipfs/bafybeibefjyugz3l72xc6gb3ydoz6xbl6wkzujp6ue65jmtwa76ccam3mi",
+    "attributes": [
+        {
+            "trait_type": "License Type",
+            "value": "Master Node Deed"
+        }
+    ]
+}

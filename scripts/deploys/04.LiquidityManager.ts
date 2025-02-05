@@ -1,6 +1,5 @@
 import { ethers } from "hardhat";
 import {
-  ND_SC_ADDR,
   R1_TOKEN_ADDR,
   SAFE_ADDR,
   UNISWAP_V2_PAIR_ADDR,

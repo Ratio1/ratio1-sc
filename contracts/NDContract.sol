@@ -32,7 +32,6 @@ struct PriceTier {
     uint256 usdPrice; // Price in USD
     uint256 totalUnits; // Number of units available at this stage
     uint256 soldUnits; // Number of units sold at this stage
-    uint256 limitPerWallet; // Limit of units per wallet at this stage
 }
 
 struct License {
@@ -95,7 +94,6 @@ contract NDContract is
     uint256 constant MINING_DURATION_EPOCHS = 36 * 30;
     uint256 constant MAX_RELEASE_PER_DAY =
         MAX_MINING_PER_LICENSE / MINING_DURATION_EPOCHS;
-    uint256 constant MAX_LICENSES_BUYS_PER_TX = 5;
 
     uint256 constant BURN_PERCENTAGE = 20_00;
     uint256 constant LIQUIDITY_PERCENTAGE = 50_00;
@@ -130,13 +128,13 @@ contract NDContract is
     address[] public signers;
     uint8 public minimumRequiredSignatures;
     mapping(address => bool) isSigner;
-    uint256 public limitPerWallet;
     mapping(uint8 => PriceTier) public _priceTiers;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
-    mapping(address => address) public nodeToUser;
+    mapping(address => uint256) public nodeToLicenseId;
     mapping(address => uint256) public signerSignaturesCount;
     mapping(address => uint256) public signerAdditionTimestamp;
+    mapping(address => uint256) public userUsdMintedAmount;
     mapping(bytes32 => bool) public usedInvoiceUUIDs;
 
     //.########.##.....##.########.##....##.########..######.
@@ -164,11 +162,16 @@ contract NDContract is
         uint256 indexed licenseId,
         address oldNodeAddress
     );
+    event RewardsClaimed(
+        address indexed to,
+        uint256 indexed licenseId,
+        uint256 rewardsAmount,
+        uint256 totalEpochs
+    );
     event SignerAdded(address newSigner);
     event SignerRemoved(address removedSigner);
     event LpAddrChanged(address newlpAddr);
     event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount);
-    //TODO add event for claim rewards
 
     constructor(
         address tokenAddress,
@@ -182,18 +185,18 @@ contract NDContract is
     }
 
     function initializePriceTiers() private {
-        _priceTiers[1] = PriceTier(500, 89, 0, 19);
-        _priceTiers[2] = PriceTier(750, 144, 0, 13);
-        _priceTiers[3] = PriceTier(1000, 233, 0, 9);
-        _priceTiers[4] = PriceTier(1500, 377, 0, 6);
-        _priceTiers[5] = PriceTier(2000, 610, 0, 4);
-        _priceTiers[6] = PriceTier(2500, 987, 0, 3);
-        _priceTiers[7] = PriceTier(3000, 1597, 0, 3);
-        _priceTiers[8] = PriceTier(3500, 2584, 0, 2);
-        _priceTiers[9] = PriceTier(4000, 4181, 0, 2);
-        _priceTiers[10] = PriceTier(5000, 6765, 0, 1);
-        _priceTiers[11] = PriceTier(7000, 10946, 0, 1);
-        _priceTiers[12] = PriceTier(9500, 17711, 0, 1);
+        _priceTiers[1] = PriceTier(500, 89, 0);
+        _priceTiers[2] = PriceTier(750, 144, 0);
+        _priceTiers[3] = PriceTier(1000, 233, 0);
+        _priceTiers[4] = PriceTier(1500, 377, 0);
+        _priceTiers[5] = PriceTier(2000, 610, 0);
+        _priceTiers[6] = PriceTier(2500, 987, 0);
+        _priceTiers[7] = PriceTier(3000, 1597, 0);
+        _priceTiers[8] = PriceTier(3500, 2584, 0);
+        _priceTiers[9] = PriceTier(4000, 4181, 0);
+        _priceTiers[10] = PriceTier(5000, 6765, 0);
+        _priceTiers[11] = PriceTier(7000, 10946, 0);
+        _priceTiers[12] = PriceTier(9500, 17711, 0);
 
         uint256 ndSupply = 0;
         for (uint8 i = 1; i <= LAST_PRICE_TIER; i++) {
@@ -207,7 +210,9 @@ contract NDContract is
     function buyLicense(
         uint256 nLicensesToBuy,
         uint8 requestedPriceTier,
+        uint256 maxAcceptedTokenPerLicense,
         bytes32 invoiceUuid,
+        uint256 usdMintLimit,
         bytes memory signature
     ) public nonReentrant whenNotPaused returns (uint) {
         require(
@@ -218,15 +223,7 @@ contract NDContract is
             requestedPriceTier == currentPriceTier,
             "Not in the right price tier"
         );
-        require(
-            nLicensesToBuy > 0 && nLicensesToBuy <= MAX_LICENSES_BUYS_PER_TX,
-            "Invalid number of licenses"
-        );
-        require(
-            balanceOf(msg.sender) + nLicensesToBuy <=
-                getCurrentLimitPerWallet(),
-            "Exceeds limit per wallet"
-        );
+        require(nLicensesToBuy > 0, "Invalid number of licenses");
         require(
             !usedInvoiceUUIDs[invoiceUuid],
             "Invoice UUID has already been used"
@@ -234,6 +231,7 @@ contract NDContract is
         (bool validSignatures, ) = verifyBuyLicenseSignature(
             msg.sender,
             invoiceUuid,
+            usdMintLimit,
             signature
         );
         require(validSignatures, "Invalid signature");
@@ -245,25 +243,27 @@ contract NDContract is
             priceTier,
             nLicensesToBuy
         );
-        uint256 totalCost = nLicensesToBuy * getLicenseTokenPrice();
+        uint256 licenseTokenPrice = getLicenseTokenPrice();
+        require(
+            licenseTokenPrice <= maxAcceptedTokenPerLicense,
+            "Price exceeds max accepted"
+        );
+        uint256 totalTokenCost = buyableUnits * licenseTokenPrice;
+        uint256 totalUsdCost = buyableUnits * priceTier.usdPrice;
 
-        // Check user's balance before attempting transfer
+        // Check user's mint limit
         require(
-            _R1Token.balanceOf(msg.sender) >= totalCost,
-            "Insufficient R1 balance"
+            userUsdMintedAmount[msg.sender] + totalUsdCost <= usdMintLimit,
+            "Exceeds mint limit"
         );
-        // Check user's allowance
-        require(
-            _R1Token.allowance(msg.sender, address(this)) >= totalCost,
-            "Insufficient allowance"
-        );
+        userUsdMintedAmount[msg.sender] += totalUsdCost;
 
         // Transfer R1 tokens from user to contract
         require(
-            _R1Token.transferFrom(msg.sender, address(this), totalCost),
+            _R1Token.transferFrom(msg.sender, address(this), totalTokenCost),
             "R1 transfer failed"
         );
-        distributePayment(totalCost);
+        distributePayment(totalTokenCost);
 
         uint256[] memory mintedTokens = batchMint(msg.sender, buyableUnits);
 
@@ -279,7 +279,7 @@ contract NDContract is
             invoiceUuid,
             mintedTokens.length,
             priceTier.usdPrice,
-            totalCost
+            totalTokenCost
         );
 
         return mintedTokens.length;
@@ -333,7 +333,7 @@ contract NDContract is
         license.lastClaimEpoch = getCurrentEpoch();
         license.assignTimestamp = block.timestamp;
         registeredNodeAddresses[newNodeAddress] = true;
-        nodeToUser[newNodeAddress] = msg.sender;
+        nodeToLicenseId[newNodeAddress] = licenseId;
 
         emit LinkNode(msg.sender, licenseId, newNodeAddress);
     }
@@ -362,7 +362,7 @@ contract NDContract is
 
         address oldNodeAddress = license.nodeAddress;
         registeredNodeAddresses[license.nodeAddress] = false;
-        nodeToUser[license.nodeAddress] = address(0);
+        nodeToLicenseId[license.nodeAddress] = 0;
         license.nodeAddress = address(0);
 
         emit UnlinkNode(msg.sender, licenseId, oldNodeAddress);
@@ -408,6 +408,14 @@ contract NDContract is
             license.totalClaimedAmount += rewardsAmount;
             license.lastClaimOracle = firstSigner;
             totalRewards += rewardsAmount;
+            if (rewardsAmount > 0) {
+                emit RewardsClaimed(
+                    msg.sender,
+                    computeParams[i].licenseId,
+                    rewardsAmount,
+                    computeParams[i].epochs.length
+                );
+            }
         }
 
         if (totalRewards > 0) {
@@ -567,21 +575,10 @@ contract NDContract is
         return _priceTiers[currentPriceTier].usdPrice;
     }
 
-    function getCurrentLimitPerWallet() public view returns (uint256) {
-        if (limitPerWallet != 0) {
-            return limitPerWallet;
-        }
-        return _priceTiers[currentPriceTier].limitPerWallet;
-    }
-
     function _burn(
         uint256 tokenId
     ) internal override(ERC721, ERC721URIStorage) {
         super._burn(tokenId);
-    }
-
-    function _baseURI() internal view virtual override returns (string memory) {
-        return _baseTokenURI;
     }
 
     function setBaseURI(string memory baseURI) public onlyOwner {
@@ -638,10 +635,6 @@ contract NDContract is
         uint8 minimumRequiredSignatures_
     ) public onlyOwner {
         minimumRequiredSignatures = minimumRequiredSignatures_;
-    }
-
-    function setLimitPerWallet(uint8 limitPerWallet_) public onlyOwner {
-        limitPerWallet = limitPerWallet_;
     }
 
     function banLicense(uint256 licenseId) public onlyOwner {
@@ -717,6 +710,21 @@ contract NDContract is
             _mndContract.registeredNodeAddresses(nodeAddress);
     }
 
+    function isNodeActive(address nodeAddress) public view returns (bool) {
+        if (registeredNodeAddresses[nodeAddress]) {
+            License memory license = licenses[nodeToLicenseId[nodeAddress]];
+            return !license.isBanned;
+        }
+        if (_mndContract.registeredNodeAddresses(nodeAddress)) {
+            return true; // MND licenses cannot be banned
+        }
+        return false;
+    }
+
+    function getSigners() public view returns (address[] memory) {
+        return signers;
+    }
+
     // LP setup
     function setLiquidityManager(address liquidityManager) public onlyOwner {
         _liquidityManager = ILiquidityManager(liquidityManager);
@@ -763,9 +771,12 @@ contract NDContract is
     function verifyBuyLicenseSignature(
         address addr,
         bytes32 invoiceUuid,
+        uint256 usdMintLimit,
         bytes memory signature
     ) public view returns (bool, address) {
-        bytes32 messageHash = keccak256(abi.encodePacked(addr, invoiceUuid));
+        bytes32 messageHash = keccak256(
+            abi.encodePacked(addr, invoiceUuid, usdMintLimit)
+        );
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
         bytes[] memory signatures = new bytes[](1);
         signatures[0] = signature;
