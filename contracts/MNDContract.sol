@@ -191,10 +191,6 @@ contract MNDContract is
                 MAX_MND_TOTAL_ASSIGNED_TOKENS,
             "Max total assigned tokens reached"
         );
-        require(
-            _supply.current() < MAX_MND_SUPPLY,
-            "Maximum token supply reached"
-        );
         require(balanceOf(to) == 0, "User already has a license");
 
         uint256 tokenId = safeMint(to);
