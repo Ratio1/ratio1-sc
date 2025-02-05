@@ -87,7 +87,7 @@ contract MNDContract is
     uint256 constant GENESIS_TOTAL_EMISSION =
         (MAX_TOKEN_SUPPLY * 28_90) / MAX_PERCENTAGE; // 28.9% of total supply
     uint256 constant GENESIS_MINING_EPOCHS = 365;
-    uint256 constant GENESIS_TOKEN_ID = 0;
+    uint256 constant GENESIS_TOKEN_ID = 1;
 
     uint256 constant LP_WALLET_PERCENTAGE = 26_71;
     uint256 constant EXPENSES_WALLET_PERCENTAGE = 13_84;
@@ -165,8 +165,8 @@ contract MNDContract is
         transferOwnership(newOwner);
 
         // Mint the first Genesis Node Deed
-        _mint(newOwner, GENESIS_TOKEN_ID);
-        licenses[GENESIS_TOKEN_ID] = License({
+        uint256 tokenId = safeMint(newOwner);
+        licenses[tokenId] = License({
             nodeAddress: address(0),
             lastClaimEpoch: 0,
             totalClaimedAmount: 0,
@@ -174,6 +174,7 @@ contract MNDContract is
             totalAssignedAmount: GENESIS_TOTAL_EMISSION,
             lastClaimOracle: address(0)
         });
+        emit LicenseCreated(newOwner, tokenId, GENESIS_TOTAL_EMISSION);
     }
 
     function addLicense(
