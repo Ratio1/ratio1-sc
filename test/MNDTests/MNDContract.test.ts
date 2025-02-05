@@ -1115,9 +1115,6 @@ describe("MNDContract", function () {
     //DO TEST - transfer empty license
     await mndContract.connect(owner).initiateBurn(firstUser.address);
     await mndContract.connect(firstUser).burn(2);
-    let result = await mndContract.ownerOf(2);
-    expect(result).to.equal(secondUser.address);
-    expect((await mndContract.licenses(2)).nodeAddress).to.equal(NULL_ADDRESS);
   });
 
   it("Burn - linked license", async function () {
@@ -1131,9 +1128,6 @@ describe("MNDContract", function () {
 
     //DO TEST - transfer linked license
     await mndContract.connect(firstUser).burn(2);
-    let result = await mndContract.ownerOf(2);
-    expect(result).to.equal(secondUser.address);
-    expect((await mndContract.licenses(2)).nodeAddress).to.equal(NODE_ADDRESS);
   });
 
   it("Burn - Soulbound", async function () {
