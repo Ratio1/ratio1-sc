@@ -131,7 +131,7 @@ contract NDContract is
     mapping(uint8 => PriceTier) public _priceTiers;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
-    mapping(address => address) public nodeToUser;
+    mapping(address => uint256) public nodeToLicenseId;
     mapping(address => uint256) public signerSignaturesCount;
     mapping(address => uint256) public signerAdditionTimestamp;
     mapping(address => uint256) public userUsdMintedAmount;
@@ -333,7 +333,7 @@ contract NDContract is
         license.lastClaimEpoch = getCurrentEpoch();
         license.assignTimestamp = block.timestamp;
         registeredNodeAddresses[newNodeAddress] = true;
-        nodeToUser[newNodeAddress] = msg.sender;
+        nodeToLicenseId[newNodeAddress] = licenseId;
 
         emit LinkNode(msg.sender, licenseId, newNodeAddress);
     }
@@ -362,7 +362,7 @@ contract NDContract is
 
         address oldNodeAddress = license.nodeAddress;
         registeredNodeAddresses[license.nodeAddress] = false;
-        nodeToUser[license.nodeAddress] = address(0);
+        nodeToLicenseId[license.nodeAddress] = 0;
         license.nodeAddress = address(0);
 
         emit UnlinkNode(msg.sender, licenseId, oldNodeAddress);
@@ -708,6 +708,17 @@ contract NDContract is
         return
             registeredNodeAddresses[nodeAddress] ||
             _mndContract.registeredNodeAddresses(nodeAddress);
+    }
+
+    function isNodeActive(address nodeAddress) public view returns (bool) {
+        if (registeredNodeAddresses[nodeAddress]) {
+            License memory license = licenses[nodeToLicenseId[nodeAddress]];
+            return !license.isBanned;
+        }
+        if (_mndContract.registeredNodeAddresses(nodeAddress)) {
+            return true; // MND licenses cannot be banned
+        }
+        return false;
     }
 
     function getSigners() public view returns (address[] memory) {

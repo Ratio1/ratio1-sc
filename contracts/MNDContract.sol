@@ -120,7 +120,7 @@ contract MNDContract is
     mapping(address => bool) isSigner;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
-    mapping(address => address) public nodeToUser;
+    mapping(address => uint256) public nodeToLicenseId;
     mapping(address => uint256) public signerSignaturesCount;
     mapping(address => uint256) public signerAdditionTimestamp;
 
@@ -236,7 +236,7 @@ contract MNDContract is
         license.lastClaimEpoch = getCurrentEpoch();
         license.assignTimestamp = block.timestamp;
         registeredNodeAddresses[newNodeAddress] = true;
-        nodeToUser[newNodeAddress] = msg.sender;
+        nodeToLicenseId[newNodeAddress] = licenseId;
 
         emit LinkNode(msg.sender, licenseId, newNodeAddress);
     }
@@ -266,7 +266,7 @@ contract MNDContract is
 
         address oldNodeAddress = license.nodeAddress;
         registeredNodeAddresses[license.nodeAddress] = false;
-        nodeToUser[license.nodeAddress] = address(0);
+        nodeToLicenseId[license.nodeAddress] = 0;
         license.nodeAddress = address(0);
 
         emit UnlinkNode(msg.sender, licenseId, oldNodeAddress);
