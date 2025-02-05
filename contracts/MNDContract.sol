@@ -471,6 +471,11 @@ contract MNDContract is
         return _baseTokenURI;
     }
 
+    function burn(uint256 tokenId) public whenNotPaused {
+        require(ownerOf(tokenId) == msg.sender, "Not the owner of the license");
+        _burn(tokenId);
+    }
+
     function _beforeTokenTransfer(
         address from,
         address to,
