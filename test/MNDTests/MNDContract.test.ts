@@ -29,14 +29,14 @@ const ONE_DAY_IN_SECS = 24 * 60 * 60;
 const REWARDS_AMOUNT = BigNumber.from("1205593464052287581697");
 const LICENSE_POWER = BigNumber.from("485410").mul(ONE_TOKEN);
 const EXPECTED_COMPUTE_REWARDS_RESULT = {
-  licenseId: BigNumber.from(1),
+  licenseId: BigNumber.from(2),
   rewardsAmount: REWARDS_AMOUNT,
 };
 
 const START_EPOCH_TIMESTAMP = 1738767600;
 
 const EXPECTED_LICENSE_INFO = {
-  licenseId: BigNumber.from(1),
+  licenseId: BigNumber.from(2),
   nodeAddress: "0x0000000000000000000000000000000000000010",
   totalClaimedAmount: BigNumber.from(0),
   remainingAmount: BigNumber.from("485410000000000000000000"),
@@ -62,7 +62,7 @@ describe("MNDContract", function () {
   let secondUser: SignerWithAddress;
   let oracle: SignerWithAddress;
   let COMPUTE_PARAMS = {
-    licenseId: 1,
+    licenseId: 2,
     nodeAddress: NODE_ADDRESS,
     epochs: [2, 3, 4, 5, 6],
     availabilies: [250, 130, 178, 12, 0],
@@ -93,13 +93,6 @@ describe("MNDContract", function () {
     await r1Contract.setNdContract(owner.address);
     await r1Contract.setMndContract(mndContract.address);
 
-    COMPUTE_PARAMS = {
-      licenseId: 1,
-      nodeAddress: NODE_ADDRESS,
-      epochs: [121, 122, 123, 124, 125],
-      availabilies: [250, 130, 178, 12, 0],
-    };
-
     snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
   beforeEach(async function () {
@@ -111,7 +104,7 @@ describe("MNDContract", function () {
 
   afterEach(async function () {
     COMPUTE_PARAMS = {
-      licenseId: 1,
+      licenseId: 2,
       nodeAddress: NODE_ADDRESS,
       epochs: [121, 122, 123, 124, 125],
       availabilies: [250, 130, 178, 12, 0],
@@ -252,7 +245,7 @@ describe("MNDContract", function () {
 
     await mndContract
       .connect(firstUser)
-      .linkNode(1, "0x0000000000000000000000000000000000000010");
+      .linkNode(2, "0x0000000000000000000000000000000000000010");
     await updateTimestamp();
 
     let result = await mndContract.getUserLicense(firstUser.address);
@@ -273,7 +266,7 @@ describe("MNDContract", function () {
       .addLicense(firstUser.address, LICENSE_POWER);
 
     let EXPECTED_LICENSE_INFO = {
-      licenseId: BigNumber.from(1),
+      licenseId: BigNumber.from(2),
       nodeAddress: NULL_ADDRESS,
       totalClaimedAmount: BigNumber.from(0),
       remainingAmount: BigNumber.from("485410000000000000000000"),
@@ -318,12 +311,12 @@ describe("MNDContract", function () {
   it("Get licenses - genesis license", async function () {
     await mndContract
       .connect(owner)
-      .linkNode(0, "0x0000000000000000000000000000000000000010");
+      .linkNode(1, "0x0000000000000000000000000000000000000010");
     await updateTimestamp();
 
     let result = await mndContract.getUserLicense(owner.address);
     expect({
-      licenseId: BigNumber.from(0),
+      licenseId: BigNumber.from(1),
       nodeAddress: "0x0000000000000000000000000000000000000010",
       totalClaimedAmount: BigNumber.from(0),
       remainingAmount: BigNumber.from("46761182022000000000000000"),
@@ -366,7 +359,7 @@ describe("MNDContract", function () {
   });
 
   it("Genesis node - owner has ownership", async function () {
-    let ownerOfGenesis = await mndContract.ownerOf(BigNumber.from(0));
+    let ownerOfGenesis = await mndContract.ownerOf(BigNumber.from(1));
     expect(owner.address).to.equal(ownerOfGenesis);
   });
 
@@ -374,7 +367,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    let ownerOfLiense = await mndContract.ownerOf(BigNumber.from(1));
+    let ownerOfLiense = await mndContract.ownerOf(BigNumber.from(2));
     expect(firstUser.address).to.equal(ownerOfLiense);
     expect(await mndContract.totalLicensesAssignedTokensAmount()).to.be.equal(
       BigNumber.from("485410000000000000000000")
@@ -435,13 +428,13 @@ describe("MNDContract", function () {
   });
 
   it("Add license - maximum token supply reached", async function () {
-    for (let i = 0; i < 500; i++) {
-      const user_addr = "0x" + (i + 1).toString(16).padStart(40, "0");
+    for (let i = 0; i < 499; i++) {
+      const user_addr = "0x" + (i + 2).toString(16).padStart(40, "0");
       await mndContract.connect(owner).addLicense(user_addr, 1);
     }
     await expect(
       mndContract.connect(owner).addLicense(firstUser.address, 1)
-    ).to.be.revertedWith("Maximum token supply reached");
+    ).to.be.revertedWith("Maximum token supply reached.");
   });
 
   it("Add license - max total assigned tokens reached", async function () {
@@ -510,11 +503,11 @@ describe("MNDContract", function () {
 
     //DO TEST
     await expect(
-      mndContract.connect(firstUser).linkNode(1, NODE_ADDRESS)
+      mndContract.connect(firstUser).linkNode(2, NODE_ADDRESS)
     ).to.emit(mndContract, "LinkNode");
-    let result = await mndContract.ownerOf(1);
+    let result = await mndContract.ownerOf(2);
     expect(result).to.equal(firstUser.address);
-    expect((await mndContract.licenses(1)).nodeAddress).to.equal(NODE_ADDRESS);
+    expect((await mndContract.licenses(2)).nodeAddress).to.equal(NODE_ADDRESS);
     expect(await mndContract.registeredNodeAddresses(NODE_ADDRESS)).to.equal(
       true
     );
@@ -525,10 +518,10 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
 
     //DO TEST - try to link again
-    await expect(linkNode(mndContract, firstUser, 1)).to.be.revertedWith(
+    await expect(linkNode(mndContract, firstUser, 2)).to.be.revertedWith(
       "Node address already registered"
     );
   });
@@ -538,10 +531,10 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
 
     //DO TEST - try to link again
-    await expect(linkNode(mndContract, secondUser, 1)).to.be.revertedWith(
+    await expect(linkNode(mndContract, secondUser, 2)).to.be.revertedWith(
       "Not the owner of the license"
     );
   });
@@ -553,7 +546,7 @@ describe("MNDContract", function () {
       .addLicense(firstUser.address, LICENSE_POWER);
 
     //DO TEST - try to link with wrong license
-    await expect(linkNode(mndContract, firstUser, 2)).to.be.revertedWith(
+    await expect(linkNode(mndContract, firstUser, 3)).to.be.revertedWith(
       "ERC721: invalid token ID"
     );
   });
@@ -566,7 +559,7 @@ describe("MNDContract", function () {
 
     //DO TEST - try to link with wrong node address
     await expect(
-      mndContract.connect(firstUser).linkNode(1, NULL_ADDRESS)
+      mndContract.connect(firstUser).linkNode(2, NULL_ADDRESS)
     ).to.be.revertedWith("Invalid node address");
   });
 
@@ -575,11 +568,11 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
 
     //DO TEST - try to link before 24 hrs
-    await unlinkNode(mndContract, firstUser, 1);
-    await expect(linkNode(mndContract, firstUser, 1)).to.be.revertedWith(
+    await unlinkNode(mndContract, firstUser, 2);
+    await expect(linkNode(mndContract, firstUser, 2)).to.be.revertedWith(
       "Cannot reassign within 24 hours"
     );
   });
@@ -589,13 +582,13 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
-    await unlinkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
+    await unlinkNode(mndContract, firstUser, 2);
 
     //DO TEST - try to link after 24 hrs
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
     await ethers.provider.send("evm_mine", []);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
   });
 
   it("Unlink node - should work", async function () {
@@ -603,14 +596,14 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
 
     //DO TEST
-    await expect(mndContract.connect(firstUser).unlinkNode(1)).to.emit(
+    await expect(mndContract.connect(firstUser).unlinkNode(2)).to.emit(
       mndContract,
       "UnlinkNode"
     );
-    expect((await mndContract.licenses(1)).nodeAddress).to.equal(NULL_ADDRESS);
+    expect((await mndContract.licenses(2)).nodeAddress).to.equal(NULL_ADDRESS);
     expect(await mndContract.registeredNodeAddresses(NODE_ADDRESS)).to.equal(
       false
     );
@@ -621,11 +614,11 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
 
     //DO TEST
     await expect(
-      mndContract.connect(secondUser).unlinkNode(1)
+      mndContract.connect(secondUser).unlinkNode(2)
     ).to.be.revertedWith("Not the owner of the license");
   });
 
@@ -634,11 +627,11 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
     await updateTimestamp();
     //DO TEST
     await expect(
-      mndContract.connect(firstUser).unlinkNode(1)
+      mndContract.connect(firstUser).unlinkNode(2)
     ).to.be.revertedWith("Cannot unlink before claiming rewards");
   });
 
@@ -648,15 +641,13 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
 
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
-    let result = await mndContract
-      .connect(owner)
-      .calculateRewards(COMPUTE_PARAMS);
+    let result = await mndContract.calculateRewards(COMPUTE_PARAMS);
     expect({
       licenseId: result.licenseId,
       rewardsAmount: result.rewardsAmount,
@@ -669,7 +660,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
 
@@ -687,7 +678,7 @@ describe("MNDContract", function () {
   it("Claim rewards - genesis mnd claim", async function () {
     //SETUP WORLD
     await updateTimestamp();
-    await mndContract.linkNode(0, NODE_ADDRESS);
+    await mndContract.linkNode(1, NODE_ADDRESS);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
     await mndContract.setCompanyWallets(
@@ -698,7 +689,7 @@ describe("MNDContract", function () {
       newCsrWallet
     );
 
-    COMPUTE_PARAMS.licenseId = 0;
+    COMPUTE_PARAMS.licenseId = 1;
     //DO TEST
     await mndContract
       .connect(owner)
@@ -728,7 +719,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
 
@@ -757,7 +748,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
 
@@ -778,7 +769,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 366 * 5]);
     await ethers.provider.send("evm_mine", []);
 
@@ -818,7 +809,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
 
@@ -837,7 +828,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
 
@@ -857,7 +848,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
 
@@ -878,7 +869,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
     COMPUTE_PARAMS.epochs = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -906,7 +897,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 366 * 5]);
     await ethers.provider.send("evm_mine", []);
 
@@ -941,7 +932,7 @@ describe("MNDContract", function () {
     await expect(
       mndContract
         .connect(firstUser)
-        .transferFrom(firstUser.address, secondUser.address, 1)
+        .transferFrom(firstUser.address, secondUser.address, 2)
     ).to.be.revertedWith("Soulbound: Non-transferable token");
   });
 
@@ -983,7 +974,7 @@ describe("MNDContract", function () {
     );
 
     //Should be reverted
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
     //DO TEST
@@ -1017,7 +1008,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
 
@@ -1039,7 +1030,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
-    await linkNode(mndContract, firstUser, 1);
+    await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
 
