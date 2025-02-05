@@ -1293,6 +1293,57 @@ describe("NDContract", function () {
     );
   });
 
+  it("Claim rewards - full history claim with 5 oracles", async function () {
+    //SETUP WORLD
+    let [oracle1, oracle2, oracle3, oracle4, oracle5] = (
+      await ethers.getSigners()
+    ).slice(15, 20);
+    await ndContract.addSigner(oracle1.address);
+    await ndContract.addSigner(oracle2.address);
+    await ndContract.addSigner(oracle3.address);
+    await ndContract.addSigner(oracle4.address);
+    await ndContract.addSigner(oracle5.address);
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
+      1,
+      1,
+      10000,
+      await signAddress(backend, firstUser, invoiceUuid, 10000)
+    );
+    await linkNode(ndContract, firstUser, 1);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 36 * 30]);
+    await ethers.provider.send("evm_mine", []);
+
+    for (let i = 0; i < 36 * 30; i++) {
+      COMPUTE_PARAMS.epochs[i] = i;
+      COMPUTE_PARAMS.availabilies[i] = 255;
+    }
+
+    let expected_result = BigNumber.from("1575188843457943924200");
+    //DO TEST
+    await ndContract
+      .connect(firstUser)
+      .claimRewards(
+        [COMPUTE_PARAMS],
+        [
+          [
+            Buffer.from(await signComputeParams(oracle1), "hex"),
+            Buffer.from(await signComputeParams(oracle2), "hex"),
+            Buffer.from(await signComputeParams(oracle3), "hex"),
+            Buffer.from(await signComputeParams(oracle4), "hex"),
+            Buffer.from(await signComputeParams(oracle5), "hex"),
+          ],
+        ]
+      );
+    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
+      expected_result
+    );
+  });
+
   it("Add signer - should work", async function () {
     //ADD second user as a signer
     await ndContract.addSigner(secondUser.address);
