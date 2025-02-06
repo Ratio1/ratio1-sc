@@ -94,7 +94,6 @@ contract UniswapLiquidityManager is ILiquidityManager, Ownable {
         IUniswapV2Pair pair = IUniswapV2Pair(_uniswapV2Pair);
         (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
 
-        // Determinare quale token è R1 e quale USDC
         if (pair.token0() == _r1Addr) {
             return
                 (uint256(reserve1) * 10 ** 12 * 10 ** 18) / uint256(reserve0);
