@@ -66,8 +66,7 @@ contract MNDContract is
     //.##....##.##.....##.##...###.##....##....##....##.....##.##...###....##....##....##
     //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
-    // TODO - change with start date of the protocol
-    uint256 constant startEpochTimestamp = 1738767600; // Wednesday 5 February 2025 15:00:00
+    uint256 constant startEpochTimestamp = 1738771200; // Wednesday 5 February 2025 16:00:00 UTC
     uint256 constant epochDuration = 24 hours;
 
     uint256 constant MAX_PERCENTAGE = 100_00;
