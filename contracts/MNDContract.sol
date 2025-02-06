@@ -485,7 +485,9 @@ contract MNDContract is
         require(
             from == address(0) ||
                 (to == address(0) && initiatedBurn[from]) ||
-                (to != address(0) && initiatedTransferReceiver[from] == to),
+                (to != address(0) &&
+                    initiatedTransferReceiver[from] == to &&
+                    balanceOf(to) == 0),
             "Soulbound: Non-transferable token"
         );
         delete initiatedTransferReceiver[from];
