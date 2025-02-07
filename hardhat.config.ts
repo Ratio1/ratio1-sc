@@ -31,6 +31,11 @@ const config: HardhatUserConfig = {
       url: "https://base-sepolia-rpc.publicnode.com",
       accounts: [BE_SIGNER_PRIVATE_KEY],
     },
+    base: {
+      chainId: 8453,
+      url: "https://mainnet.base.org",
+      accounts: [BE_SIGNER_PRIVATE_KEY],
+    },
   },
   gasReporter: {
     currency: "EUR",
@@ -47,6 +52,7 @@ const config: HardhatUserConfig = {
   etherscan: {
     apiKey: {
       baseSepolia: ETHERSCAN_API_KEY,
+      base: ETHERSCAN_API_KEY,
     },
     customChains: [
       {
@@ -55,6 +61,14 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: "https://api-sepolia.basescan.org/api",
           browserURL: "https://sepolia.basescan.org",
+        },
+      },
+      {
+        network: "base",
+        chainId: 8453,
+        urls: {
+          apiURL: "https://api.basescan.org/api",
+          browserURL: "https://basescan.org",
         },
       },
     ],
