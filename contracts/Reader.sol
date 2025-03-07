@@ -42,6 +42,12 @@ struct LicenseDetails {
 interface IBaseDeed {
     function nodeToLicenseId(address node) external view returns (uint256);
     function ownerOf(uint256 tokenId) external view returns (address);
+    function balanceOf(address owner) external view returns (uint256);
+    function tokenOfOwnerByIndex(
+        address owner,
+        uint256 index
+    ) external view returns (uint256);
+    function totalSupply() external view returns (uint256);
 }
 
 interface IND is IBaseDeed {
@@ -68,44 +74,56 @@ contract Reader {
         mndContract = IMND(_mndContract);
     }
 
+    function getNdLicenseDetails(
+        uint256 licenseId
+    ) public view returns (LicenseDetails memory) {
+        NDLicense memory ndLicense = ndContract.licenses(licenseId);
+        return
+            LicenseDetails(
+                LicenseType.ND,
+                licenseId,
+                ndContract.ownerOf(licenseId),
+                ndLicense.nodeAddress,
+                ND_LICENSE_ASSIGNED_TOKENS,
+                ndLicense.totalClaimedAmount,
+                ndLicense.lastClaimEpoch,
+                ndLicense.assignTimestamp,
+                ndLicense.lastClaimOracle,
+                ndLicense.isBanned
+            );
+    }
+
+    function getMndLicenseDetails(
+        uint256 licenseId
+    ) public view returns (LicenseDetails memory) {
+        MNDLicense memory mndLicense = mndContract.licenses(licenseId);
+        return
+            LicenseDetails(
+                licenseId == GENESIS_TOKEN_ID
+                    ? LicenseType.GND
+                    : LicenseType.MND,
+                licenseId,
+                mndContract.ownerOf(licenseId),
+                mndLicense.nodeAddress,
+                mndLicense.totalAssignedAmount,
+                mndLicense.totalClaimedAmount,
+                mndLicense.lastClaimEpoch,
+                mndLicense.assignTimestamp,
+                mndLicense.lastClaimOracle,
+                false
+            );
+    }
+
     function getNodeLicenseDetails(
         address node
-    ) external view returns (LicenseDetails memory) {
+    ) public view returns (LicenseDetails memory) {
         uint256 ndLicenseId = ndContract.nodeToLicenseId(node);
         if (ndLicenseId != 0) {
-            NDLicense memory ndLicense = ndContract.licenses(ndLicenseId);
-            return
-                LicenseDetails(
-                    LicenseType.ND,
-                    ndLicenseId,
-                    ndContract.ownerOf(ndLicenseId),
-                    ndLicense.nodeAddress,
-                    ND_LICENSE_ASSIGNED_TOKENS,
-                    ndLicense.totalClaimedAmount,
-                    ndLicense.lastClaimEpoch,
-                    ndLicense.assignTimestamp,
-                    ndLicense.lastClaimOracle,
-                    ndLicense.isBanned
-                );
+            return getNdLicenseDetails(ndLicenseId);
         }
         uint256 mndLicenseId = mndContract.nodeToLicenseId(node);
         if (mndLicenseId != 0) {
-            MNDLicense memory mndLicense = mndContract.licenses(mndLicenseId);
-            return
-                LicenseDetails(
-                    mndLicenseId == GENESIS_TOKEN_ID
-                        ? LicenseType.GND
-                        : LicenseType.MND,
-                    mndLicenseId,
-                    mndContract.ownerOf(mndLicenseId),
-                    mndLicense.nodeAddress,
-                    mndLicense.totalAssignedAmount,
-                    mndLicense.totalClaimedAmount,
-                    mndLicense.lastClaimEpoch,
-                    mndLicense.assignTimestamp,
-                    mndLicense.lastClaimOracle,
-                    false
-                );
+            return getMndLicenseDetails(mndLicenseId);
         }
         return
             LicenseDetails(
@@ -120,5 +138,48 @@ contract Reader {
                 address(0),
                 false
             );
+    }
+
+    function getUserLicenses(
+        address user
+    ) public view returns (LicenseDetails[] memory) {
+        uint256 ndBalance = ndContract.balanceOf(user);
+        uint256 mndBalance = mndContract.balanceOf(user);
+        LicenseDetails[] memory licenses = new LicenseDetails[](
+            ndBalance + mndBalance
+        );
+
+        for (uint256 i = 0; i < mndBalance; i++) {
+            uint256 licenseId = mndContract.tokenOfOwnerByIndex(user, i);
+            licenses[i] = getMndLicenseDetails(licenseId);
+        }
+        for (uint256 i = 0; i < ndBalance; i++) {
+            uint256 licenseId = ndContract.tokenOfOwnerByIndex(user, i);
+            licenses[i + mndBalance] = getNdLicenseDetails(licenseId);
+        }
+        return licenses;
+    }
+
+    function getLicensesTotalSupply()
+        public
+        view
+        returns (uint256 mndSupply, uint256 ndSupply)
+    {
+        return (mndContract.totalSupply(), ndContract.totalSupply());
+    }
+
+    function getNodeLicenseDetailsByNode(
+        address node
+    )
+        public
+        view
+        returns (uint256 licenseId, address owner, uint256 assignTimestamp)
+    {
+        LicenseDetails memory licenseDetails = getNodeLicenseDetails(node);
+        return (
+            licenseDetails.licenseId,
+            licenseDetails.owner,
+            licenseDetails.assignTimestamp
+        );
     }
 }
