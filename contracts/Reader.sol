@@ -41,12 +41,16 @@ struct LicenseDetails {
 
 interface IBaseDeed {
     function nodeToLicenseId(address node) external view returns (uint256);
+
     function ownerOf(uint256 tokenId) external view returns (address);
+
     function balanceOf(address owner) external view returns (uint256);
+
     function tokenOfOwnerByIndex(
         address owner,
         uint256 index
     ) external view returns (uint256);
+
     function totalSupply() external view returns (uint256);
 }
 
@@ -181,5 +185,25 @@ contract Reader {
             licenseDetails.owner,
             licenseDetails.assignTimestamp
         );
+    }
+
+    function getWalletNodes(
+        address wallet
+    ) public view returns (address[] memory nodes) {
+        uint256 ndBalance = ndContract.balanceOf(wallet);
+        uint256 mndBalance = mndContract.balanceOf(wallet);
+
+        nodes = new address[](ndBalance + mndBalance);
+        for (uint256 i = 0; i < mndBalance; i++) {
+            uint256 licenseId = mndContract.tokenOfOwnerByIndex(wallet, i);
+            MNDLicense memory mndLicense = mndContract.licenses(licenseId);
+            nodes[i] = mndLicense.nodeAddress;
+        }
+        for (uint256 i = 0; i < ndBalance; i++) {
+            uint256 licenseId = ndContract.tokenOfOwnerByIndex(wallet, i);
+            NDLicense memory ndLicense = ndContract.licenses(licenseId);
+            nodes[i + mndBalance] = ndLicense.nodeAddress;
+        }
+        return nodes;
     }
 }
