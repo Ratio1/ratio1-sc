@@ -9,7 +9,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "./ILiquidityManager.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import "./R1.sol";
 import "./Controller.sol";
 
@@ -99,7 +100,9 @@ contract NDContract is
 
     R1 public _R1Token;
     Controller public _controller;
-    ILiquidityManager _liquidityManager;
+    IUniswapV2Router02 _uniswapV2Router;
+    IUniswapV2Pair _uniswapV2Pair;
+    address _usdcAddr;
     IMND _mndContract;
     address lpWallet;
     address companyWallet;
@@ -493,12 +496,70 @@ contract NDContract is
     }
 
     // LP interactions
-    function addLiquidity(uint256 r1Amount) private {
-        _R1Token.approve(address(_liquidityManager), r1Amount);
-        (uint256 usedAmountR1, uint256 usedAmountUsdc) = _liquidityManager
-            .addLiquidity(r1Amount, lpWallet);
+    function addLiquidity(
+        uint256 r1Amount
+    ) internal returns (uint256, uint256) {
+        _R1Token.approve(address(_uniswapV2Router), r1Amount);
+
+        uint256 halfR1Amount = r1Amount / 2;
+        uint256 usdcAmount = swapTokensForUsdc(halfR1Amount);
+
+        require(usdcAmount > 0, "Swap failed");
+
+        IERC20(_usdcAddr).approve(address(_uniswapV2Router), usdcAmount);
+        (uint256 usedAmountR1, uint256 usedAmountUsdc, ) = IUniswapV2Router02(
+            _uniswapV2Router
+        ).addLiquidity(
+                address(_R1Token),
+                _usdcAddr,
+                halfR1Amount,
+                usdcAmount,
+                0, // Min tokens out
+                0, // Min USDC out
+                lpWallet,
+                block.timestamp
+            );
+
+        uint256 remainingAmountR1 = halfR1Amount - usedAmountR1;
+        uint256 remainingAmountUsdc = usdcAmount - usedAmountUsdc;
+
+        if (remainingAmountR1 > 0) {
+            _R1Token.transfer(lpWallet, remainingAmountR1);
+        }
+        if (remainingAmountUsdc > 0) {
+            IERC20(_usdcAddr).transfer(lpWallet, remainingAmountUsdc);
+        }
 
         emit LiquidityAdded(usedAmountR1, usedAmountUsdc);
+        return (usedAmountR1, usedAmountUsdc);
+    }
+
+    function swapTokensForUsdc(uint256 amount) private returns (uint256) {
+        address[] memory path = new address[](2);
+        path[0] = address(_R1Token);
+        path[1] = _usdcAddr;
+
+        uint256[] memory amounts = _uniswapV2Router.swapExactTokensForTokens(
+            amount, // Amount of tokens to swap
+            0, // Minimum amount of tokens to receive
+            path, // Path of tokens to swap
+            address(this), // Address to receive the swapped tokens
+            block.timestamp // Deadline
+        );
+        return amounts[1];
+    }
+
+    function getTokenPrice() internal view returns (uint256 price) {
+        IUniswapV2Pair pair = IUniswapV2Pair(_uniswapV2Pair);
+        (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
+
+        if (pair.token0() == address(_R1Token)) {
+            return
+                (uint256(reserve1) * 10 ** 12 * 10 ** 18) / uint256(reserve0);
+        } else {
+            return
+                (uint256(reserve0) * 10 ** 12 * 10 ** 18) / uint256(reserve1);
+        }
     }
 
     function getCurrentEpoch() public view returns (uint256) {
@@ -518,7 +579,7 @@ contract NDContract is
 
     function getLicenseTokenPrice() public view returns (uint256 price) {
         uint256 priceInStablecoin = getLicensePriceInUSD() * PRICE_DECIMALS;
-        uint256 r1Price = _liquidityManager.getTokenPrice();
+        uint256 r1Price = getTokenPrice();
         return (priceInStablecoin * PRICE_DECIMALS) / r1Price;
     }
 
@@ -667,8 +728,14 @@ contract NDContract is
     }
 
     // LP setup
-    function setLiquidityManager(address liquidityManager) public onlyOwner {
-        _liquidityManager = ILiquidityManager(liquidityManager);
+    function setUniswapParams(
+        address uniswapV2Router,
+        address uniswapV2Pair,
+        address usdcAddr
+    ) public onlyOwner {
+        _uniswapV2Router = IUniswapV2Router02(uniswapV2Router);
+        _uniswapV2Pair = IUniswapV2Pair(uniswapV2Pair);
+        _usdcAddr = usdcAddr;
     }
 
     ///// Signature functions
