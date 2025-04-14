@@ -11,6 +11,7 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "./ILiquidityManager.sol";
 import "./R1.sol";
+import "./Controller.sol";
 
 interface IMND {
     function registeredNodeAddresses(address node) external view returns (bool);
@@ -73,9 +74,6 @@ contract NDContract is
     //.##....##.##.....##.##...###.##....##....##....##.....##.##...###....##....##....##
     //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
-    uint256 constant startEpochTimestamp = 1738771200; // Wednesday 5 February 2025 16:00:00 UTC
-    uint256 constant epochDuration = 24 hours;
-
     uint256 constant MAX_PERCENTAGE = 100_00;
     uint8 constant MAX_AVAILABILITY = 255;
 
@@ -83,16 +81,6 @@ contract NDContract is
 
     uint256 constant MAX_TOKEN_SUPPLY = 161803398 * PRICE_DECIMALS;
     uint8 constant LAST_PRICE_TIER = 12;
-
-    uint256 constant MAX_LICENSE_SUPPLY = 46224;
-    uint256 constant MAX_LICENSE_TOKENS_PERCENTAGE = 45_00; // 45% of total supply
-    uint256 constant MAX_LICENSE_TOKENS_SUPPLY =
-        (MAX_TOKEN_SUPPLY * MAX_LICENSE_TOKENS_PERCENTAGE) / MAX_PERCENTAGE;
-    uint256 constant MAX_MINING_PER_LICENSE =
-        MAX_LICENSE_TOKENS_SUPPLY / MAX_LICENSE_SUPPLY;
-    uint256 constant MINING_DURATION_EPOCHS = 36 * 30;
-    uint256 constant MAX_RELEASE_PER_DAY =
-        MAX_MINING_PER_LICENSE / MINING_DURATION_EPOCHS;
 
     uint256 constant BURN_PERCENTAGE = 20_00;
     uint256 constant LIQUIDITY_PERCENTAGE = 50_00;
@@ -116,6 +104,7 @@ contract NDContract is
     uint8 public currentPriceTier;
 
     R1 public _R1Token;
+    Controller public _controller;
     ILiquidityManager _liquidityManager;
     IMND _mndContract;
     address lpWallet;
@@ -124,15 +113,10 @@ contract NDContract is
     address grantsWallet;
     address csrWallet;
 
-    address[] public signers;
-    uint8 public minimumRequiredSignatures;
-    mapping(address => bool) isSigner;
     mapping(uint8 => PriceTier) public _priceTiers;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
     mapping(address => uint256) public nodeToLicenseId;
-    mapping(address => uint256) public signerSignaturesCount;
-    mapping(address => uint256) public signerAdditionTimestamp;
     mapping(address => uint256) public userUsdMintedAmount;
     mapping(bytes32 => bool) public usedInvoiceUUIDs;
 
@@ -167,17 +151,16 @@ contract NDContract is
         uint256 rewardsAmount,
         uint256 totalEpochs
     );
-    event SignerAdded(address newSigner);
-    event SignerRemoved(address removedSigner);
     event LpAddrChanged(address newlpAddr);
     event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount);
 
     constructor(
         address tokenAddress,
+        address controllerAddress,
         address newOwner
     ) ERC721("NDLicense", "ND") {
         _R1Token = R1(tokenAddress);
-        minimumRequiredSignatures = 1;
+        _controller = Controller(controllerAddress);
         transferOwnership(newOwner);
 
         initializePriceTiers();
@@ -201,7 +184,10 @@ contract NDContract is
         for (uint8 i = 1; i <= LAST_PRICE_TIER; i++) {
             ndSupply += _priceTiers[i].totalUnits;
         }
-        require(ndSupply == MAX_LICENSE_SUPPLY, "Invalid license supply");
+        require(
+            ndSupply == _controller.ND_MAX_LICENSE_SUPPLY(),
+            "Invalid license supply"
+        );
 
         currentPriceTier = 1;
     }
@@ -227,16 +213,14 @@ contract NDContract is
             !usedInvoiceUUIDs[invoiceUuid],
             "Invoice UUID has already been used"
         );
-        (bool validSignatures, ) = verifyBuyLicenseSignature(
+        verifyBuyLicenseSignature(
             msg.sender,
             invoiceUuid,
             usdMintLimit,
             signature
         );
-        require(validSignatures, "Invalid signature");
 
         usedInvoiceUUIDs[invoiceUuid] = true;
-
         PriceTier storage priceTier = _priceTiers[currentPriceTier];
         uint256 buyableUnits = getPriceTierBuyableUnits(
             priceTier,
@@ -382,16 +366,10 @@ contract NDContract is
                 ownerOf(computeParams[i].licenseId) == msg.sender,
                 "User does not have the license"
             );
-            require(
-                minimumRequiredSignatures <= nodesSignatures[i].length,
-                "Insufficient signatures"
+            address firstSigner = verifyRewardsSignatures(
+                computeParams[i],
+                nodesSignatures[i]
             );
-            (
-                bool validSignatures,
-                address firstSigner
-            ) = verifyRewardsSignatures(computeParams[i], nodesSignatures[i]);
-            signerSignaturesCount[firstSigner]++;
-            require(validSignatures, "Invalid signature");
 
             License storage license = licenses[computeParams[i].licenseId];
             require(
@@ -453,7 +431,10 @@ contract NDContract is
             "Invalid node address."
         );
 
-        if (license.totalClaimedAmount == MAX_MINING_PER_LICENSE) {
+        if (
+            license.totalClaimedAmount ==
+            _controller.ND_MAX_MINING_PER_LICENSE()
+        ) {
             return 0;
         }
 
@@ -475,12 +456,13 @@ contract NDContract is
 
         for (uint256 i = 0; i < epochsToClaim; i++) {
             licenseRewards +=
-                (MAX_RELEASE_PER_DAY * computeParam.availabilies[i]) /
+                (_controller.ND_MAX_RELEASE_PER_DAY() *
+                    computeParam.availabilies[i]) /
                 MAX_AVAILABILITY;
         }
 
-        uint256 maxRemainingClaimAmount = MAX_MINING_PER_LICENSE -
-            license.totalClaimedAmount;
+        uint256 maxRemainingClaimAmount = _controller
+            .ND_MAX_MINING_PER_LICENSE() - license.totalClaimedAmount;
         if (licenseRewards > maxRemainingClaimAmount) {
             return maxRemainingClaimAmount;
         }
@@ -499,7 +481,7 @@ contract NDContract is
         _supply.increment();
         uint256 newTokenId = _supply.current();
         require(
-            newTokenId <= MAX_LICENSE_SUPPLY,
+            newTokenId <= _controller.ND_MAX_LICENSE_SUPPLY(),
             "Maximum token supply reached."
         );
 
@@ -555,7 +537,9 @@ contract NDContract is
         return _calculateEpoch(block.timestamp);
     }
 
-    function _calculateEpoch(uint256 timestamp) private pure returns (uint256) {
+    function _calculateEpoch(uint256 timestamp) private view returns (uint256) {
+        uint256 startEpochTimestamp = _controller.startEpochTimestamp();
+        uint256 epochDuration = _controller.epochDuration();
         require(
             timestamp >= startEpochTimestamp,
             "Timestamp is before the start epoch."
@@ -635,12 +619,6 @@ contract NDContract is
         _mndContract = IMND(mndContract_);
     }
 
-    function setMinimumRequiredSignatures(
-        uint8 minimumRequiredSignatures_
-    ) public onlyOwner {
-        minimumRequiredSignatures = minimumRequiredSignatures_;
-    }
-
     function banLicense(uint256 licenseId) public onlyOwner {
         License storage license = licenses[licenseId];
         require(!license.isBanned, "License is already banned");
@@ -676,7 +654,8 @@ contract NDContract is
             if (
                 license.nodeAddress != address(0) &&
                 license.lastClaimEpoch < currentEpoch &&
-                license.totalClaimedAmount < MAX_MINING_PER_LICENSE
+                license.totalClaimedAmount <
+                _controller.ND_MAX_MINING_PER_LICENSE()
             ) {
                 claimableEpochs = currentEpoch - license.lastClaimEpoch;
             }
@@ -685,7 +664,7 @@ contract NDContract is
                 licenseId: licenseId,
                 nodeAddress: license.nodeAddress,
                 totalClaimedAmount: license.totalClaimedAmount,
-                remainingAmount: MAX_MINING_PER_LICENSE -
+                remainingAmount: _controller.ND_MAX_MINING_PER_LICENSE() -
                     license.totalClaimedAmount,
                 lastClaimEpoch: license.lastClaimEpoch,
                 claimableEpochs: claimableEpochs,
@@ -725,10 +704,6 @@ contract NDContract is
         return false;
     }
 
-    function getSigners() public view returns (address[] memory) {
-        return signers;
-    }
-
     // LP setup
     function setLiquidityManager(address liquidityManager) public onlyOwner {
         _liquidityManager = ILiquidityManager(liquidityManager);
@@ -737,30 +712,10 @@ contract NDContract is
     ///// Signature functions
     using ECDSA for bytes32;
 
-    function verifySignatures(
-        bytes32 ethSignedMessageHash,
-        bytes[] memory signatures
-    ) internal view returns (bool, address) {
-        address[] memory seenSigners = new address[](signatures.length);
-        for (uint i = 0; i < signatures.length; i++) {
-            address signerAddress = ethSignedMessageHash.recover(signatures[i]);
-            if (!isSigner[signerAddress]) {
-                return (false, address(0));
-            }
-            for (uint j = 0; j < seenSigners.length; j++) {
-                if (seenSigners[j] == signerAddress) {
-                    return (false, address(0));
-                }
-            }
-            seenSigners[i] = signerAddress;
-        }
-        return (true, seenSigners[0]);
-    }
-
     function verifyRewardsSignatures(
         ComputeRewardsParams memory computeParam,
         bytes[] memory signatures
-    ) public view returns (bool, address) {
+    ) internal returns (address) {
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 computeParam.nodeAddress,
@@ -769,7 +724,12 @@ contract NDContract is
             )
         );
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
-        return verifySignatures(ethSignedMessageHash, signatures);
+        return
+            _controller.requireVerifySignatures(
+                ethSignedMessageHash,
+                signatures,
+                true
+            );
     }
 
     function verifyBuyLicenseSignature(
@@ -777,36 +737,18 @@ contract NDContract is
         bytes32 invoiceUuid,
         uint256 usdMintLimit,
         bytes memory signature
-    ) public view returns (bool, address) {
+    ) internal returns (address) {
         bytes32 messageHash = keccak256(
             abi.encodePacked(addr, invoiceUuid, usdMintLimit)
         );
         bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
         bytes[] memory signatures = new bytes[](1);
         signatures[0] = signature;
-        return verifySignatures(ethSignedMessageHash, signatures);
-    }
-
-    function addSigner(address newSigner) public onlyOwner {
-        require(newSigner != address(0), "Invalid signer address");
-        require(!isSigner[newSigner], "Signer already exists");
-        isSigner[newSigner] = true;
-        signerSignaturesCount[newSigner] = 0;
-        signerAdditionTimestamp[newSigner] = block.timestamp;
-        signers.push(newSigner);
-        emit SignerAdded(newSigner);
-    }
-
-    function removeSigner(address signerToRemove) public onlyOwner {
-        require(isSigner[signerToRemove], "Signer does not exist");
-        isSigner[signerToRemove] = false;
-        for (uint i = 0; i < signers.length; i++) {
-            if (signers[i] == signerToRemove) {
-                signers[i] = signers[signers.length - 1];
-                signers.pop();
-                break;
-            }
-        }
-        emit SignerRemoved(signerToRemove);
+        return
+            _controller.requireVerifySignatures(
+                ethSignedMessageHash,
+                signatures,
+                false
+            );
     }
 }
