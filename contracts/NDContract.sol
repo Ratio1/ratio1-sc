@@ -79,17 +79,11 @@ contract NDContract is
 
     uint256 constant PRICE_DECIMALS = 10 ** 18;
 
-    uint256 constant MAX_TOKEN_SUPPLY = 161803398 * PRICE_DECIMALS;
     uint8 constant LAST_PRICE_TIER = 12;
 
     uint256 constant BURN_PERCENTAGE = 20_00;
     uint256 constant LIQUIDITY_PERCENTAGE = 50_00;
     uint256 constant COMPANY_PERCENTAGE = 30_00;
-    uint256 constant LP_WALLET_PERCENTAGE = 26_71;
-    uint256 constant EXPENSES_WALLET_PERCENTAGE = 13_84;
-    uint256 constant MARKETING_WALLET_PERCENTAGE = 7_54;
-    uint256 constant GRANTS_WALLET_PERCENTAGE = 34_60;
-    uint256 constant CSR_WALLET_PERCENTAGE = 17_31;
 
     //..######..########..#######..########.....###.....######...########
     //.##....##....##....##.....##.##.....##...##.##...##....##..##......
@@ -108,10 +102,7 @@ contract NDContract is
     ILiquidityManager _liquidityManager;
     IMND _mndContract;
     address lpWallet;
-    address expensesWallet;
-    address marketingWallet;
-    address grantsWallet;
-    address csrWallet;
+    address companyWallet;
 
     mapping(uint8 => PriceTier) public _priceTiers;
     mapping(uint256 => License) public licenses;
@@ -497,31 +488,8 @@ contract NDContract is
         uint256 companyAmount = (amount * COMPANY_PERCENTAGE) / MAX_PERCENTAGE;
 
         _R1Token.burn(address(this), burnAmount);
+        _R1Token.transfer(companyWallet, companyAmount);
         addLiquidity(liquidityAmount);
-        distributeCompanyFunds(companyAmount);
-    }
-
-    function distributeCompanyFunds(uint256 amount) private {
-        _R1Token.transfer(
-            lpWallet,
-            (amount * LP_WALLET_PERCENTAGE) / MAX_PERCENTAGE
-        );
-        _R1Token.transfer(
-            expensesWallet,
-            (amount * EXPENSES_WALLET_PERCENTAGE) / MAX_PERCENTAGE
-        );
-        _R1Token.transfer(
-            marketingWallet,
-            (amount * MARKETING_WALLET_PERCENTAGE) / MAX_PERCENTAGE
-        );
-        _R1Token.transfer(
-            grantsWallet,
-            (amount * GRANTS_WALLET_PERCENTAGE) / MAX_PERCENTAGE
-        );
-        _R1Token.transfer(
-            csrWallet,
-            (amount * CSR_WALLET_PERCENTAGE) / MAX_PERCENTAGE
-        );
     }
 
     // LP interactions
@@ -602,17 +570,11 @@ contract NDContract is
     }
 
     function setCompanyWallets(
-        address newLpWallet,
-        address newExpensesWallet,
-        address newMarketingWallet,
-        address newGrantsWallet,
-        address newCsrWallet
+        address newCompanyWallet,
+        address newLpWallet
     ) public onlyOwner {
+        companyWallet = newCompanyWallet;
         lpWallet = newLpWallet;
-        expensesWallet = newExpensesWallet;
-        marketingWallet = newMarketingWallet;
-        grantsWallet = newGrantsWallet;
-        csrWallet = newCsrWallet;
     }
 
     function setMNDContract(address mndContract_) public onlyOwner {

@@ -71,9 +71,6 @@ contract MNDContract is
     uint8 constant MAX_AVAILABILITY = 255;
     uint256 public constant GENESIS_TOKEN_ID = 1;
 
-    uint256 constant PRICE_DECIMALS = 10 ** 18;
-    uint256 constant MAX_TOKEN_SUPPLY = 161803398 * PRICE_DECIMALS;
-
     uint256 constant LP_WALLET_PERCENTAGE = 26_71;
     uint256 constant EXPENSES_WALLET_PERCENTAGE = 13_84;
     uint256 constant MARKETING_WALLET_PERCENTAGE = 7_54;
