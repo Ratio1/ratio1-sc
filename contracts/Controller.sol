@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 contract Controller is Ownable {
     using ECDSA for bytes32;
-
-    uint256 public constant startEpochTimestamp = 1738771200; // Wednesday 5 February 2025 16:00:00 UTC
-    uint256 public constant epochDuration = 24 hours;
 
     uint256 public constant MAX_PERCENTAGE = 100_00;
     uint8 public constant MAX_AVAILABILITY = 255;
@@ -39,10 +35,14 @@ contract Controller is Ownable {
     uint256 public constant MND_NO_MINING_EPOCHS = 30 * 4;
     uint256 public constant MND_MINING_DURATION_EPOCHS = 30 * 30;
 
+    // GENESIS NODE DEED (GND)
     uint256 public constant GND_TOTAL_EMISSION =
         (MAX_TOKEN_SUPPLY * 28_90) / MAX_PERCENTAGE; // 28.9% of total supply
     uint256 public constant GND_MINING_EPOCHS = 365;
     uint256 public constant GND_TOKEN_ID = 1;
+
+    uint256 public startEpochTimestamp;
+    uint256 public epochDuration;
 
     address[] public oracles;
     uint8 public minimumRequiredSignatures;
@@ -53,7 +53,11 @@ contract Controller is Ownable {
     event OracleAdded(address newOracle);
     event OracleRemoved(address removedOracle);
 
-    constructor() {}
+    constructor(uint256 _startEpochTimestamp, uint256 _epochDuration) {
+        startEpochTimestamp = _startEpochTimestamp;
+        epochDuration = _epochDuration;
+        minimumRequiredSignatures = 1;
+    }
 
     function setMinimumRequiredSignatures(
         uint8 _minimumRequiredSignatures
