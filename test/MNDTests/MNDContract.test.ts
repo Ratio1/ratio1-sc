@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { R1, MNDContract } from "../../typechain-types";
+import { R1, MNDContract, Controller } from "../../typechain-types";
 const BigNumber = ethers.BigNumber;
 
 // npx hardhat test     ---- for gas usage
@@ -57,6 +57,7 @@ describe("MNDContract", function () {
 
   let mndContract: MNDContract;
   let r1Contract: R1;
+  let controllerContract: Controller;
   let owner: SignerWithAddress;
   let firstUser: SignerWithAddress;
   let secondUser: SignerWithAddress;
@@ -76,17 +77,29 @@ describe("MNDContract", function () {
     secondUser = user2;
     oracle = oracleSigner;
 
+    const ControllerContract = await ethers.getContractFactory("Controller");
+    controllerContract = await ControllerContract.deploy(
+      START_EPOCH_TIMESTAMP,
+      86400
+    );
+    await controllerContract.addOracle(oracle.address);
+
     const R1Contract = await ethers.getContractFactory("R1");
     r1Contract = await R1Contract.deploy(owner.address);
 
     const MNDContract = await ethers.getContractFactory("MNDContract");
-    mndContract = await MNDContract.deploy(r1Contract.address, owner.address);
-    await mndContract.addSigner(oracle.address);
-    await mndContract.setMinimumRequiredSignatures(BigNumber.from(1));
+    mndContract = await MNDContract.deploy(
+      r1Contract.address,
+      controllerContract.address,
+      owner.address
+    );
 
     const NDContract = await ethers.getContractFactory("NDContract");
-    let ndContract = await NDContract.deploy(r1Contract.address, owner.address);
-    await ndContract.addSigner(oracle.address);
+    let ndContract = await NDContract.deploy(
+      r1Contract.address,
+      controllerContract.address,
+      owner.address
+    );
 
     await mndContract.setNDContract(ndContract.address);
 
@@ -201,11 +214,6 @@ describe("MNDContract", function () {
   it("Supports interface - should work", async function () {
     //ERC721
     expect(await mndContract.supportsInterface("0x80ac58cd")).to.be.true;
-  });
-
-  it("Get Signers", async function () {
-    let result = await mndContract.getSigners();
-    expect(result[0]).to.be.equal(oracle.address);
   });
 
   it("Set base uri- should work", async function () {
@@ -839,7 +847,7 @@ describe("MNDContract", function () {
         .claimRewards(COMPUTE_PARAMS, [
           Buffer.from(await signComputeParams(firstUser), "hex"),
         ])
-    ).to.be.revertedWith("Invalid signature");
+    ).to.be.revertedWith("Invalid oracle signature");
   });
 
   it("Claim rewards - invalid node address.", async function () {
@@ -888,11 +896,11 @@ describe("MNDContract", function () {
     let [oracle1, oracle2, oracle3, oracle4, oracle5] = (
       await ethers.getSigners()
     ).slice(15, 20);
-    await mndContract.addSigner(oracle1.address);
-    await mndContract.addSigner(oracle2.address);
-    await mndContract.addSigner(oracle3.address);
-    await mndContract.addSigner(oracle4.address);
-    await mndContract.addSigner(oracle5.address);
+    await controllerContract.addOracle(oracle1.address);
+    await controllerContract.addOracle(oracle2.address);
+    await controllerContract.addOracle(oracle3.address);
+    await controllerContract.addOracle(oracle4.address);
+    await controllerContract.addOracle(oracle5.address);
     await updateTimestamp();
     await mndContract
       .connect(owner)
@@ -936,74 +944,10 @@ describe("MNDContract", function () {
     ).to.be.revertedWith("Soulbound: Non-transferable token");
   });
 
-  it("Add signer - should work", async function () {
-    //ADD second user as a signer
-    await expect(mndContract.addSigner(secondUser.address)).to.emit(
-      mndContract,
-      "SignerAdded"
-    );
-  });
-
-  it("Add signer - invalid signer address", async function () {
-    await expect(mndContract.addSigner(NULL_ADDRESS)).to.be.revertedWith(
-      "Invalid signer address"
-    );
-  });
-
-  it("Add signer - signer already exists", async function () {
-    await expect(mndContract.addSigner(oracle.address)).to.be.revertedWith(
-      "Signer already exists"
-    );
-  });
-
-  it("Add signer - Ownable: caller is not the owner", async function () {
-    await expect(
-      mndContract.connect(firstUser).addSigner(oracle.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
-  it("Remove signer -should work", async function () {
-    await mndContract
-      .connect(owner)
-      .addLicense(firstUser.address, LICENSE_POWER);
-
-    //Add second user as a signer
-    await expect(mndContract.removeSigner(oracle.address)).to.emit(
-      mndContract,
-      "SignerRemoved"
-    );
-
-    //Should be reverted
-    await linkNode(mndContract, firstUser, 2);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
-    await ethers.provider.send("evm_mine", []);
-    //DO TEST
-    await expect(
-      mndContract
-        .connect(firstUser)
-        .claimRewards(COMPUTE_PARAMS, [
-          Buffer.from(await signComputeParams(oracle), "hex"),
-        ])
-    ).to.be.revertedWith("Invalid signature");
-  });
-
-  it("Remove signer - signer does not exist", async function () {
-    //Remove second user as a signer
-    await expect(
-      mndContract.removeSigner(secondUser.address)
-    ).to.be.revertedWith("Signer does not exist");
-  });
-
-  it("Remove signer - Ownable: caller is not the owner", async function () {
-    await expect(
-      mndContract.connect(firstUser).removeSigner(oracle.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
   it("Set minimum requred signatures - should work", async function () {
     //ERC721
     await updateTimestamp();
-    await mndContract.setMinimumRequiredSignatures(BigNumber.from(1));
+    await controllerContract.setMinimumRequiredSignatures(BigNumber.from(1));
 
     await mndContract
       .connect(owner)
@@ -1025,7 +969,7 @@ describe("MNDContract", function () {
 
   it("Set minimum requred signatures - should not work", async function () {
     //ERC721
-    await mndContract.setMinimumRequiredSignatures(BigNumber.from(2));
+    await controllerContract.setMinimumRequiredSignatures(BigNumber.from(2));
 
     await mndContract
       .connect(owner)
@@ -1042,16 +986,6 @@ describe("MNDContract", function () {
           Buffer.from(await signComputeParams(oracle), "hex"),
         ])
     ).to.be.revertedWith("Insufficient signatures");
-  });
-
-  it("Set minimum requred signatures - ownable: caller is not the owner", async function () {
-    //ERC721
-    await updateTimestamp();
-    await expect(
-      mndContract
-        .connect(firstUser)
-        .setMinimumRequiredSignatures(BigNumber.from(1))
-    ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
   it("Transfer - empty license", async function () {

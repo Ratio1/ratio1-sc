@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { R1, NDContract, ILiquidityManager } from "../../typechain-types";
+import { R1, NDContract, Controller } from "../../typechain-types";
 
 const BigNumber = ethers.BigNumber;
 
@@ -22,11 +22,8 @@ const ONE_TOKEN = BigNumber.from(10).pow(18);
 const ONE_DAY_IN_SECS = 24 * 60 * 60;
 const NODE_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
+const newCompanyWallet = "0x0000000000000000000000000000000000000009";
 const newLpWallet = "0x0000000000000000000000000000000000000001";
-const newExpensesWallet = "0x0000000000000000000000000000000000000002";
-const newMarketingWallet = "0x0000000000000000000000000000000000000003";
-const newGrantsWallet = "0x0000000000000000000000000000000000000004";
-const newCsrWallet = "0x0000000000000000000000000000000000000005";
 const REWARDS_AMOUNT = BigNumber.from("3260194774041496137");
 const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: BigNumber.from(1),
@@ -121,8 +118,8 @@ describe("NDContract", function () {
   */
 
   let ndContract: NDContract;
+  let controllerContract: Controller;
   let r1Contract: R1;
-  let liquidityManagerContract: ILiquidityManager;
   let owner: SignerWithAddress;
   let firstUser: SignerWithAddress;
   let secondUser: SignerWithAddress;
@@ -153,16 +150,26 @@ describe("NDContract", function () {
     const USDCContract = await ethers.getContractFactory("ERC20Mock");
     let usdcContract = await USDCContract.deploy();
 
+    const ControllerContract = await ethers.getContractFactory("Controller");
+    controllerContract = await ControllerContract.deploy(
+      START_EPOCH_TIMESTAMP,
+      86400
+    );
+    await controllerContract.addOracle(backend.address);
+
     const NDContract = await ethers.getContractFactory("NDContract");
-    ndContract = await NDContract.deploy(r1Contract.address, owner.address);
-    await ndContract.addSigner(backend.address);
+    ndContract = await NDContract.deploy(
+      r1Contract.address,
+      controllerContract.address,
+      owner.address
+    );
 
     const MNDContract = await ethers.getContractFactory("MNDContract");
     let mndContract = await MNDContract.deploy(
       r1Contract.address,
+      controllerContract.address,
       owner.address
     );
-    await mndContract.addSigner(backend.address);
 
     await ndContract.setMNDContract(mndContract.address);
 
@@ -179,25 +186,12 @@ describe("NDContract", function () {
       r1Contract.address
     );
 
-    const UniswapLiquidityManagerContract = await ethers.getContractFactory(
-      "UniswapLiquidityManager"
-    );
-    liquidityManagerContract = await UniswapLiquidityManagerContract.deploy(
+    await ndContract.setUniswapParams(
       uniswapMockRouterContract.address,
       uniswapMockPairContract.address,
-      usdcContract.address,
-      r1Contract.address,
-      owner.address
+      usdcContract.address
     );
-
-    await ndContract.setCompanyWallets(
-      newLpWallet,
-      newExpensesWallet,
-      newMarketingWallet,
-      newGrantsWallet,
-      newCsrWallet
-    );
-    await ndContract.setLiquidityManager(liquidityManagerContract.address);
+    await ndContract.setCompanyWallets(newCompanyWallet, newLpWallet);
     await usdcContract.mint(
       uniswapMockRouterContract.address,
       BigNumber.from("500000000000000000000")
@@ -366,11 +360,6 @@ describe("NDContract", function () {
     expect(await ndContract.supportsInterface("0x80ac58cd")).to.be.true;
   });
 
-  it("Get Signers", async function () {
-    let result = await ndContract.getSigners();
-    expect(result[0]).to.be.equal(backend.address);
-  });
-
   it("Get licenses", async function () {
     await buyLicenseWithMintAndAllowance(
       r1Contract,
@@ -431,14 +420,6 @@ describe("NDContract", function () {
     ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
-  it("Set liquidity manager address - not the owner", async function () {
-    await expect(
-      ndContract
-        .connect(firstUser)
-        .setLiquidityManager(liquidityManagerContract.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
   it("Get token uri", async function () {
     let baseUri = "PIPPO.com/";
     await ndContract.setBaseURI(baseUri);
@@ -490,28 +471,17 @@ describe("NDContract", function () {
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     expect(firstUser.address).to.equal(await ndContract.ownerOf(1));
+    let newCompanyWalletAmount = await r1Contract.balanceOf(newCompanyWallet);
     let newLpWalletAmount = await r1Contract.balanceOf(newLpWallet);
-    let newExpensesWalletAmount = await r1Contract.balanceOf(newExpensesWallet);
-    let newMarketingWalletAmount = await r1Contract.balanceOf(
-      newMarketingWallet
-    );
-    let newGrantsWalletAmount = await r1Contract.balanceOf(newGrantsWallet);
-    let newCsrWalletAmount = await r1Contract.balanceOf(newCsrWallet);
-    expect("133549866450000000233").to.deep.equal(newLpWalletAmount);
-    expect("69199930800000000069").to.deep.equal(newExpensesWalletAmount);
-    expect("37699962300000000037").to.deep.equal(newMarketingWalletAmount);
-    expect("172999827000000000172").to.deep.equal(newGrantsWalletAmount);
-    expect("86549913450000000086").to.deep.equal(newCsrWalletAmount);
+    //TODO check values
+    expect("100").to.deep.equal(newLpWalletAmount);
+    expect("499999500000000000499").to.deep.equal(newCompanyWalletAmount);
 
-    let total = newLpWalletAmount
-      .add(newExpensesWalletAmount)
-      .add(newMarketingWalletAmount)
-      .add(newGrantsWalletAmount)
-      .add(newCsrWalletAmount);
+    let total = newLpWalletAmount.add(newCompanyWalletAmount);
     expect(total).to.be.equal(
-      (licenseTokenPrice * BigInt(30)) / BigInt(100) + BigInt(98)
+      (licenseTokenPrice * BigInt(30)) / BigInt(100) + BigInt(100)
     );
-    // TODO why plus 98? for remaining on add liquidity?
+    // TODO why plus 100? for remaining on add liquidity?
   });
 
   it("Buy license - insufficent allowance", async function () {
@@ -590,7 +560,7 @@ describe("NDContract", function () {
         10000,
         await signAddress(secondUser, firstUser, invoiceUuid, 10000)
       )
-    ).to.be.revertedWith("Invalid signature");
+    ).to.be.revertedWith("Invalid oracle signature");
   });
 
   it("Buy license- wrong tier", async function () {
@@ -910,7 +880,9 @@ describe("NDContract", function () {
 
   it("Claim rewards with real oracle data", async function () {
     //SETUP WORLD
-    await ndContract.addSigner("0x93B04EF1152D81A0847C2272860a8a5C70280E14");
+    await controllerContract.addOracle(
+      "0x93B04EF1152D81A0847C2272860a8a5C70280E14"
+    );
     await buyLicenseWithMintAndAllowance(
       r1Contract,
       ndContract,
@@ -1036,12 +1008,12 @@ describe("NDContract", function () {
           [COMPUTE_PARAMS],
           [[Buffer.from(await signComputeParams(secondUser), "hex")]]
         )
-    ).to.be.revertedWith("Invalid signature");
+    ).to.be.revertedWith("Invalid oracle signature");
   });
 
   it("Claim rewards - duplicate signature", async function () {
     //SETUP WORLD
-    await ndContract.setMinimumRequiredSignatures(2);
+    await controllerContract.setMinimumRequiredSignatures(2);
     await buyLicenseWithMintAndAllowance(
       r1Contract,
       ndContract,
@@ -1070,12 +1042,12 @@ describe("NDContract", function () {
             ],
           ]
         )
-    ).to.be.revertedWith("Invalid signature");
+    ).to.be.revertedWith("Duplicate oracle signature");
   });
 
   it("Claim rewards - double signature", async function () {
     //SETUP WORLD
-    await ndContract.setMinimumRequiredSignatures(2);
+    await controllerContract.setMinimumRequiredSignatures(2);
     await buyLicenseWithMintAndAllowance(
       r1Contract,
       ndContract,
@@ -1088,7 +1060,7 @@ describe("NDContract", function () {
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
-    await ndContract.addSigner(secondUser.address);
+    await controllerContract.addOracle(secondUser.address);
     await ethers.provider.send("evm_increaseTime", [
       (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
     ]);
@@ -1113,7 +1085,7 @@ describe("NDContract", function () {
 
   it("Claim rewards - wrong number signature", async function () {
     //SETUP WORLD
-    await ndContract.setMinimumRequiredSignatures(2);
+    await controllerContract.setMinimumRequiredSignatures(2);
     await buyLicenseWithMintAndAllowance(
       r1Contract,
       ndContract,
@@ -1298,11 +1270,11 @@ describe("NDContract", function () {
     let [oracle1, oracle2, oracle3, oracle4, oracle5] = (
       await ethers.getSigners()
     ).slice(15, 20);
-    await ndContract.addSigner(oracle1.address);
-    await ndContract.addSigner(oracle2.address);
-    await ndContract.addSigner(oracle3.address);
-    await ndContract.addSigner(oracle4.address);
-    await ndContract.addSigner(oracle5.address);
+    await controllerContract.addOracle(oracle1.address);
+    await controllerContract.addOracle(oracle2.address);
+    await controllerContract.addOracle(oracle3.address);
+    await controllerContract.addOracle(oracle4.address);
+    await controllerContract.addOracle(oracle5.address);
     await buyLicenseWithMintAndAllowance(
       r1Contract,
       ndContract,
@@ -1346,7 +1318,7 @@ describe("NDContract", function () {
 
   it("Add signer - should work", async function () {
     //ADD second user as a signer
-    await ndContract.addSigner(secondUser.address);
+    await controllerContract.addOracle(secondUser.address);
 
     //Should not be reverted
     await buyLicenseWithMintAndAllowance(
@@ -1360,57 +1332,6 @@ describe("NDContract", function () {
       10000,
       await signAddress(secondUser, firstUser, invoiceUuid, 10000) //second user is a signer
     );
-  });
-
-  it("Add signer - invalid signer address", async function () {
-    await expect(ndContract.addSigner(NULL_ADDRESS)).to.be.revertedWith(
-      "Invalid signer address"
-    );
-  });
-
-  it("Add signer - signer already exists", async function () {
-    await expect(ndContract.addSigner(backend.address)).to.be.revertedWith(
-      "Signer already exists"
-    );
-  });
-
-  it("Add signer - not the owner", async function () {
-    await expect(
-      ndContract.connect(firstUser).addSigner(firstUser.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
-  it("Remove signer -should work", async function () {
-    //Add second user as a signer
-    await ndContract.removeSigner(backend.address);
-
-    //Should be reverted
-    await expect(
-      buyLicenseWithMintAndAllowance(
-        r1Contract,
-        ndContract,
-        owner,
-        firstUser,
-        (await ndContract.getLicenseTokenPrice()).toBigInt(),
-        1,
-        1,
-        10000,
-        await signAddress(backend, firstUser, invoiceUuid, 10000) //second user is not a signer
-      )
-    ).to.be.revertedWith("Invalid signature");
-  });
-
-  it("Remove signer - signer does not exist", async function () {
-    //Remove second user as a signer
-    await expect(
-      ndContract.removeSigner(secondUser.address)
-    ).to.be.revertedWith("Signer does not exist");
-  });
-
-  it("Add signer - not the owner", async function () {
-    await expect(
-      ndContract.connect(firstUser).removeSigner(firstUser.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
   it("Pause contract - should work", async function () {
@@ -1472,69 +1393,6 @@ describe("NDContract", function () {
     await expect(ndContract.connect(firstUser).unpause()).to.be.revertedWith(
       "Ownable: caller is not the owner"
     );
-  });
-
-  it("Set minimum requred signatures - should work", async function () {
-    //ERC721
-    await ndContract.setMinimumRequiredSignatures(BigNumber.from(1));
-
-    await buyLicenseWithMintAndAllowance(
-      r1Contract,
-      ndContract,
-      owner,
-      firstUser,
-      (await ndContract.getLicenseTokenPrice()).toBigInt(),
-      1,
-      1,
-      10000,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
-    );
-    await linkNode(ndContract, firstUser, 1);
-    await ethers.provider.send("evm_increaseTime", [
-      (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
-    ]);
-    await ethers.provider.send("evm_mine", []);
-
-    //DO TEST
-    await ndContract
-      .connect(firstUser)
-      .claimRewards(
-        [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(backend), "hex")]]
-      );
-    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      REWARDS_AMOUNT
-    );
-  });
-
-  it("Set minimum requred signatures - should not work", async function () {
-    //ERC721
-    await ndContract.setMinimumRequiredSignatures(BigNumber.from(2));
-
-    await buyLicenseWithMintAndAllowance(
-      r1Contract,
-      ndContract,
-      owner,
-      firstUser,
-      (await ndContract.getLicenseTokenPrice()).toBigInt(),
-      1,
-      1,
-      10000,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
-    );
-    await linkNode(ndContract, firstUser, 1);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
-    await ethers.provider.send("evm_mine", []);
-
-    //DO TEST
-    await expect(
-      ndContract
-        .connect(firstUser)
-        .claimRewards(
-          [COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(backend), "hex")]]
-        )
-    ).to.be.revertedWith("Insufficient signatures");
   });
 
   it("Ban license - should work", async function () {

@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { R1, NDContract } from "../../typechain-types";
+import { R1, NDContract, Controller } from "../../typechain-types";
 const BigNumber = ethers.BigNumber;
 
 /*
@@ -16,6 +16,7 @@ const BigNumber = ethers.BigNumber;
 
 const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
 const ONE_TOKEN = BigNumber.from(10).pow(18);
+const START_EPOCH_TIMESTAMP = 1738767600;
 
 describe("R1 contract", function () {
   /*
@@ -30,6 +31,7 @@ describe("R1 contract", function () {
 
   let ndContract: NDContract;
   let r1Contract: R1;
+  let controllerContract: Controller;
   let owner: SignerWithAddress;
   let firstUser: SignerWithAddress;
   let secondUser: SignerWithAddress;
@@ -49,15 +51,19 @@ describe("R1 contract", function () {
     const R1Contract = await ethers.getContractFactory("R1");
     r1Contract = await R1Contract.deploy(owner.address);
 
-    const NDContract = await ethers.getContractFactory("NDContract");
-    ndContract = await NDContract.deploy(r1Contract.address, owner.address);
-
-    await ndContract.addSigner(backend.address);
-
-    const UniswapContract = await ethers.getContractFactory(
-      "UniswapMockRouter"
+    const ControllerContract = await ethers.getContractFactory("Controller");
+    controllerContract = await ControllerContract.deploy(
+      START_EPOCH_TIMESTAMP,
+      86400
     );
-    const uniswapContract = await UniswapContract.deploy();
+    await controllerContract.addOracle(backend.address);
+
+    const NDContract = await ethers.getContractFactory("NDContract");
+    ndContract = await NDContract.deploy(
+      r1Contract.address,
+      controllerContract.address,
+      owner.address
+    );
 
     //await ndContract.setUniswapRouter(uniswapContract.address);
     snapshotId = await ethers.provider.send("evm_snapshot", []);
