@@ -600,6 +600,10 @@ contract MNDContract is
             _ndContract.registeredNodeAddresses(nodeAddress);
     }
 
+    function isNodeActive(address nodeAddress) public view returns (bool) {
+        return registeredNodeAddresses[nodeAddress];
+    }
+
     ///// Signature functions
     using ECDSA for bytes32;
 

@@ -4,6 +4,10 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
+interface IContract {
+    function isNodeActive(address nodeAddress) external view returns (bool);
+}
+
 contract Controller is Ownable {
     using ECDSA for bytes32;
 
@@ -43,6 +47,9 @@ contract Controller is Ownable {
 
     uint256 public startEpochTimestamp;
     uint256 public epochDuration;
+
+    IContract public ndContract;
+    IContract public mndContract;
 
     address[] public oracles;
     uint8 public minimumRequiredSignatures;
@@ -100,6 +107,19 @@ contract Controller is Ownable {
         return seenOracles[0];
     }
 
+    function setContracts(
+        address ndContractAddress,
+        address mndContractAddress
+    ) public onlyOwner {
+        require(ndContractAddress != address(0), "Invalid ND contract address");
+        require(
+            mndContractAddress != address(0),
+            "Invalid MND contract address"
+        );
+        ndContract = IContract(ndContractAddress);
+        mndContract = IContract(mndContractAddress);
+    }
+
     function addOracle(address newOracle) public onlyOwner {
         require(newOracle != address(0), "Invalid oracle address");
         require(!isOracle[newOracle], "Oracle already exists");
@@ -121,5 +141,11 @@ contract Controller is Ownable {
             }
         }
         emit OracleRemoved(oracleToRemove);
+    }
+
+    function isNodeActive(address nodeAddress) public view returns (bool) {
+        return
+            ndContract.isNodeActive(nodeAddress) ||
+            mndContract.isNodeActive(nodeAddress);
     }
 }

@@ -741,9 +741,6 @@ contract NDContract is
             License memory license = licenses[nodeToLicenseId[nodeAddress]];
             return !license.isBanned;
         }
-        if (_mndContract.registeredNodeAddresses(nodeAddress)) {
-            return true; // MND licenses cannot be banned
-        }
         return false;
     }
 
