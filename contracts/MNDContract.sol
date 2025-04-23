@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import "./R1.sol";
@@ -49,11 +50,12 @@ struct LicenseInfo {
 }
 
 contract MNDContract is
-    ERC721Enumerable,
-    ERC721URIStorage,
-    Pausable,
-    Ownable,
-    ReentrancyGuard
+    Initializable,
+    ERC721EnumerableUpgradeable,
+    ERC721URIStorageUpgradeable,
+    PausableUpgradeable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable
 {
     //..######...#######..##....##..######..########....###....##....##.########..######.
     //.##....##.##.....##.###...##.##....##....##......##.##...###...##....##....##....##
@@ -131,11 +133,18 @@ contract MNDContract is
         uint256 totalEpochs
     );
 
-    constructor(
+    function initialize(
         address tokenAddress,
         address controllerAddress,
         address newOwner
-    ) ERC721("MNDLicense", "MND") Ownable(newOwner) {
+    ) public initializer {
+        __ERC721_init("MNDLicense", "MND");
+        __ERC721Enumerable_init();
+        __ERC721URIStorage_init();
+        __Pausable_init();
+        __Ownable_init(newOwner);
+        __ReentrancyGuard_init();
+
         _R1Token = R1(tokenAddress);
         _controller = Controller(controllerAddress);
 
@@ -427,7 +436,12 @@ contract MNDContract is
 
     function tokenURI(
         uint256 tokenId
-    ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
+    )
+        public
+        view
+        override(ERC721Upgradeable, ERC721URIStorageUpgradeable)
+        returns (string memory)
+    {
         require(
             _ownerOf(tokenId) != address(0),
             "ERC721Metadata: URI query for nonexistent token"
@@ -444,7 +458,11 @@ contract MNDContract is
         address to,
         uint256 tokenId,
         address auth
-    ) internal override(ERC721, ERC721Enumerable) returns (address) {
+    )
+        internal
+        override(ERC721Upgradeable, ERC721EnumerableUpgradeable)
+        returns (address)
+    {
         address from = _ownerOf(tokenId);
 
         require(
@@ -472,13 +490,18 @@ contract MNDContract is
     function _increaseBalance(
         address account,
         uint128 value
-    ) internal override(ERC721, ERC721Enumerable) {
+    ) internal override(ERC721Upgradeable, ERC721EnumerableUpgradeable) {
         super._increaseBalance(account, value);
     }
 
     function supportsInterface(
         bytes4 interfaceId
-    ) public view override(ERC721Enumerable, ERC721URIStorage) returns (bool) {
+    )
+        public
+        view
+        override(ERC721EnumerableUpgradeable, ERC721URIStorageUpgradeable)
+        returns (bool)
+    {
         return super.supportsInterface(interfaceId);
     }
 
