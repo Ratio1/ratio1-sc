@@ -55,8 +55,9 @@ contract Controller is Ownable {
 
     constructor(
         uint256 _startEpochTimestamp,
-        uint256 _epochDuration
-    ) Ownable(msg.sender) {
+        uint256 _epochDuration,
+        address newOwner
+    ) Ownable(newOwner) {
         startEpochTimestamp = _startEpochTimestamp;
         epochDuration = _epochDuration;
         minimumRequiredSignatures = 1;
