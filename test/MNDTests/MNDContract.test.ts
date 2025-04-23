@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { R1, MNDContract, Controller } from "../../typechain-types";
 const BigNumber = ethers.BigNumber;
@@ -80,25 +80,26 @@ describe("MNDContract", function () {
     const ControllerContract = await ethers.getContractFactory("Controller");
     controllerContract = await ControllerContract.deploy(
       START_EPOCH_TIMESTAMP,
-      86400
+      86400,
+      owner.address
     );
     await controllerContract.addOracle(oracle.address);
 
     const R1Contract = await ethers.getContractFactory("R1");
     r1Contract = await R1Contract.deploy(owner.address);
 
-    const MNDContract = await ethers.getContractFactory("MNDContract");
-    mndContract = await MNDContract.deploy(
-      r1Contract.address,
-      controllerContract.address,
-      owner.address
-    );
+    const MNDContractFactory = await ethers.getContractFactory("MNDContract");
+    mndContract = (await upgrades.deployProxy(
+      MNDContractFactory,
+      [r1Contract.address, controllerContract.address, owner.address],
+      { initializer: "initialize" }
+    )) as unknown as MNDContract;
 
-    const NDContract = await ethers.getContractFactory("NDContract");
-    let ndContract = await NDContract.deploy(
-      r1Contract.address,
-      controllerContract.address,
-      owner.address
+    const NDContractFactory = await ethers.getContractFactory("NDContract");
+    const ndContract = await upgrades.deployProxy(
+      NDContractFactory,
+      [r1Contract.address, controllerContract.address, owner.address],
+      { initializer: "initialize" }
     );
 
     await mndContract.setNDContract(ndContract.address);

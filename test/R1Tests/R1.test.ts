@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { R1, NDContract, Controller } from "../../typechain-types";
 const BigNumber = ethers.BigNumber;
@@ -54,16 +54,17 @@ describe("R1 contract", function () {
     const ControllerContract = await ethers.getContractFactory("Controller");
     controllerContract = await ControllerContract.deploy(
       START_EPOCH_TIMESTAMP,
-      86400
+      86400,
+      owner.address
     );
     await controllerContract.addOracle(backend.address);
 
-    const NDContract = await ethers.getContractFactory("NDContract");
-    ndContract = await NDContract.deploy(
-      r1Contract.address,
-      controllerContract.address,
-      owner.address
-    );
+    const NDContractFactory = await ethers.getContractFactory("NDContract");
+    ndContract = (await upgrades.deployProxy(
+      NDContractFactory,
+      [r1Contract.address, controllerContract.address, owner.address],
+      { initializer: "initialize" }
+    )) as NDContract;
 
     //await ndContract.setUniswapRouter(uniswapContract.address);
     snapshotId = await ethers.provider.send("evm_snapshot", []);
