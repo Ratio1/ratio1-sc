@@ -103,7 +103,7 @@ describe("R1 contract", function () {
   it("Set NDcontract- not the owner", async function () {
     await expect(
       r1Contract.connect(firstUser).setNdContract(NULL_ADDRESS)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
   it("Set MNDcontract- should work", async function () {
@@ -126,7 +126,7 @@ describe("R1 contract", function () {
   it("Set MNDcontract- not the owner", async function () {
     await expect(
       r1Contract.connect(firstUser).setMndContract(NULL_ADDRESS)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
   it("Mint- should work", async function () {

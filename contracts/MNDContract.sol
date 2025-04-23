@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import "./R1.sol";
 import "./Controller.sol";
 
@@ -56,9 +55,6 @@ contract MNDContract is
     Ownable,
     ReentrancyGuard
 {
-    using SafeMath for uint256;
-    using Counters for Counters.Counter;
-
     //..######...#######..##....##..######..########....###....##....##.########..######.
     //.##....##.##.....##.###...##.##....##....##......##.##...###...##....##....##....##
     //.##.......##.....##.####..##.##..........##.....##...##..####..##....##....##......
@@ -85,7 +81,7 @@ contract MNDContract is
     //.##....##....##....##.....##.##....##..##.....##.##....##..##......
     //..######.....##.....#######..##.....##.##.....##..######...########
 
-    Counters.Counter private _supply;
+    uint256 private _supply;
     string public _baseTokenURI;
 
     R1 private _R1Token;
@@ -139,10 +135,9 @@ contract MNDContract is
         address tokenAddress,
         address controllerAddress,
         address newOwner
-    ) ERC721("MNDLicense", "MND") {
+    ) ERC721("MNDLicense", "MND") Ownable(newOwner) {
         _R1Token = R1(tokenAddress);
         _controller = Controller(controllerAddress);
-        transferOwnership(newOwner);
 
         // Mint the first Genesis Node Deed
         uint256 tokenId = safeMint(newOwner);
@@ -400,8 +395,8 @@ contract MNDContract is
     }
 
     function safeMint(address to) private returns (uint256) {
-        _supply.increment();
-        uint256 newTokenId = _supply.current();
+        _supply += 1;
+        uint256 newTokenId = _supply;
         require(
             newTokenId <= _controller.MND_MAX_SUPPLY(),
             "Maximum token supply reached."
@@ -426,12 +421,6 @@ contract MNDContract is
         return (timestamp - startEpochTimestamp) / epochDuration;
     }
 
-    function _burn(
-        uint256 tokenId
-    ) internal override(ERC721, ERC721URIStorage) {
-        super._burn(tokenId);
-    }
-
     function setBaseURI(string memory baseURI) public onlyOwner {
         _baseTokenURI = baseURI;
     }
@@ -440,7 +429,7 @@ contract MNDContract is
         uint256 tokenId
     ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
         require(
-            _exists(tokenId),
+            _ownerOf(tokenId) != address(0),
             "ERC721Metadata: URI query for nonexistent token"
         );
         return _baseTokenURI;
@@ -451,12 +440,13 @@ contract MNDContract is
         _burn(tokenId);
     }
 
-    function _beforeTokenTransfer(
-        address from,
+    function _update(
         address to,
         uint256 tokenId,
-        uint256 batchSize
-    ) internal override(ERC721, ERC721Enumerable) whenNotPaused {
+        address auth
+    ) internal override(ERC721, ERC721Enumerable) returns (address) {
+        address from = _ownerOf(tokenId);
+
         require(
             from == address(0) ||
                 (to == address(0) && initiatedBurn[from]) ||
@@ -476,7 +466,14 @@ contract MNDContract is
             nodeToLicenseId[license.nodeAddress] = 0;
             delete licenses[tokenId];
         }
-        super._beforeTokenTransfer(from, to, tokenId, batchSize);
+        return super._update(to, tokenId, auth);
+    }
+
+    function _increaseBalance(
+        address account,
+        uint128 value
+    ) internal override(ERC721, ERC721Enumerable) {
+        super._increaseBalance(account, value);
     }
 
     function supportsInterface(
@@ -594,7 +591,9 @@ contract MNDContract is
                 computeParam.availabilies
             )
         );
-        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
+        bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(
+            messageHash
+        );
         return
             _controller.requireVerifySignatures(
                 ethSignedMessageHash,

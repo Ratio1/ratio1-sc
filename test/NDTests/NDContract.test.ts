@@ -417,7 +417,7 @@ describe("NDContract", function () {
     let baseUri = "PIPPO.com/";
     await expect(
       ndContract.connect(firstUser).setBaseURI(baseUri)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
   it("Get token uri", async function () {
@@ -497,7 +497,7 @@ describe("NDContract", function () {
         10000,
         await signAddress(backend, firstUser, invoiceUuid, 10000)
       )
-    ).to.be.revertedWith("ERC20: insufficient allowance");
+    ).to.be.revertedWith("ERC20InsufficientAllowance");
   });
 
   it("Buy license - Price exceeds max accepted", async function () {
@@ -544,7 +544,7 @@ describe("NDContract", function () {
         10000,
         await signAddress(backend, firstUser, invoiceUuid, 10000)
       )
-    ).to.be.revertedWith("Pausable: paused");
+    ).to.be.revertedWith("EnforcedPause");
   });
 
   it("Buy license - wrong signature", async function () {
@@ -679,7 +679,7 @@ describe("NDContract", function () {
 
     //DO TEST - try to link with wrong license
     await expect(linkNode(ndContract, firstUser, 2)).to.be.revertedWith(
-      "ERC721: invalid token ID"
+      "ERC721NonexistentToken"
     );
   });
 
@@ -1348,12 +1348,12 @@ describe("NDContract", function () {
         10000,
         await signAddress(backend, firstUser, invoiceUuid, 10000)
       )
-    ).to.be.revertedWith("Pausable: paused");
+    ).to.be.revertedWith("EnforcedPause");
   });
 
   it("Pause contract - not the owner", async function () {
     await expect(ndContract.connect(firstUser).pause()).to.be.revertedWith(
-      "Ownable: caller is not the owner"
+      "OwnableUnauthorizedAccount"
     );
   });
 
@@ -1371,7 +1371,7 @@ describe("NDContract", function () {
         10000,
         await signAddress(backend, firstUser, invoiceUuid, 10000)
       )
-    ).to.be.revertedWith("Pausable: paused");
+    ).to.be.revertedWith("EnforcedPause");
 
     await ndContract.connect(owner).unpause();
 
@@ -1391,7 +1391,7 @@ describe("NDContract", function () {
   it("Unpause contract - not the owner", async function () {
     await ndContract.connect(owner).pause();
     await expect(ndContract.connect(firstUser).unpause()).to.be.revertedWith(
-      "Ownable: caller is not the owner"
+      "OwnableUnauthorizedAccount"
     );
   });
 
@@ -1445,7 +1445,7 @@ describe("NDContract", function () {
   it("Ban license - not the owner", async function () {
     await expect(
       ndContract.connect(firstUser).banLicense(1)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
   it("Unban license - should work", async function () {
@@ -1488,7 +1488,7 @@ describe("NDContract", function () {
   it("Unban license - not the owner", async function () {
     await expect(
       ndContract.connect(firstUser).unbanLicense(1)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
   it("Unban license - not banned license", async function () {

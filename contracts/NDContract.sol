@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import "./R1.sol";
 import "./Controller.sol";
@@ -64,9 +64,6 @@ contract NDContract is
     Ownable,
     ReentrancyGuard
 {
-    using SafeMath for uint256;
-    using Counters for Counters.Counter;
-
     //..######...#######..##....##..######..########....###....##....##.########..######.
     //.##....##.##.....##.###...##.##....##....##......##.##...###...##....##....##....##
     //.##.......##.....##.####..##.##..........##.....##...##..####..##....##....##......
@@ -94,7 +91,7 @@ contract NDContract is
     //.##....##....##....##.....##.##....##..##.....##.##....##..##......
     //..######.....##.....#######..##.....##.##.....##..######...########
 
-    Counters.Counter private _supply;
+    uint256 private _supply;
     string private _baseTokenURI;
     uint8 public currentPriceTier;
 
@@ -152,10 +149,9 @@ contract NDContract is
         address tokenAddress,
         address controllerAddress,
         address newOwner
-    ) ERC721("NDLicense", "ND") {
+    ) ERC721("NDLicense", "ND") Ownable(newOwner) {
         _R1Token = R1(tokenAddress);
         _controller = Controller(controllerAddress);
-        transferOwnership(newOwner);
 
         initializePriceTiers();
     }
@@ -472,8 +468,8 @@ contract NDContract is
     }
 
     function safeMint(address to) private returns (uint256) {
-        _supply.increment();
-        uint256 newTokenId = _supply.current();
+        _supply += 1;
+        uint256 newTokenId = _supply;
         require(
             newTokenId <= _controller.ND_MAX_LICENSE_SUPPLY(),
             "Maximum token supply reached."
@@ -587,12 +583,6 @@ contract NDContract is
         return _priceTiers[currentPriceTier].usdPrice;
     }
 
-    function _burn(
-        uint256 tokenId
-    ) internal override(ERC721, ERC721URIStorage) {
-        super._burn(tokenId);
-    }
-
     function setBaseURI(string memory baseURI) public onlyOwner {
         _baseTokenURI = baseURI;
     }
@@ -601,7 +591,7 @@ contract NDContract is
         uint256 tokenId
     ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
         require(
-            _exists(tokenId),
+            _ownerOf(tokenId) != address(0),
             "ERC721Metadata: URI query for nonexistent token"
         );
         return _baseTokenURI;
@@ -612,16 +602,27 @@ contract NDContract is
         _burn(tokenId);
     }
 
-    function _beforeTokenTransfer(
-        address from,
+    function _update(
         address to,
         uint256 tokenId,
-        uint256 batchSize
-    ) internal override(ERC721, ERC721Enumerable) whenNotPaused {
+        address auth
+    )
+        internal
+        override(ERC721, ERC721Enumerable)
+        whenNotPaused
+        returns (address)
+    {
         License storage license = licenses[tokenId];
         require(!license.isBanned, "License is banned, cannot perform action");
         _removeNodeAddress(license, tokenId);
-        super._beforeTokenTransfer(from, to, tokenId, batchSize);
+        return super._update(to, tokenId, auth);
+    }
+
+    function _increaseBalance(
+        address account,
+        uint128 value
+    ) internal override(ERC721, ERC721Enumerable) {
+        super._increaseBalance(account, value);
     }
 
     function supportsInterface(
@@ -752,7 +753,9 @@ contract NDContract is
                 computeParam.availabilies
             )
         );
-        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
+        bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(
+            messageHash
+        );
         return
             _controller.requireVerifySignatures(
                 ethSignedMessageHash,
@@ -770,7 +773,9 @@ contract NDContract is
         bytes32 messageHash = keccak256(
             abi.encodePacked(addr, invoiceUuid, usdMintLimit)
         );
-        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
+        bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(
+            messageHash
+        );
         bytes[] memory signatures = new bytes[](1);
         signatures[0] = signature;
         return

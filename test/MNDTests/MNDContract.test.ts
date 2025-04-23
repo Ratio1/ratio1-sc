@@ -225,7 +225,7 @@ describe("MNDContract", function () {
     let baseUri = "PIPPO.com/";
     await expect(
       mndContract.connect(firstUser).setBaseURI(baseUri)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
   it("Get token uri", async function () {
@@ -240,10 +240,10 @@ describe("MNDContract", function () {
     expect(baseUri).to.equal(result);
   });
 
-  it("Set nd contract - ownable: caller is not the owner", async function () {
+  it("Set nd contract - OwnableUnauthorizedAccount", async function () {
     await expect(
       mndContract.connect(firstUser).setNDContract(secondUser.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
   it("Get licenses - should work", async function () {
@@ -352,7 +352,7 @@ describe("MNDContract", function () {
     );
   });
 
-  it("Set company wallet - Ownable: caller is not the owner", async function () {
+  it("Set company wallet - OwnableUnauthorizedAccount", async function () {
     await expect(
       mndContract
         .connect(firstUser)
@@ -363,7 +363,7 @@ describe("MNDContract", function () {
           newGrantsWallet,
           newCsrWallet
         )
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
   it("Genesis node - owner has ownership", async function () {
@@ -424,15 +424,15 @@ describe("MNDContract", function () {
     //DO TEST - try to buy license
     await expect(
       mndContract.connect(owner).addLicense(firstUser.address, LICENSE_POWER)
-    ).to.be.revertedWith("Pausable: paused");
+    ).to.be.revertedWith("EnforcedPause");
   });
 
-  it("Add license - Ownable: caller is not the owner", async function () {
+  it("Add license - OwnableUnauthorizedAccount", async function () {
     await expect(
       mndContract
         .connect(firstUser)
         .addLicense(firstUser.address, LICENSE_POWER.mul(ONE_TOKEN))
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
   it("Add license - maximum token supply reached", async function () {
@@ -474,12 +474,12 @@ describe("MNDContract", function () {
     await mndContract.connect(owner).pause();
     await expect(
       mndContract.connect(owner).addLicense(firstUser.address, LICENSE_POWER)
-    ).to.be.revertedWith("Pausable: paused");
+    ).to.be.revertedWith("EnforcedPause");
   });
 
   it("Pause contract - not the owner", async function () {
     await expect(mndContract.connect(firstUser).pause()).to.be.revertedWith(
-      "Ownable: caller is not the owner"
+      "OwnableUnauthorizedAccount"
     );
   });
 
@@ -487,7 +487,7 @@ describe("MNDContract", function () {
     await mndContract.connect(owner).pause();
     await expect(
       mndContract.connect(owner).addLicense(firstUser.address, LICENSE_POWER)
-    ).to.be.revertedWith("Pausable: paused");
+    ).to.be.revertedWith("EnforcedPause");
 
     await mndContract.connect(owner).unpause();
 
@@ -499,7 +499,7 @@ describe("MNDContract", function () {
   it("Unpause contract - not the owner", async function () {
     await mndContract.connect(owner).pause();
     await expect(mndContract.connect(firstUser).unpause()).to.be.revertedWith(
-      "Ownable: caller is not the owner"
+      "OwnableUnauthorizedAccount"
     );
   });
 
@@ -555,7 +555,7 @@ describe("MNDContract", function () {
 
     //DO TEST - try to link with wrong license
     await expect(linkNode(mndContract, firstUser, 3)).to.be.revertedWith(
-      "ERC721: invalid token ID"
+      "ERC721NonexistentToken"
     );
   });
 

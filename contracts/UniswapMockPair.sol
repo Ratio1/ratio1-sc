@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";
@@ -9,7 +9,7 @@ contract UniswapMockPair is Ownable {
     address public token0;
     address public token1;
 
-    constructor(address _token0, address _token1) {
+    constructor(address _token0, address _token1) Ownable(msg.sender) {
         token0 = _token0;
         token1 = _token1;
     }

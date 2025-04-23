@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract UniswapMockRouter is Ownable {
-    constructor() {}
+    constructor() Ownable(msg.sender) {}
 
     function addLiquidity(
         address tokenA,

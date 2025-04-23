@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
@@ -53,7 +53,10 @@ contract Controller is Ownable {
     event OracleAdded(address newOracle);
     event OracleRemoved(address removedOracle);
 
-    constructor(uint256 _startEpochTimestamp, uint256 _epochDuration) {
+    constructor(
+        uint256 _startEpochTimestamp,
+        uint256 _epochDuration
+    ) Ownable(msg.sender) {
         startEpochTimestamp = _startEpochTimestamp;
         epochDuration = _epochDuration;
         minimumRequiredSignatures = 1;

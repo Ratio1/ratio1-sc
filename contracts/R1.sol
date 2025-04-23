@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";
@@ -11,9 +11,9 @@ contract R1 is Ownable, ERC20Capped {
     address public _ndContract;
 
     // Constructor will be called on contract creation
-    constructor(address newOwner) ERC20("Ratio1", "R1") ERC20Capped(maxSupply) {
-        transferOwnership(newOwner);
-    }
+    constructor(
+        address newOwner
+    ) ERC20("Ratio1", "R1") ERC20Capped(maxSupply) Ownable(newOwner) {}
 
     function _canMint() private view returns (bool) {
         return msg.sender == _mndContract || msg.sender == _ndContract;
