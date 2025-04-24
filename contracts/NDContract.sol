@@ -509,7 +509,9 @@ contract NDContract is
 
         _R1Token.burn(address(this), burnAmount);
         _R1Token.transfer(companyWallet, companyAmount);
-        _R1Token.transfer(vatReceiverWallet, vatAmount);
+        if (vatAmount > 0) {
+            _R1Token.transfer(vatReceiverWallet, vatAmount);
+        }
         addLiquidity(liquidityAmount);
     }
 
