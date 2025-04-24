@@ -195,7 +195,8 @@ contract MNDContract is
 
     function linkNode(
         uint256 licenseId,
-        address newNodeAddress
+        address newNodeAddress,
+        bytes memory signature
     ) public whenNotPaused {
         require(
             ownerOf(licenseId) == msg.sender,
@@ -213,6 +214,7 @@ contract MNDContract is
             license.assignTimestamp + 24 hours < block.timestamp,
             "Cannot reassign within 24 hours"
         );
+        verifyLinkNodeSignature(msg.sender, newNodeAddress, signature);
 
         _removeNodeAddress(license, licenseId);
         license.nodeAddress = newNodeAddress;
@@ -626,6 +628,25 @@ contract MNDContract is
                 ethSignedMessageHash,
                 signatures,
                 true
+            );
+    }
+
+    function verifyLinkNodeSignature(
+        address addr,
+        address nodeAddress,
+        bytes memory signature
+    ) internal returns (address) {
+        bytes32 messageHash = keccak256(abi.encodePacked(addr, nodeAddress));
+        bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(
+            messageHash
+        );
+        bytes[] memory signatures = new bytes[](1);
+        signatures[0] = signature;
+        return
+            _controller.requireVerifySignatures(
+                ethSignedMessageHash,
+                signatures,
+                false
             );
     }
 }
