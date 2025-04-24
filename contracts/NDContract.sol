@@ -105,6 +105,7 @@ contract NDContract is
     IMND _mndContract;
     address lpWallet;
     address companyWallet;
+    address vatReceiverWallet;
 
     mapping(uint8 => PriceTier) public _priceTiers;
     mapping(uint256 => License) public licenses;
@@ -197,6 +198,7 @@ contract NDContract is
         uint256 maxAcceptedTokenPerLicense,
         bytes32 invoiceUuid,
         uint256 usdMintLimit,
+        uint256 vatPercent,
         bytes memory signature
     ) public nonReentrant whenNotPaused returns (uint) {
         require(
@@ -216,6 +218,7 @@ contract NDContract is
             msg.sender,
             invoiceUuid,
             usdMintLimit,
+            vatPercent,
             signature
         );
 
@@ -230,22 +233,25 @@ contract NDContract is
             licenseTokenPrice <= maxAcceptedTokenPerLicense,
             "Price exceeds max accepted"
         );
-        uint256 totalTokenCost = buyableUnits * licenseTokenPrice;
-        uint256 totalUsdCost = buyableUnits * priceTier.usdPrice;
+        uint256 taxableUsdAmount = buyableUnits * priceTier.usdPrice;
+        uint256 taxableTokenAmount = buyableUnits * licenseTokenPrice;
+        uint256 vatTokenAmount = (taxableUsdAmount * vatPercent) /
+            MAX_PERCENTAGE;
+        uint256 totalTokenAmount = taxableTokenAmount + vatTokenAmount;
 
         // Check user's mint limit
         require(
-            userUsdMintedAmount[msg.sender] + totalUsdCost <= usdMintLimit,
+            userUsdMintedAmount[msg.sender] + taxableUsdAmount <= usdMintLimit,
             "Exceeds mint limit"
         );
-        userUsdMintedAmount[msg.sender] += totalUsdCost;
+        userUsdMintedAmount[msg.sender] += taxableUsdAmount;
 
         // Transfer R1 tokens from user to contract
         require(
-            _R1Token.transferFrom(msg.sender, address(this), totalTokenCost),
+            _R1Token.transferFrom(msg.sender, address(this), totalTokenAmount),
             "R1 transfer failed"
         );
-        distributePayment(totalTokenCost);
+        distributePayment(taxableTokenAmount, vatTokenAmount);
 
         uint256[] memory mintedTokens = batchMint(msg.sender, buyableUnits);
 
@@ -261,7 +267,7 @@ contract NDContract is
             invoiceUuid,
             mintedTokens.length,
             priceTier.usdPrice,
-            totalTokenCost
+            totalTokenAmount
         );
 
         return mintedTokens.length;
@@ -489,14 +495,19 @@ contract NDContract is
         return newTokenId;
     }
 
-    function distributePayment(uint256 amount) private {
-        uint256 burnAmount = (amount * BURN_PERCENTAGE) / MAX_PERCENTAGE;
-        uint256 liquidityAmount = (amount * LIQUIDITY_PERCENTAGE) /
+    function distributePayment(
+        uint256 taxableAmount,
+        uint256 vatAmount
+    ) private {
+        uint256 burnAmount = (taxableAmount * BURN_PERCENTAGE) / MAX_PERCENTAGE;
+        uint256 liquidityAmount = (taxableAmount * LIQUIDITY_PERCENTAGE) /
             MAX_PERCENTAGE;
-        uint256 companyAmount = (amount * COMPANY_PERCENTAGE) / MAX_PERCENTAGE;
+        uint256 companyAmount = (taxableAmount * COMPANY_PERCENTAGE) /
+            MAX_PERCENTAGE;
 
         _R1Token.burn(address(this), burnAmount);
         _R1Token.transfer(companyWallet, companyAmount);
+        _R1Token.transfer(vatReceiverWallet, vatAmount);
         addLiquidity(liquidityAmount);
     }
 
@@ -652,10 +663,12 @@ contract NDContract is
 
     function setCompanyWallets(
         address newCompanyWallet,
-        address newLpWallet
+        address newLpWallet,
+        address newVatReceiverWallet
     ) public onlyOwner {
         companyWallet = newCompanyWallet;
         lpWallet = newLpWallet;
+        vatReceiverWallet = newVatReceiverWallet;
     }
 
     function setMNDContract(address mndContract_) public onlyOwner {
@@ -784,10 +797,11 @@ contract NDContract is
         address addr,
         bytes32 invoiceUuid,
         uint256 usdMintLimit,
+        uint256 vatPercent,
         bytes memory signature
     ) internal returns (address) {
         bytes32 messageHash = keccak256(
-            abi.encodePacked(addr, invoiceUuid, usdMintLimit)
+            abi.encodePacked(addr, invoiceUuid, usdMintLimit, vatPercent)
         );
         bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(
             messageHash
