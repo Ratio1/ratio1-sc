@@ -507,12 +507,23 @@ contract NDContract is
         uint256 companyAmount = (taxableAmount * COMPANY_PERCENTAGE) /
             MAX_PERCENTAGE;
 
+        addLiquidity(liquidityAmount);
         _R1Token.burn(address(this), burnAmount);
-        _R1Token.transfer(companyWallet, companyAmount);
         if (vatAmount > 0) {
             _R1Token.transfer(vatReceiverWallet, vatAmount);
         }
-        addLiquidity(liquidityAmount);
+        uint256 amountToSwap = companyAmount + vatAmount;
+        uint256 totalUsdcAmount = swapR1ForUsdc(amountToSwap);
+        require(totalUsdcAmount > 0, "Swap failed");
+        uint256 vatUsdcAmount = 0;
+        if (vatAmount > 0) {
+            vatUsdcAmount = (totalUsdcAmount * vatAmount) / amountToSwap;
+        }
+        uint256 companyUsdcAmount = totalUsdcAmount - vatUsdcAmount;
+        IERC20(_usdcAddr).transfer(companyWallet, companyUsdcAmount);
+        if (vatUsdcAmount > 0) {
+            IERC20(_usdcAddr).transfer(vatReceiverWallet, vatUsdcAmount);
+        }
     }
 
     // LP interactions
@@ -522,7 +533,7 @@ contract NDContract is
         _R1Token.approve(address(_uniswapV2Router), r1Amount);
 
         uint256 halfR1Amount = r1Amount / 2;
-        uint256 usdcAmount = swapTokensForUsdc(halfR1Amount);
+        uint256 usdcAmount = swapR1ForUsdc(halfR1Amount);
 
         require(usdcAmount > 0, "Swap failed");
 
@@ -554,10 +565,25 @@ contract NDContract is
         return (usedAmountR1, usedAmountUsdc);
     }
 
-    function swapTokensForUsdc(uint256 amount) private returns (uint256) {
+    function swapR1ForUsdc(uint256 amount) private returns (uint256) {
         address[] memory path = new address[](2);
         path[0] = address(_R1Token);
         path[1] = _usdcAddr;
+
+        uint256[] memory amounts = _uniswapV2Router.swapExactTokensForTokens(
+            amount, // Amount of tokens to swap
+            0, // Minimum amount of tokens to receive
+            path, // Path of tokens to swap
+            address(this), // Address to receive the swapped tokens
+            block.timestamp // Deadline
+        );
+        return amounts[1];
+    }
+
+    function swapUsdcForR1(uint256 amount) private returns (uint256) {
+        address[] memory path = new address[](2);
+        path[0] = _usdcAddr;
+        path[1] = address(_R1Token);
 
         uint256[] memory amounts = _uniswapV2Router.swapExactTokensForTokens(
             amount, // Amount of tokens to swap
