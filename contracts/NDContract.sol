@@ -529,8 +529,6 @@ contract NDContract is
     function addLiquidity(
         uint256 r1Amount
     ) internal returns (uint256, uint256) {
-        _R1Token.approve(address(_uniswapV2Router), r1Amount);
-
         uint256 halfR1Amount = r1Amount / 2;
         uint256 usdcAmount = swapR1ForUsdc(halfR1Amount);
 
@@ -569,6 +567,7 @@ contract NDContract is
         path[0] = address(_R1Token);
         path[1] = _usdcAddr;
 
+        _R1Token.approve(address(_uniswapV2Router), amount);
         uint256[] memory amounts = _uniswapV2Router.swapExactTokensForTokens(
             amount, // Amount of tokens to swap
             0, // Minimum amount of tokens to receive
@@ -584,6 +583,7 @@ contract NDContract is
         path[0] = _usdcAddr;
         path[1] = address(_R1Token);
 
+        IERC20(_usdcAddr).approve(address(_uniswapV2Router), amount);
         uint256[] memory amounts = _uniswapV2Router.swapExactTokensForTokens(
             amount, // Amount of tokens to swap
             0, // Minimum amount of tokens to receive
