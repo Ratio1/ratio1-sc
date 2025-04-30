@@ -509,9 +509,8 @@ contract NDContract is
 
         addLiquidity(liquidityAmount);
         _R1Token.burn(address(this), burnAmount);
-        if (vatAmount > 0) {
-            _R1Token.transfer(vatReceiverWallet, vatAmount);
-        }
+
+        // Swap the VAT and company amounts for USDC before sending
         uint256 amountToSwap = companyAmount + vatAmount;
         uint256 totalUsdcAmount = swapR1ForUsdc(amountToSwap);
         require(totalUsdcAmount > 0, "Swap failed");
