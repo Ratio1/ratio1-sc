@@ -142,7 +142,13 @@ describe("MNDContract", function () {
     user: SignerWithAddress,
     licenseId: number
   ) {
-    await mndContract.connect(user).linkNode(licenseId, NODE_ADDRESS);
+    await mndContract
+      .connect(user)
+      .linkNode(
+        licenseId,
+        NODE_ADDRESS,
+        signLinkNode(oracle, user, NODE_ADDRESS)
+      );
   }
 
   async function unlinkNode(
@@ -151,6 +157,18 @@ describe("MNDContract", function () {
     licenseId: number
   ) {
     await ndContract.connect(user).unlinkNode(licenseId);
+  }
+
+  async function signLinkNode(
+    signer: SignerWithAddress,
+    user: SignerWithAddress,
+    nodeAddress: string
+  ) {
+    const messageHash = ethers.utils.solidityKeccak256(
+      ["address", "address"],
+      [user.address, nodeAddress]
+    );
+    return signer.signMessage(ethers.utils.arrayify(messageHash));
   }
 
   async function signComputeParams(signer: SignerWithAddress) {
@@ -252,9 +270,10 @@ describe("MNDContract", function () {
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
 
+    const nodeAddress = "0x0000000000000000000000000000000000000010";
     await mndContract
       .connect(firstUser)
-      .linkNode(2, "0x0000000000000000000000000000000000000010");
+      .linkNode(2, nodeAddress, signLinkNode(oracle, firstUser, nodeAddress));
     await updateTimestamp();
 
     let result = await mndContract.getUserLicense(firstUser.address);
@@ -318,9 +337,10 @@ describe("MNDContract", function () {
   });
 
   it("Get licenses - genesis license", async function () {
+    const nodeAddress = "0x0000000000000000000000000000000000000010";
     await mndContract
       .connect(owner)
-      .linkNode(1, "0x0000000000000000000000000000000000000010");
+      .linkNode(1, nodeAddress, signLinkNode(oracle, owner, nodeAddress));
     await updateTimestamp();
 
     let result = await mndContract.getUserLicense(owner.address);
@@ -512,7 +532,13 @@ describe("MNDContract", function () {
 
     //DO TEST
     await expect(
-      mndContract.connect(firstUser).linkNode(2, NODE_ADDRESS)
+      mndContract
+        .connect(firstUser)
+        .linkNode(
+          2,
+          NODE_ADDRESS,
+          signLinkNode(oracle, firstUser, NODE_ADDRESS)
+        )
     ).to.emit(mndContract, "LinkNode");
     let result = await mndContract.ownerOf(2);
     expect(result).to.equal(firstUser.address);
@@ -568,7 +594,13 @@ describe("MNDContract", function () {
 
     //DO TEST - try to link with wrong node address
     await expect(
-      mndContract.connect(firstUser).linkNode(2, NULL_ADDRESS)
+      mndContract
+        .connect(firstUser)
+        .linkNode(
+          2,
+          NULL_ADDRESS,
+          signLinkNode(oracle, firstUser, NULL_ADDRESS)
+        )
     ).to.be.revertedWith("Invalid node address");
   });
 
@@ -687,7 +719,11 @@ describe("MNDContract", function () {
   it("Claim rewards - genesis mnd claim", async function () {
     //SETUP WORLD
     await updateTimestamp();
-    await mndContract.linkNode(1, NODE_ADDRESS);
+    await mndContract.linkNode(
+      1,
+      NODE_ADDRESS,
+      signLinkNode(oracle, owner, NODE_ADDRESS)
+    );
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
     await mndContract.setCompanyWallets(

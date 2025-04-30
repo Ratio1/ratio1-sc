@@ -23,6 +23,7 @@ const ONE_DAY_IN_SECS = 24 * 60 * 60;
 const NODE_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
 const newCompanyWallet = "0x0000000000000000000000000000000000000009";
+const newVatWallet = "0x0000000000000000000000000000000000000009";
 const newLpWallet = "0x0000000000000000000000000000000000000001";
 const REWARDS_AMOUNT = BigNumber.from("3260194774041496137");
 const EXPECTED_COMPUTE_REWARDS_RESULT = {
@@ -106,7 +107,7 @@ const EXPECTED_PRICE_TIERS = [
   },
 ];
 
-describe("NDContract", function () {
+describe.only("NDContract", function () {
   /*
   .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
   .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -192,7 +193,11 @@ describe("NDContract", function () {
       uniswapMockPairContract.address,
       usdcContract.address
     );
-    await ndContract.setCompanyWallets(newCompanyWallet, newLpWallet);
+    await ndContract.setCompanyWallets(
+      newCompanyWallet,
+      newLpWallet,
+      newVatWallet
+    );
     await usdcContract.mint(
       uniswapMockRouterContract.address,
       BigNumber.from("500000000000000000000")
@@ -240,6 +245,7 @@ describe("NDContract", function () {
     numLicenses: number,
     priceTier: number,
     usdMintLimit: number,
+    vatPercent: number,
     signature: string
   ) {
     await r1Contract.connect(owner).mint(user.address, numTokens);
@@ -252,6 +258,7 @@ describe("NDContract", function () {
         BigNumber.from(numTokens).add(BigNumber.from(numTokens).div(10)),
         invoiceUuid,
         usdMintLimit,
+        vatPercent,
         Buffer.from(signature, "hex")
       );
   }
@@ -261,7 +268,13 @@ describe("NDContract", function () {
     user: SignerWithAddress,
     licenseId: number
   ) {
-    await ndContract.connect(user).linkNode(licenseId, NODE_ADDRESS);
+    await ndContract
+      .connect(user)
+      .linkNode(
+        licenseId,
+        NODE_ADDRESS,
+        signLinkNode(backend, user, NODE_ADDRESS)
+      );
   }
 
   async function unlinkNode(
@@ -276,7 +289,8 @@ describe("NDContract", function () {
     signer: SignerWithAddress,
     user: SignerWithAddress,
     invoiceUuid: Buffer,
-    usdMintLimit: number
+    usdMintLimit: number,
+    vatPercent: number = 20
   ) {
     const addressBytes = Buffer.from(user.address.slice(2), "hex");
 
@@ -289,6 +303,14 @@ describe("NDContract", function () {
       messageBytes,
       Buffer.from(buffer.slice(2), "hex"),
     ]);
+    const bufferVatPercentage = ethers.utils.hexZeroPad(
+      ethers.utils.hexlify(vatPercent),
+      32
+    );
+    messageBytes = Buffer.concat([
+      messageBytes,
+      Buffer.from(bufferVatPercentage.slice(2), "hex"),
+    ]);
     const messageHash = ethers.utils.keccak256(messageBytes);
     const signature = await signer.signMessage(
       ethers.utils.arrayify(messageHash)
@@ -300,6 +322,18 @@ describe("NDContract", function () {
     }
 
     return signatureBytes.toString("hex");
+  }
+
+  async function signLinkNode(
+    signer: SignerWithAddress,
+    user: SignerWithAddress,
+    nodeAddress: string
+  ) {
+    const messageHash = ethers.utils.solidityKeccak256(
+      ["address", "address"],
+      [user.address, nodeAddress]
+    );
+    return signer.signMessage(ethers.utils.arrayify(messageHash));
   }
 
   async function signComputeParams(signer: SignerWithAddress) {
@@ -361,7 +395,7 @@ describe("NDContract", function () {
     expect(await ndContract.supportsInterface("0x80ac58cd")).to.be.true;
   });
 
-  it("Get licenses", async function () {
+  it.only("Get licenses", async function () {
     await buyLicenseWithMintAndAllowance(
       r1Contract,
       ndContract,
@@ -371,6 +405,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -434,6 +469,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
 
@@ -469,6 +505,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     expect(firstUser.address).to.equal(await ndContract.ownerOf(1));
@@ -496,6 +533,7 @@ describe("NDContract", function () {
         1,
         1,
         10000,
+        20,
         await signAddress(backend, firstUser, invoiceUuid, 10000)
       )
     ).to.be.revertedWith("ERC20InsufficientAllowance");
@@ -520,6 +558,7 @@ describe("NDContract", function () {
           2,
           invoiceUuid,
           10000,
+          20,
           Buffer.from(
             await signAddress(backend, firstUser, invoiceUuid, 10000),
             "hex"
@@ -543,6 +582,7 @@ describe("NDContract", function () {
         1,
         1,
         10000,
+        20,
         await signAddress(backend, firstUser, invoiceUuid, 10000)
       )
     ).to.be.revertedWith("EnforcedPause");
@@ -559,6 +599,7 @@ describe("NDContract", function () {
         1,
         1,
         10000,
+        20,
         await signAddress(secondUser, firstUser, invoiceUuid, 10000)
       )
     ).to.be.revertedWith("Invalid oracle signature");
@@ -576,6 +617,7 @@ describe("NDContract", function () {
         1,
         2,
         10000,
+        20,
         await signAddress(backend, firstUser, invoiceUuid, 10000)
       )
     ).to.be.revertedWith("Not in the right price tier");
@@ -593,6 +635,7 @@ describe("NDContract", function () {
         maxUnits + 1,
         1,
         10000,
+        20,
         await signAddress(backend, firstUser, invoiceUuid, 10000)
       )
     ).to.be.revertedWith("Exceeds mint limit");
@@ -609,6 +652,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
 
@@ -633,6 +677,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -654,6 +699,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -675,6 +721,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
 
@@ -695,12 +742,19 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
 
     //DO TEST - try to link with wrong node address
     await expect(
-      ndContract.connect(firstUser).linkNode(1, NULL_ADDRESS)
+      ndContract
+        .connect(firstUser)
+        .linkNode(
+          1,
+          NULL_ADDRESS,
+          signLinkNode(backend, firstUser, NULL_ADDRESS)
+        )
     ).to.be.revertedWith("Invalid node address");
   });
 
@@ -715,6 +769,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -737,6 +792,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -759,6 +815,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -782,6 +839,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
 
@@ -805,6 +863,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -829,6 +888,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -859,6 +919,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -893,14 +954,16 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await ethers.provider.send("evm_increaseTime", [
       ONE_DAY_IN_SECS / EPOCH_IN_A_DAY,
     ]);
+    const nodeAddress = "0x1351504af17BFdb80491D9223d6Bcb6BB964DCeD";
     await ndContract
       .connect(firstUser)
-      .linkNode(1, "0x1351504af17BFdb80491D9223d6Bcb6BB964DCeD");
+      .linkNode(1, nodeAddress, signLinkNode(backend, firstUser, nodeAddress));
     await ethers.provider.send("evm_increaseTime", [
       (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
     ]);
@@ -910,7 +973,7 @@ describe("NDContract", function () {
       [
         {
           licenseId: 1,
-          nodeAddress: "0x1351504af17BFdb80491D9223d6Bcb6BB964DCeD",
+          nodeAddress,
           epochs: [1, 2, 3, 4, 5],
           availabilies: [0, 0, 0, 0, 0],
         },
@@ -937,6 +1000,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -967,6 +1031,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -995,6 +1060,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -1024,6 +1090,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -1058,6 +1125,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -1096,6 +1164,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -1124,6 +1193,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -1153,6 +1223,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -1182,6 +1253,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -1223,6 +1295,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -1285,6 +1358,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -1331,6 +1405,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(secondUser, firstUser, invoiceUuid, 10000) //second user is a signer
     );
   });
@@ -1347,6 +1422,7 @@ describe("NDContract", function () {
         1,
         1,
         10000,
+        20,
         await signAddress(backend, firstUser, invoiceUuid, 10000)
       )
     ).to.be.revertedWith("EnforcedPause");
@@ -1370,6 +1446,7 @@ describe("NDContract", function () {
         1,
         1,
         10000,
+        20,
         await signAddress(backend, firstUser, invoiceUuid, 10000)
       )
     ).to.be.revertedWith("EnforcedPause");
@@ -1385,6 +1462,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
   });
@@ -1406,6 +1484,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
 
@@ -1434,6 +1513,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
 
@@ -1459,6 +1539,7 @@ describe("NDContract", function () {
       1,
       1,
       10000,
+      20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
@@ -1526,6 +1607,7 @@ describe("NDContract", function () {
             maxUnits,
             i,
             10000,
+            20,
             signedMessage
           );
           units -= maxUnits;
@@ -1540,6 +1622,7 @@ describe("NDContract", function () {
             units,
             i,
             10000,
+            20,
             signedMessage
           );
           units -= units;
@@ -1557,6 +1640,7 @@ describe("NDContract", function () {
         1,
         12,
         10000,
+        20,
         signedMessage
       )
     ).to.be.revertedWith("All licenses have been sold");
