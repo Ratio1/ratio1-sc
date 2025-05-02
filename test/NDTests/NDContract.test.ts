@@ -107,7 +107,7 @@ const EXPECTED_PRICE_TIERS = [
   },
 ];
 
-describe.only("NDContract", function () {
+describe("NDContract", function () {
   /*
   .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
   .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -395,7 +395,7 @@ describe.only("NDContract", function () {
     expect(await ndContract.supportsInterface("0x80ac58cd")).to.be.true;
   });
 
-  it.only("Get licenses", async function () {
+  it("Get licenses", async function () {
     await buyLicenseWithMintAndAllowance(
       r1Contract,
       ndContract,

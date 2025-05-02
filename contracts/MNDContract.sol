@@ -9,6 +9,7 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {SD59x18, sd, unwrap, add, sub, mul, div, exp} from "@prb/math/src/SD59x18.sol";
 import "./R1.sol";
 import "./Controller.sol";
 
@@ -32,6 +33,7 @@ struct License {
     address nodeAddress;
     uint256 totalAssignedAmount;
     uint256 totalClaimedAmount;
+    uint256 firstMiningEpoch;
     uint256 lastClaimEpoch;
     uint256 assignTimestamp;
     address lastClaimOracle;
@@ -42,6 +44,7 @@ struct LicenseInfo {
     address nodeAddress;
     uint256 totalAssignedAmount;
     uint256 totalClaimedAmount;
+    uint256 firstMiningEpoch;
     uint256 remainingAmount;
     uint256 lastClaimEpoch;
     uint256 claimableEpochs;
@@ -68,6 +71,10 @@ contract MNDContract is
     uint256 constant MAX_PERCENTAGE = 100_00;
     uint8 constant MAX_AVAILABILITY = 255;
     uint256 public constant GENESIS_TOKEN_ID = 1;
+    int256 private constant WAD = 1e18;
+    SD59x18 private LOGISTIC_PLATEAU;
+    SD59x18 private K;
+    SD59x18 private MID_PRC;
 
     uint256 constant LP_WALLET_PERCENTAGE = 26_71;
     uint256 constant EXPENSES_WALLET_PERCENTAGE = 13_84;
@@ -148,6 +155,10 @@ contract MNDContract is
         _R1Token = R1(tokenAddress);
         _controller = Controller(controllerAddress);
 
+        LOGISTIC_PLATEAU = sd(392_778135785707100000); // 392.77
+        K = sd(3e18); // 3
+        MID_PRC = sd(6e17); // 0.6
+
         // Mint the first Genesis Node Deed
         uint256 tokenId = safeMint(newOwner);
         uint256 GENESIS_TOTAL_EMISSION = _controller.GND_TOTAL_EMISSION();
@@ -155,6 +166,7 @@ contract MNDContract is
             nodeAddress: address(0),
             lastClaimEpoch: 0,
             totalClaimedAmount: 0,
+            firstMiningEpoch: 1,
             assignTimestamp: 0,
             totalAssignedAmount: GENESIS_TOTAL_EMISSION,
             lastClaimOracle: address(0)
@@ -181,10 +193,16 @@ contract MNDContract is
 
         uint256 tokenId = safeMint(to);
         totalLicensesAssignedTokensAmount += newTotalAssignedAmount;
+        uint256 noMiningEpochs = _controller.MND_NO_MINING_EPOCHS();
+        uint256 currentEpoch = getCurrentEpoch();
+        uint256 firstMiningEpoch = (currentEpoch >= noMiningEpochs)
+            ? currentEpoch
+            : noMiningEpochs;
         licenses[tokenId] = License({
             nodeAddress: address(0),
             lastClaimEpoch: 0,
             totalClaimedAmount: 0,
+            firstMiningEpoch: firstMiningEpoch,
             assignTimestamp: 0,
             totalAssignedAmount: newTotalAssignedAmount,
             lastClaimOracle: address(0)
@@ -332,10 +350,7 @@ contract MNDContract is
         uint256 currentEpoch = getCurrentEpoch();
         uint256 licenseRewards = 0;
 
-        if (
-            currentEpoch < _controller.MND_NO_MINING_EPOCHS() &&
-            computeParam.licenseId != GENESIS_TOKEN_ID
-        ) {
+        if (currentEpoch < license.firstMiningEpoch) {
             return 0;
         }
 
@@ -348,11 +363,10 @@ contract MNDContract is
             return 0;
         }
 
-        uint256 firstEpochToClaim = (computeParam.licenseId ==
-            GENESIS_TOKEN_ID ||
-            license.lastClaimEpoch >= _controller.MND_NO_MINING_EPOCHS())
+        uint256 firstEpochToClaim = (license.lastClaimEpoch >=
+            license.firstMiningEpoch)
             ? license.lastClaimEpoch
-            : _controller.MND_NO_MINING_EPOCHS();
+            : license.firstMiningEpoch;
         uint256 epochsToClaim = currentEpoch - firstEpochToClaim;
         if (epochsToClaim == 0) {
             return 0;
@@ -369,16 +383,29 @@ contract MNDContract is
             "Invalid epochs"
         );
 
-        uint256 maxRewardsPerEpoch = license.totalAssignedAmount /
-            (
-                computeParam.licenseId == GENESIS_TOKEN_ID
-                    ? _controller.GND_MINING_EPOCHS()
-                    : _controller.MND_MINING_DURATION_EPOCHS()
+        if (computeParam.licenseId == GENESIS_TOKEN_ID) {
+            uint256 maxRewardsPerEpoch = license.totalAssignedAmount /
+                _controller.GND_MINING_EPOCHS();
+            for (uint256 i = 0; i < epochsToClaim; i++) {
+                licenseRewards +=
+                    (maxRewardsPerEpoch * computeParam.availabilies[i]) /
+                    MAX_AVAILABILITY;
+            }
+        } else {
+            SD59x18 licensePlateau = div(
+                sd(int256(license.totalAssignedAmount)),
+                LOGISTIC_PLATEAU
             );
-        for (uint256 i = 0; i < epochsToClaim; i++) {
-            licenseRewards +=
-                (maxRewardsPerEpoch * computeParam.availabilies[i]) /
-                MAX_AVAILABILITY;
+            for (uint256 i = 0; i < epochsToClaim; i++) {
+                uint256 maxRewardsPerEpoch = calculateEpochRelease(
+                    computeParam.epochs[i],
+                    license.firstMiningEpoch,
+                    licensePlateau
+                );
+                licenseRewards +=
+                    (maxRewardsPerEpoch * computeParam.availabilies[i]) /
+                    MAX_AVAILABILITY;
+            }
         }
 
         uint256 maxRemainingClaimAmount = license.totalAssignedAmount -
@@ -387,6 +414,31 @@ contract MNDContract is
             return maxRemainingClaimAmount;
         }
         return licenseRewards;
+    }
+
+    function calculateEpochRelease(
+        uint256 currentEpoch,
+        uint256 firstMiningEpoch,
+        SD59x18 plateau
+    ) public view returns (uint256) {
+        uint256 x = currentEpoch - firstMiningEpoch;
+        if (x > _controller.MND_MINING_DURATION_EPOCHS()) {
+            x = _controller.MND_MINING_DURATION_EPOCHS();
+        }
+        SD59x18 frac = _logisticFraction(x);
+        return uint256(mul(plateau, frac).unwrap());
+    }
+
+    function _logisticFraction(uint256 xInt) internal view returns (SD59x18) {
+        SD59x18 x = sd(int256(xInt) * WAD);
+        SD59x18 length = sd(
+            int256(_controller.MND_MINING_DURATION_EPOCHS()) * WAD
+        );
+        SD59x18 midpoint = mul(length, MID_PRC);
+        SD59x18 exponent = mul(div(sub(x, midpoint), length), K);
+        exponent = sd(-exponent.unwrap());
+        SD59x18 one = sd(int256(WAD));
+        return div(one, add(one, exp(exponent)));
     }
 
     function initiateTransfer(address from, address to) public onlyOwner {
@@ -542,6 +594,7 @@ contract MNDContract is
                     licenseId: 0,
                     nodeAddress: address(0),
                     totalClaimedAmount: 0,
+                    firstMiningEpoch: 0,
                     remainingAmount: 0,
                     lastClaimEpoch: 0,
                     claimableEpochs: 0,
@@ -566,6 +619,7 @@ contract MNDContract is
                     nodeAddress: license.nodeAddress,
                     totalAssignedAmount: license.totalAssignedAmount,
                     totalClaimedAmount: license.totalClaimedAmount,
+                    firstMiningEpoch: license.firstMiningEpoch,
                     remainingAmount: license.totalAssignedAmount -
                         license.totalClaimedAmount,
                     lastClaimEpoch: license.lastClaimEpoch,
@@ -585,6 +639,7 @@ contract MNDContract is
                 nodeAddress: license.nodeAddress,
                 totalAssignedAmount: license.totalAssignedAmount,
                 totalClaimedAmount: license.totalClaimedAmount,
+                firstMiningEpoch: license.firstMiningEpoch,
                 remainingAmount: license.totalAssignedAmount -
                     license.totalClaimedAmount,
                 lastClaimEpoch: license.lastClaimEpoch,

@@ -26,7 +26,7 @@ const newMarketingWallet = "0x0000000000000000000000000000000000000003";
 const newGrantsWallet = "0x0000000000000000000000000000000000000004";
 const newCsrWallet = "0x0000000000000000000000000000000000000005";
 const ONE_DAY_IN_SECS = 24 * 60 * 60;
-const REWARDS_AMOUNT = BigNumber.from("1205593464052287581697");
+const REWARDS_AMOUNT = BigNumber.from("392886723521922042872");
 const LICENSE_POWER = BigNumber.from("485410").mul(ONE_TOKEN);
 const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: BigNumber.from(2),
@@ -44,7 +44,7 @@ const EXPECTED_LICENSE_INFO = {
   claimableEpochs: BigNumber.from(1), //FUNCTION updateTimestamp set current chain timestamp to one day after cliff epoch
   assignTimestamp: BigNumber.from(1738767602),
 };
-describe("MNDContract", function () {
+describe.only("MNDContract", function () {
   /*
     .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
     .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -693,6 +693,33 @@ describe("MNDContract", function () {
       licenseId: result.licenseId,
       rewardsAmount: result.rewardsAmount,
     }).to.deep.equal(EXPECTED_COMPUTE_REWARDS_RESULT);
+  });
+
+  it("Calculate rewards to be in line with simulation", async function () {
+    //SETUP WORLD
+    await updateTimestamp();
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, 100000_000000000000000000n);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    let result = await mndContract.calculateRewards({
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [121],
+      availabilies: [255],
+    });
+    expect({
+      licenseId: result.licenseId,
+      rewardsAmount: result.rewardsAmount,
+    }).to.deep.equal({
+      licenseId: BigNumber.from(2n),
+      rewardsAmount: BigNumber.from("36114806802250127238"),
+    });
   });
 
   it("Claim rewards - should work", async function () {
