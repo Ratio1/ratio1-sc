@@ -594,7 +594,7 @@ contract NDContract is
         return amounts[1];
     }
 
-    function getTokenPrice() internal view returns (uint256 price) {
+    function getTokenPrice() public view returns (uint256 price) {
         IUniswapV2Pair pair = IUniswapV2Pair(_uniswapV2Pair);
         (uint112 reserve0, uint112 reserve1, ) = pair.getReserves();
 

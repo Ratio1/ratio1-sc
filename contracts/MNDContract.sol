@@ -420,7 +420,7 @@ contract MNDContract is
         uint256 currentEpoch,
         uint256 firstMiningEpoch,
         SD59x18 plateau
-    ) public view returns (uint256) {
+    ) internal view returns (uint256) {
         uint256 x = currentEpoch - firstMiningEpoch;
         if (x > _controller.MND_MINING_DURATION_EPOCHS()) {
             x = _controller.MND_MINING_DURATION_EPOCHS();
