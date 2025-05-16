@@ -19,6 +19,14 @@ async function main() {
   );
   await mndContract.deployed();
   console.log("MND deployed to:", mndContract.address);
+  const implAddress = await upgrades.erc1967.getImplementationAddress(
+    mndContract.address
+  );
+  console.log("Implementation:", implAddress);
+  const adminAddress = await upgrades.erc1967.getAdminAddress(
+    mndContract.address
+  );
+  console.log("Proxy Admin:", adminAddress);
 }
 
 main()
