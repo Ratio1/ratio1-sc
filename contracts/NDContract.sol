@@ -535,6 +535,7 @@ contract NDContract is
         require(usdcAmount > 0, "Swap failed");
 
         IERC20(_usdcAddr).approve(address(_uniswapV2Router), usdcAmount);
+        _R1Token.approve(address(_uniswapV2Router), halfR1Amount);
         (uint256 usedAmountR1, uint256 usedAmountUsdc, ) = IUniswapV2Router02(
             _uniswapV2Router
         ).addLiquidity(
