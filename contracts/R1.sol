@@ -9,6 +9,7 @@ contract R1 is Ownable, ERC20Capped {
     uint256 public constant maxSupply = 161803398 * (10 ** 18);
     address public _mndContract;
     address public _ndContract;
+    mapping(address => bool) private _burners;
 
     // Constructor will be called on contract creation
     constructor(
@@ -20,7 +21,7 @@ contract R1 is Ownable, ERC20Capped {
     }
 
     function _canBurn() private view returns (bool) {
-        return msg.sender == _ndContract;
+        return msg.sender == _ndContract || _burners[msg.sender];
     }
 
     function mint(address to, uint256 amount) external {
@@ -46,5 +47,15 @@ contract R1 is Ownable, ERC20Capped {
         require(_ndContract == address(0), "Node Deed address already set");
         require(ndContract != address(0), "Invalid Node Deed address");
         _ndContract = ndContract;
+    }
+
+    function addBurner(address account) external onlyOwner {
+        require(account != address(0), "Invalid burner address");
+        _burners[account] = true;
+    }
+
+    function removeBurner(address account) external onlyOwner {
+        require(_burners[account], "Address is not a burner");
+        _burners[account] = false;
     }
 }
