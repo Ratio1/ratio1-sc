@@ -157,7 +157,7 @@ contract MNDContract is
 
         LOGISTIC_PLATEAU = sd(392_778135785707100000); // 392.77
         K = sd(3e18); // 3
-        MID_PRC = sd(6e17); // 0.6
+        MID_PRC = sd(7e17); // 0.7
 
         // Mint the first Genesis Node Deed
         uint256 tokenId = safeMint(newOwner);

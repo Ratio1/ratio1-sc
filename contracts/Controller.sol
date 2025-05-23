@@ -36,7 +36,7 @@ contract Controller is Ownable {
     uint256 public constant MND_MAX_TOTAL_ASSIGNED_TOKENS =
         (MAX_TOKEN_SUPPLY * 26_10) / MAX_PERCENTAGE; // 26.1% of total supply
     uint256 public constant MND_MAX_SUPPLY = 500;
-    uint256 public constant MND_NO_MINING_EPOCHS = 30 * 4;
+    uint256 public constant MND_NO_MINING_EPOCHS = 223;
     uint256 public constant MND_MINING_DURATION_EPOCHS = 30 * 30;
 
     // GENESIS NODE DEED (GND)
