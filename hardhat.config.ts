@@ -1,7 +1,11 @@
 import { HardhatUserConfig } from "hardhat/config";
-import "@nomicfoundation/hardhat-toolbox";
-import "hardhat-gas-reporter";
-import "solidity-coverage";
+import "@nomiclabs/hardhat-ethers";
+import "@nomiclabs/hardhat-waffle";
+import "@openzeppelin/hardhat-upgrades";
+import "@typechain/hardhat";
+//import "@nomicfoundation/hardhat-toolbox";
+//import "hardhat-gas-reporter";
+//import "solidity-coverage";
 import { config as dotEnvConfig } from "dotenv";
 dotEnvConfig();
 
@@ -10,11 +14,11 @@ const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || "";
 
 const config: HardhatUserConfig = {
   solidity: {
-    version: "0.8.18",
+    version: "0.8.20",
     settings: {
       optimizer: {
         enabled: true,
-        runs: 1000,
+        runs: 100,
       },
     },
   },
@@ -37,19 +41,19 @@ const config: HardhatUserConfig = {
       accounts: [BE_SIGNER_PRIVATE_KEY],
     },
   },
-  gasReporter: {
+  /*gasReporter: {
     currency: "EUR",
     enabled: true,
     L2: "base",
     trackGasDeltas: true,
     coinmarketcap: "fe216009-c5aa-4629-874e-f43901af5108",
     L2Etherscan: ETHERSCAN_API_KEY,
-  },
+  },*/
   mocha: {
     timeout: 480000,
     parallel: false,
   },
-  etherscan: {
+  /*etherscan: {
     apiKey: {
       baseSepolia: ETHERSCAN_API_KEY,
       base: ETHERSCAN_API_KEY,
@@ -72,8 +76,8 @@ const config: HardhatUserConfig = {
         },
       },
     ],
-  },
+  },*/
 };
 
 export default config;
-require("hardhat-contract-sizer");
+//require("hardhat-contract-sizer");

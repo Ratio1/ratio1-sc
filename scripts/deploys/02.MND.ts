@@ -1,5 +1,9 @@
-import { ethers } from "hardhat";
-import { R1_TOKEN_ADDR, SAFE_ADDR } from "../configs/constants";
+import { ethers, upgrades } from "hardhat";
+import {
+  CONTROLLER_ADDR,
+  R1_TOKEN_ADDR,
+  SAFE_ADDR,
+} from "../configs/constants";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -8,15 +12,21 @@ async function main() {
     "MNDContract",
     deployer
   );
-  const mndContract = await MNDContractFactory.deploy(R1_TOKEN_ADDR, SAFE_ADDR);
+  const mndContract = await upgrades.deployProxy(
+    MNDContractFactory,
+    [R1_TOKEN_ADDR, CONTROLLER_ADDR, SAFE_ADDR],
+    { initializer: "initialize" }
+  );
   await mndContract.deployed();
   console.log("MND deployed to:", mndContract.address);
-  /*
-  const R1ContractFactory = await ethers.getContractFactory("R1", deployer);
-  const r1Contract = R1ContractFactory.attach(R1_TOKEN_ADDR);
-  await r1Contract.setMndContract(mndContract.address);
-  console.log("MND contract address set in R1 contract");
-  */
+  const implAddress = await upgrades.erc1967.getImplementationAddress(
+    mndContract.address
+  );
+  console.log("Implementation:", implAddress);
+  const adminAddress = await upgrades.erc1967.getAdminAddress(
+    mndContract.address
+  );
+  console.log("Proxy Admin:", adminAddress);
 }
 
 main()

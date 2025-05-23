@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
-import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721URIStorageUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {SD59x18, sd, unwrap, add, sub, mul, div, exp} from "@prb/math/src/SD59x18.sol";
 import "./R1.sol";
+import "./Controller.sol";
 
 interface IND {
     function registeredNodeAddresses(address node) external view returns (bool);
@@ -31,6 +33,7 @@ struct License {
     address nodeAddress;
     uint256 totalAssignedAmount;
     uint256 totalClaimedAmount;
+    uint256 firstMiningEpoch;
     uint256 lastClaimEpoch;
     uint256 assignTimestamp;
     address lastClaimOracle;
@@ -41,6 +44,7 @@ struct LicenseInfo {
     address nodeAddress;
     uint256 totalAssignedAmount;
     uint256 totalClaimedAmount;
+    uint256 firstMiningEpoch;
     uint256 remainingAmount;
     uint256 lastClaimEpoch;
     uint256 claimableEpochs;
@@ -49,15 +53,13 @@ struct LicenseInfo {
 }
 
 contract MNDContract is
-    ERC721Enumerable,
-    ERC721URIStorage,
-    Pausable,
-    Ownable,
-    ReentrancyGuard
+    Initializable,
+    ERC721EnumerableUpgradeable,
+    ERC721URIStorageUpgradeable,
+    PausableUpgradeable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable
 {
-    using SafeMath for uint256;
-    using Counters for Counters.Counter;
-
     //..######...#######..##....##..######..########....###....##....##.########..######.
     //.##....##.##.....##.###...##.##....##....##......##.##...###...##....##....##....##
     //.##.......##.....##.####..##.##..........##.....##...##..####..##....##....##......
@@ -66,27 +68,13 @@ contract MNDContract is
     //.##....##.##.....##.##...###.##....##....##....##.....##.##...###....##....##....##
     //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
-    uint256 constant startEpochTimestamp = 1738771200; // Wednesday 5 February 2025 16:00:00 UTC
-    uint256 constant epochDuration = 24 hours;
-
     uint256 constant MAX_PERCENTAGE = 100_00;
     uint8 constant MAX_AVAILABILITY = 255;
-
-    uint256 constant PRICE_DECIMALS = 10 ** 18;
-    uint256 constant MAX_TOKEN_SUPPLY = 161803398 * PRICE_DECIMALS;
-
-    uint256 constant MAX_TOKENS_ASSIGNED_PER_LICENSE =
-        (MAX_TOKEN_SUPPLY * 2_00) / MAX_PERCENTAGE;
-    uint256 constant MAX_MND_TOTAL_ASSIGNED_TOKENS =
-        (MAX_TOKEN_SUPPLY * 26_10) / MAX_PERCENTAGE; // 26.1% of total supply
-    uint256 constant MAX_MND_SUPPLY = 500;
-    uint256 constant NO_MINING_EPOCHS = 30 * 4;
-    uint256 constant MINING_DURATION_EPOCHS = 30 * 30;
-
-    uint256 constant GENESIS_TOTAL_EMISSION =
-        (MAX_TOKEN_SUPPLY * 28_90) / MAX_PERCENTAGE; // 28.9% of total supply
-    uint256 constant GENESIS_MINING_EPOCHS = 365;
-    uint256 constant GENESIS_TOKEN_ID = 1;
+    uint256 public constant GENESIS_TOKEN_ID = 1;
+    int256 private constant WAD = 1e18;
+    SD59x18 private LOGISTIC_PLATEAU;
+    SD59x18 private K;
+    SD59x18 private MID_PRC;
 
     uint256 constant LP_WALLET_PERCENTAGE = 26_71;
     uint256 constant EXPENSES_WALLET_PERCENTAGE = 13_84;
@@ -102,10 +90,11 @@ contract MNDContract is
     //.##....##....##....##.....##.##....##..##.....##.##....##..##......
     //..######.....##.....#######..##.....##.##.....##..######...########
 
-    Counters.Counter private _supply;
+    uint256 private _supply;
     string public _baseTokenURI;
 
     R1 private _R1Token;
+    Controller public _controller;
     IND _ndContract;
     address lpWallet;
     address expensesWallet;
@@ -114,14 +103,9 @@ contract MNDContract is
     address csrWallet;
 
     uint256 public totalLicensesAssignedTokensAmount;
-    address[] public signers;
-    uint8 public minimumRequiredSignatures;
-    mapping(address => bool) isSigner;
     mapping(uint256 => License) public licenses;
     mapping(address => bool) public registeredNodeAddresses;
     mapping(address => uint256) public nodeToLicenseId;
-    mapping(address => uint256) public signerSignaturesCount;
-    mapping(address => uint256) public signerAdditionTimestamp;
 
     mapping(address => address) public initiatedTransferReceiver;
     mapping(address => bool) public initiatedBurn;
@@ -155,23 +139,34 @@ contract MNDContract is
         uint256 rewardsAmount,
         uint256 totalEpochs
     );
-    event SignerAdded(address newSigner);
-    event SignerRemoved(address removedSigner);
 
-    constructor(
+    function initialize(
         address tokenAddress,
+        address controllerAddress,
         address newOwner
-    ) ERC721("MNDLicense", "MND") {
+    ) public initializer {
+        __ERC721_init("MNDLicense", "MND");
+        __ERC721Enumerable_init();
+        __ERC721URIStorage_init();
+        __Pausable_init();
+        __Ownable_init(newOwner);
+        __ReentrancyGuard_init();
+
         _R1Token = R1(tokenAddress);
-        minimumRequiredSignatures = 1;
-        transferOwnership(newOwner);
+        _controller = Controller(controllerAddress);
+
+        LOGISTIC_PLATEAU = sd(392_778135785707100000); // 392.77
+        K = sd(3e18); // 3
+        MID_PRC = sd(6e17); // 0.6
 
         // Mint the first Genesis Node Deed
         uint256 tokenId = safeMint(newOwner);
+        uint256 GENESIS_TOTAL_EMISSION = _controller.GND_TOTAL_EMISSION();
         licenses[tokenId] = License({
             nodeAddress: address(0),
             lastClaimEpoch: 0,
             totalClaimedAmount: 0,
+            firstMiningEpoch: 1,
             assignTimestamp: 0,
             totalAssignedAmount: GENESIS_TOTAL_EMISSION,
             lastClaimOracle: address(0)
@@ -185,22 +180,29 @@ contract MNDContract is
     ) public onlyOwner whenNotPaused {
         require(
             newTotalAssignedAmount > 0 &&
-                newTotalAssignedAmount <= MAX_TOKENS_ASSIGNED_PER_LICENSE,
+                newTotalAssignedAmount <=
+                _controller.MND_MAX_TOKENS_ASSIGNED_PER_LICENSE(),
             "Invalid license power"
         );
         require(
             totalLicensesAssignedTokensAmount + newTotalAssignedAmount <=
-                MAX_MND_TOTAL_ASSIGNED_TOKENS,
+                _controller.MND_MAX_TOTAL_ASSIGNED_TOKENS(),
             "Max total assigned tokens reached"
         );
         require(balanceOf(to) == 0, "User already has a license");
 
         uint256 tokenId = safeMint(to);
         totalLicensesAssignedTokensAmount += newTotalAssignedAmount;
+        uint256 noMiningEpochs = _controller.MND_NO_MINING_EPOCHS();
+        uint256 currentEpoch = getCurrentEpoch();
+        uint256 firstMiningEpoch = (currentEpoch >= noMiningEpochs)
+            ? currentEpoch
+            : noMiningEpochs;
         licenses[tokenId] = License({
             nodeAddress: address(0),
             lastClaimEpoch: 0,
             totalClaimedAmount: 0,
+            firstMiningEpoch: firstMiningEpoch,
             assignTimestamp: 0,
             totalAssignedAmount: newTotalAssignedAmount,
             lastClaimOracle: address(0)
@@ -211,7 +213,8 @@ contract MNDContract is
 
     function linkNode(
         uint256 licenseId,
-        address newNodeAddress
+        address newNodeAddress,
+        bytes memory signature
     ) public whenNotPaused {
         require(
             ownerOf(licenseId) == msg.sender,
@@ -229,6 +232,7 @@ contract MNDContract is
             license.assignTimestamp + 24 hours < block.timestamp,
             "Cannot reassign within 24 hours"
         );
+        verifyLinkNodeSignature(msg.sender, newNodeAddress, signature);
 
         _removeNodeAddress(license, licenseId);
         license.nodeAddress = newNodeAddress;
@@ -259,7 +263,7 @@ contract MNDContract is
         uint256 currentEpoch = getCurrentEpoch();
         require(
             license.lastClaimEpoch == currentEpoch ||
-                currentEpoch < NO_MINING_EPOCHS,
+                currentEpoch < _controller.MND_NO_MINING_EPOCHS(),
             "Cannot unlink before claiming rewards"
         );
 
@@ -279,16 +283,7 @@ contract MNDContract is
             ownerOf(computeParam.licenseId) == msg.sender,
             "User does not have the license"
         );
-        require(
-            minimumRequiredSignatures <= signatures.length,
-            "Insufficient signatures"
-        );
-        (bool validSignatures, address firstSigner) = verifyRewardsSignatures(
-            computeParam,
-            signatures
-        );
-        signerSignaturesCount[firstSigner]++;
-        require(validSignatures, "Invalid signature");
+        address firstSigner = verifyRewardsSignatures(computeParam, signatures);
 
         License storage license = licenses[computeParam.licenseId];
         uint256 rewardsAmount = calculateLicenseRewards(license, computeParam);
@@ -355,10 +350,7 @@ contract MNDContract is
         uint256 currentEpoch = getCurrentEpoch();
         uint256 licenseRewards = 0;
 
-        if (
-            currentEpoch < NO_MINING_EPOCHS &&
-            computeParam.licenseId != GENESIS_TOKEN_ID
-        ) {
+        if (currentEpoch < license.firstMiningEpoch) {
             return 0;
         }
 
@@ -371,11 +363,10 @@ contract MNDContract is
             return 0;
         }
 
-        uint256 firstEpochToClaim = (computeParam.licenseId ==
-            GENESIS_TOKEN_ID ||
-            license.lastClaimEpoch >= NO_MINING_EPOCHS)
+        uint256 firstEpochToClaim = (license.lastClaimEpoch >=
+            license.firstMiningEpoch)
             ? license.lastClaimEpoch
-            : NO_MINING_EPOCHS;
+            : license.firstMiningEpoch;
         uint256 epochsToClaim = currentEpoch - firstEpochToClaim;
         if (epochsToClaim == 0) {
             return 0;
@@ -392,16 +383,29 @@ contract MNDContract is
             "Invalid epochs"
         );
 
-        uint256 maxRewardsPerEpoch = license.totalAssignedAmount /
-            (
-                computeParam.licenseId == GENESIS_TOKEN_ID
-                    ? GENESIS_MINING_EPOCHS
-                    : MINING_DURATION_EPOCHS
+        if (computeParam.licenseId == GENESIS_TOKEN_ID) {
+            uint256 maxRewardsPerEpoch = license.totalAssignedAmount /
+                _controller.GND_MINING_EPOCHS();
+            for (uint256 i = 0; i < epochsToClaim; i++) {
+                licenseRewards +=
+                    (maxRewardsPerEpoch * computeParam.availabilies[i]) /
+                    MAX_AVAILABILITY;
+            }
+        } else {
+            SD59x18 licensePlateau = div(
+                sd(int256(license.totalAssignedAmount)),
+                LOGISTIC_PLATEAU
             );
-        for (uint256 i = 0; i < epochsToClaim; i++) {
-            licenseRewards +=
-                (maxRewardsPerEpoch * computeParam.availabilies[i]) /
-                MAX_AVAILABILITY;
+            for (uint256 i = 0; i < epochsToClaim; i++) {
+                uint256 maxRewardsPerEpoch = calculateEpochRelease(
+                    computeParam.epochs[i],
+                    license.firstMiningEpoch,
+                    licensePlateau
+                );
+                licenseRewards +=
+                    (maxRewardsPerEpoch * computeParam.availabilies[i]) /
+                    MAX_AVAILABILITY;
+            }
         }
 
         uint256 maxRemainingClaimAmount = license.totalAssignedAmount -
@@ -410,6 +414,31 @@ contract MNDContract is
             return maxRemainingClaimAmount;
         }
         return licenseRewards;
+    }
+
+    function calculateEpochRelease(
+        uint256 currentEpoch,
+        uint256 firstMiningEpoch,
+        SD59x18 plateau
+    ) internal view returns (uint256) {
+        uint256 x = currentEpoch - firstMiningEpoch;
+        if (x > _controller.MND_MINING_DURATION_EPOCHS()) {
+            x = _controller.MND_MINING_DURATION_EPOCHS();
+        }
+        SD59x18 frac = _logisticFraction(x);
+        return uint256(mul(plateau, frac).unwrap());
+    }
+
+    function _logisticFraction(uint256 xInt) internal view returns (SD59x18) {
+        SD59x18 x = sd(int256(xInt) * WAD);
+        SD59x18 length = sd(
+            int256(_controller.MND_MINING_DURATION_EPOCHS()) * WAD
+        );
+        SD59x18 midpoint = mul(length, MID_PRC);
+        SD59x18 exponent = mul(div(sub(x, midpoint), length), K);
+        exponent = sd(-exponent.unwrap());
+        SD59x18 one = sd(int256(WAD));
+        return div(one, add(one, exp(exponent)));
     }
 
     function initiateTransfer(address from, address to) public onlyOwner {
@@ -429,9 +458,12 @@ contract MNDContract is
     }
 
     function safeMint(address to) private returns (uint256) {
-        _supply.increment();
-        uint256 newTokenId = _supply.current();
-        require(newTokenId <= MAX_MND_SUPPLY, "Maximum token supply reached.");
+        _supply += 1;
+        uint256 newTokenId = _supply;
+        require(
+            newTokenId <= _controller.MND_MAX_SUPPLY(),
+            "Maximum token supply reached."
+        );
 
         _safeMint(to, newTokenId);
         return newTokenId;
@@ -441,7 +473,9 @@ contract MNDContract is
         return _calculateEpoch(block.timestamp);
     }
 
-    function _calculateEpoch(uint256 timestamp) private pure returns (uint256) {
+    function _calculateEpoch(uint256 timestamp) private view returns (uint256) {
+        uint256 startEpochTimestamp = _controller.startEpochTimestamp();
+        uint256 epochDuration = _controller.epochDuration();
         require(
             timestamp >= startEpochTimestamp,
             "Timestamp is before the start epoch."
@@ -450,21 +484,20 @@ contract MNDContract is
         return (timestamp - startEpochTimestamp) / epochDuration;
     }
 
-    function _burn(
-        uint256 tokenId
-    ) internal override(ERC721, ERC721URIStorage) {
-        super._burn(tokenId);
-    }
-
     function setBaseURI(string memory baseURI) public onlyOwner {
         _baseTokenURI = baseURI;
     }
 
     function tokenURI(
         uint256 tokenId
-    ) public view override(ERC721, ERC721URIStorage) returns (string memory) {
+    )
+        public
+        view
+        override(ERC721Upgradeable, ERC721URIStorageUpgradeable)
+        returns (string memory)
+    {
         require(
-            _exists(tokenId),
+            _ownerOf(tokenId) != address(0),
             "ERC721Metadata: URI query for nonexistent token"
         );
         return _baseTokenURI;
@@ -475,12 +508,17 @@ contract MNDContract is
         _burn(tokenId);
     }
 
-    function _beforeTokenTransfer(
-        address from,
+    function _update(
         address to,
         uint256 tokenId,
-        uint256 batchSize
-    ) internal override(ERC721, ERC721Enumerable) whenNotPaused {
+        address auth
+    )
+        internal
+        override(ERC721Upgradeable, ERC721EnumerableUpgradeable)
+        returns (address)
+    {
+        address from = _ownerOf(tokenId);
+
         require(
             from == address(0) ||
                 (to == address(0) && initiatedBurn[from]) ||
@@ -500,12 +538,24 @@ contract MNDContract is
             nodeToLicenseId[license.nodeAddress] = 0;
             delete licenses[tokenId];
         }
-        super._beforeTokenTransfer(from, to, tokenId, batchSize);
+        return super._update(to, tokenId, auth);
+    }
+
+    function _increaseBalance(
+        address account,
+        uint128 value
+    ) internal override(ERC721Upgradeable, ERC721EnumerableUpgradeable) {
+        super._increaseBalance(account, value);
     }
 
     function supportsInterface(
         bytes4 interfaceId
-    ) public view override(ERC721Enumerable, ERC721URIStorage) returns (bool) {
+    )
+        public
+        view
+        override(ERC721EnumerableUpgradeable, ERC721URIStorageUpgradeable)
+        returns (bool)
+    {
         return super.supportsInterface(interfaceId);
     }
 
@@ -527,12 +577,6 @@ contract MNDContract is
         _ndContract = IND(ndContract_);
     }
 
-    function setMinimumRequiredSignatures(
-        uint8 minimumRequiredSignatures_
-    ) public onlyOwner {
-        minimumRequiredSignatures = minimumRequiredSignatures_;
-    }
-
     //.##.....##.####.########.##......##....########.##.....##.##....##..######..########.####..#######..##....##..######.
     //.##.....##..##..##.......##..##..##....##.......##.....##.###...##.##....##....##.....##..##.....##.###...##.##....##
     //.##.....##..##..##.......##..##..##....##.......##.....##.####..##.##..........##.....##..##.....##.####..##.##......
@@ -550,6 +594,7 @@ contract MNDContract is
                     licenseId: 0,
                     nodeAddress: address(0),
                     totalClaimedAmount: 0,
+                    firstMiningEpoch: 0,
                     remainingAmount: 0,
                     lastClaimEpoch: 0,
                     claimableEpochs: 0,
@@ -562,9 +607,9 @@ contract MNDContract is
         License memory license = licenses[licenseId];
 
         uint256 firstEpochToClaim = (licenseId == GENESIS_TOKEN_ID ||
-            license.lastClaimEpoch >= NO_MINING_EPOCHS)
+            license.lastClaimEpoch >= _controller.MND_NO_MINING_EPOCHS())
             ? license.lastClaimEpoch
-            : NO_MINING_EPOCHS;
+            : _controller.MND_NO_MINING_EPOCHS();
 
         uint256 currentEpoch = getCurrentEpoch();
         if (currentEpoch < firstEpochToClaim) {
@@ -574,6 +619,7 @@ contract MNDContract is
                     nodeAddress: license.nodeAddress,
                     totalAssignedAmount: license.totalAssignedAmount,
                     totalClaimedAmount: license.totalClaimedAmount,
+                    firstMiningEpoch: license.firstMiningEpoch,
                     remainingAmount: license.totalAssignedAmount -
                         license.totalClaimedAmount,
                     lastClaimEpoch: license.lastClaimEpoch,
@@ -593,6 +639,7 @@ contract MNDContract is
                 nodeAddress: license.nodeAddress,
                 totalAssignedAmount: license.totalAssignedAmount,
                 totalClaimedAmount: license.totalClaimedAmount,
+                firstMiningEpoch: license.firstMiningEpoch,
                 remainingAmount: license.totalAssignedAmount -
                     license.totalClaimedAmount,
                 lastClaimEpoch: license.lastClaimEpoch,
@@ -610,29 +657,17 @@ contract MNDContract is
             _ndContract.registeredNodeAddresses(nodeAddress);
     }
 
-    function getSigners() public view returns (address[] memory) {
-        return signers;
+    function isNodeActive(address nodeAddress) public view returns (bool) {
+        return registeredNodeAddresses[nodeAddress];
     }
 
     ///// Signature functions
     using ECDSA for bytes32;
 
-    function verifySignatures(
-        bytes32 ethSignedMessageHash,
-        bytes[] memory signatures
-    ) internal view returns (bool, address) {
-        for (uint i = 0; i < signatures.length; i++) {
-            if (!isSigner[ethSignedMessageHash.recover(signatures[i])]) {
-                return (false, address(0));
-            }
-        }
-        return (true, ethSignedMessageHash.recover(signatures[0]));
-    }
-
     function verifyRewardsSignatures(
         ComputeRewardsParams memory computeParam,
         bytes[] memory signatures
-    ) public view returns (bool, address) {
+    ) public returns (address) {
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 computeParam.nodeAddress,
@@ -640,29 +675,33 @@ contract MNDContract is
                 computeParam.availabilies
             )
         );
-        bytes32 ethSignedMessageHash = messageHash.toEthSignedMessageHash();
-        return verifySignatures(ethSignedMessageHash, signatures);
+        bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(
+            messageHash
+        );
+        return
+            _controller.requireVerifySignatures(
+                ethSignedMessageHash,
+                signatures,
+                true
+            );
     }
 
-    function addSigner(address newSigner) public onlyOwner {
-        require(newSigner != address(0), "Invalid signer address");
-        require(!isSigner[newSigner], "Signer already exists");
-        isSigner[newSigner] = true;
-        signerAdditionTimestamp[newSigner] = block.timestamp;
-        signers.push(newSigner);
-        emit SignerAdded(newSigner);
-    }
-
-    function removeSigner(address signerToRemove) public onlyOwner {
-        require(isSigner[signerToRemove], "Signer does not exist");
-        isSigner[signerToRemove] = false;
-        for (uint i = 0; i < signers.length; i++) {
-            if (signers[i] == signerToRemove) {
-                signers[i] = signers[signers.length - 1];
-                signers.pop();
-                break;
-            }
-        }
-        emit SignerRemoved(signerToRemove);
+    function verifyLinkNodeSignature(
+        address addr,
+        address nodeAddress,
+        bytes memory signature
+    ) internal returns (address) {
+        bytes32 messageHash = keccak256(abi.encodePacked(addr, nodeAddress));
+        bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(
+            messageHash
+        );
+        bytes[] memory signatures = new bytes[](1);
+        signatures[0] = signature;
+        return
+            _controller.requireVerifySignatures(
+                ethSignedMessageHash,
+                signatures,
+                false
+            );
     }
 }

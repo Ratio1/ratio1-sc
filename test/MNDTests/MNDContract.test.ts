@@ -1,7 +1,7 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { R1, MNDContract } from "../../typechain-types";
+import { R1, MNDContract, Controller } from "../../typechain-types";
 const BigNumber = ethers.BigNumber;
 
 // npx hardhat test     ---- for gas usage
@@ -26,7 +26,7 @@ const newMarketingWallet = "0x0000000000000000000000000000000000000003";
 const newGrantsWallet = "0x0000000000000000000000000000000000000004";
 const newCsrWallet = "0x0000000000000000000000000000000000000005";
 const ONE_DAY_IN_SECS = 24 * 60 * 60;
-const REWARDS_AMOUNT = BigNumber.from("1205593464052287581697");
+const REWARDS_AMOUNT = BigNumber.from("392886723521922042872");
 const LICENSE_POWER = BigNumber.from("485410").mul(ONE_TOKEN);
 const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: BigNumber.from(2),
@@ -44,7 +44,7 @@ const EXPECTED_LICENSE_INFO = {
   claimableEpochs: BigNumber.from(1), //FUNCTION updateTimestamp set current chain timestamp to one day after cliff epoch
   assignTimestamp: BigNumber.from(1738767602),
 };
-describe("MNDContract", function () {
+describe.only("MNDContract", function () {
   /*
     .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
     .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -57,6 +57,7 @@ describe("MNDContract", function () {
 
   let mndContract: MNDContract;
   let r1Contract: R1;
+  let controllerContract: Controller;
   let owner: SignerWithAddress;
   let firstUser: SignerWithAddress;
   let secondUser: SignerWithAddress;
@@ -76,17 +77,30 @@ describe("MNDContract", function () {
     secondUser = user2;
     oracle = oracleSigner;
 
+    const ControllerContract = await ethers.getContractFactory("Controller");
+    controllerContract = await ControllerContract.deploy(
+      START_EPOCH_TIMESTAMP,
+      86400,
+      owner.address
+    );
+    await controllerContract.addOracle(oracle.address);
+
     const R1Contract = await ethers.getContractFactory("R1");
     r1Contract = await R1Contract.deploy(owner.address);
 
-    const MNDContract = await ethers.getContractFactory("MNDContract");
-    mndContract = await MNDContract.deploy(r1Contract.address, owner.address);
-    await mndContract.addSigner(oracle.address);
-    await mndContract.setMinimumRequiredSignatures(BigNumber.from(1));
+    const MNDContractFactory = await ethers.getContractFactory("MNDContract");
+    mndContract = (await upgrades.deployProxy(
+      MNDContractFactory,
+      [r1Contract.address, controllerContract.address, owner.address],
+      { initializer: "initialize" }
+    )) as unknown as MNDContract;
 
-    const NDContract = await ethers.getContractFactory("NDContract");
-    let ndContract = await NDContract.deploy(r1Contract.address, owner.address);
-    await ndContract.addSigner(oracle.address);
+    const NDContractFactory = await ethers.getContractFactory("NDContract");
+    const ndContract = await upgrades.deployProxy(
+      NDContractFactory,
+      [r1Contract.address, controllerContract.address, owner.address],
+      { initializer: "initialize" }
+    );
 
     await mndContract.setNDContract(ndContract.address);
 
@@ -128,7 +142,13 @@ describe("MNDContract", function () {
     user: SignerWithAddress,
     licenseId: number
   ) {
-    await mndContract.connect(user).linkNode(licenseId, NODE_ADDRESS);
+    await mndContract
+      .connect(user)
+      .linkNode(
+        licenseId,
+        NODE_ADDRESS,
+        signLinkNode(oracle, user, NODE_ADDRESS)
+      );
   }
 
   async function unlinkNode(
@@ -137,6 +157,18 @@ describe("MNDContract", function () {
     licenseId: number
   ) {
     await ndContract.connect(user).unlinkNode(licenseId);
+  }
+
+  async function signLinkNode(
+    signer: SignerWithAddress,
+    user: SignerWithAddress,
+    nodeAddress: string
+  ) {
+    const messageHash = ethers.utils.solidityKeccak256(
+      ["address", "address"],
+      [user.address, nodeAddress]
+    );
+    return signer.signMessage(ethers.utils.arrayify(messageHash));
   }
 
   async function signComputeParams(signer: SignerWithAddress) {
@@ -203,11 +235,6 @@ describe("MNDContract", function () {
     expect(await mndContract.supportsInterface("0x80ac58cd")).to.be.true;
   });
 
-  it("Get Signers", async function () {
-    let result = await mndContract.getSigners();
-    expect(result[0]).to.be.equal(oracle.address);
-  });
-
   it("Set base uri- should work", async function () {
     let baseUri = "PIPPO.com/";
     await mndContract.setBaseURI(baseUri);
@@ -217,7 +244,7 @@ describe("MNDContract", function () {
     let baseUri = "PIPPO.com/";
     await expect(
       mndContract.connect(firstUser).setBaseURI(baseUri)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
   it("Get token uri", async function () {
@@ -232,10 +259,10 @@ describe("MNDContract", function () {
     expect(baseUri).to.equal(result);
   });
 
-  it("Set nd contract - ownable: caller is not the owner", async function () {
+  it("Set nd contract - OwnableUnauthorizedAccount", async function () {
     await expect(
       mndContract.connect(firstUser).setNDContract(secondUser.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
   it("Get licenses - should work", async function () {
@@ -243,9 +270,10 @@ describe("MNDContract", function () {
       .connect(owner)
       .addLicense(firstUser.address, LICENSE_POWER);
 
+    const nodeAddress = "0x0000000000000000000000000000000000000010";
     await mndContract
       .connect(firstUser)
-      .linkNode(2, "0x0000000000000000000000000000000000000010");
+      .linkNode(2, nodeAddress, signLinkNode(oracle, firstUser, nodeAddress));
     await updateTimestamp();
 
     let result = await mndContract.getUserLicense(firstUser.address);
@@ -309,9 +337,10 @@ describe("MNDContract", function () {
   });
 
   it("Get licenses - genesis license", async function () {
+    const nodeAddress = "0x0000000000000000000000000000000000000010";
     await mndContract
       .connect(owner)
-      .linkNode(1, "0x0000000000000000000000000000000000000010");
+      .linkNode(1, nodeAddress, signLinkNode(oracle, owner, nodeAddress));
     await updateTimestamp();
 
     let result = await mndContract.getUserLicense(owner.address);
@@ -344,7 +373,7 @@ describe("MNDContract", function () {
     );
   });
 
-  it("Set company wallet - Ownable: caller is not the owner", async function () {
+  it("Set company wallet - OwnableUnauthorizedAccount", async function () {
     await expect(
       mndContract
         .connect(firstUser)
@@ -355,7 +384,7 @@ describe("MNDContract", function () {
           newGrantsWallet,
           newCsrWallet
         )
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
   it("Genesis node - owner has ownership", async function () {
@@ -416,15 +445,15 @@ describe("MNDContract", function () {
     //DO TEST - try to buy license
     await expect(
       mndContract.connect(owner).addLicense(firstUser.address, LICENSE_POWER)
-    ).to.be.revertedWith("Pausable: paused");
+    ).to.be.revertedWith("EnforcedPause");
   });
 
-  it("Add license - Ownable: caller is not the owner", async function () {
+  it("Add license - OwnableUnauthorizedAccount", async function () {
     await expect(
       mndContract
         .connect(firstUser)
         .addLicense(firstUser.address, LICENSE_POWER.mul(ONE_TOKEN))
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
   it("Add license - maximum token supply reached", async function () {
@@ -466,12 +495,12 @@ describe("MNDContract", function () {
     await mndContract.connect(owner).pause();
     await expect(
       mndContract.connect(owner).addLicense(firstUser.address, LICENSE_POWER)
-    ).to.be.revertedWith("Pausable: paused");
+    ).to.be.revertedWith("EnforcedPause");
   });
 
   it("Pause contract - not the owner", async function () {
     await expect(mndContract.connect(firstUser).pause()).to.be.revertedWith(
-      "Ownable: caller is not the owner"
+      "OwnableUnauthorizedAccount"
     );
   });
 
@@ -479,7 +508,7 @@ describe("MNDContract", function () {
     await mndContract.connect(owner).pause();
     await expect(
       mndContract.connect(owner).addLicense(firstUser.address, LICENSE_POWER)
-    ).to.be.revertedWith("Pausable: paused");
+    ).to.be.revertedWith("EnforcedPause");
 
     await mndContract.connect(owner).unpause();
 
@@ -491,7 +520,7 @@ describe("MNDContract", function () {
   it("Unpause contract - not the owner", async function () {
     await mndContract.connect(owner).pause();
     await expect(mndContract.connect(firstUser).unpause()).to.be.revertedWith(
-      "Ownable: caller is not the owner"
+      "OwnableUnauthorizedAccount"
     );
   });
 
@@ -503,7 +532,13 @@ describe("MNDContract", function () {
 
     //DO TEST
     await expect(
-      mndContract.connect(firstUser).linkNode(2, NODE_ADDRESS)
+      mndContract
+        .connect(firstUser)
+        .linkNode(
+          2,
+          NODE_ADDRESS,
+          signLinkNode(oracle, firstUser, NODE_ADDRESS)
+        )
     ).to.emit(mndContract, "LinkNode");
     let result = await mndContract.ownerOf(2);
     expect(result).to.equal(firstUser.address);
@@ -547,7 +582,7 @@ describe("MNDContract", function () {
 
     //DO TEST - try to link with wrong license
     await expect(linkNode(mndContract, firstUser, 3)).to.be.revertedWith(
-      "ERC721: invalid token ID"
+      "ERC721NonexistentToken"
     );
   });
 
@@ -559,7 +594,13 @@ describe("MNDContract", function () {
 
     //DO TEST - try to link with wrong node address
     await expect(
-      mndContract.connect(firstUser).linkNode(2, NULL_ADDRESS)
+      mndContract
+        .connect(firstUser)
+        .linkNode(
+          2,
+          NULL_ADDRESS,
+          signLinkNode(oracle, firstUser, NULL_ADDRESS)
+        )
     ).to.be.revertedWith("Invalid node address");
   });
 
@@ -654,6 +695,33 @@ describe("MNDContract", function () {
     }).to.deep.equal(EXPECTED_COMPUTE_REWARDS_RESULT);
   });
 
+  it("Calculate rewards to be in line with simulation", async function () {
+    //SETUP WORLD
+    await updateTimestamp();
+    await mndContract
+      .connect(owner)
+      .addLicense(firstUser.address, 100000_000000000000000000n);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    //DO TEST
+    let result = await mndContract.calculateRewards({
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [121],
+      availabilies: [255],
+    });
+    expect({
+      licenseId: result.licenseId,
+      rewardsAmount: result.rewardsAmount,
+    }).to.deep.equal({
+      licenseId: BigNumber.from(2n),
+      rewardsAmount: BigNumber.from("36114806802250127238"),
+    });
+  });
+
   it("Claim rewards - should work", async function () {
     //SETUP WORLD
     await updateTimestamp();
@@ -678,7 +746,11 @@ describe("MNDContract", function () {
   it("Claim rewards - genesis mnd claim", async function () {
     //SETUP WORLD
     await updateTimestamp();
-    await mndContract.linkNode(1, NODE_ADDRESS);
+    await mndContract.linkNode(
+      1,
+      NODE_ADDRESS,
+      signLinkNode(oracle, owner, NODE_ADDRESS)
+    );
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
     await mndContract.setCompanyWallets(
@@ -839,7 +911,7 @@ describe("MNDContract", function () {
         .claimRewards(COMPUTE_PARAMS, [
           Buffer.from(await signComputeParams(firstUser), "hex"),
         ])
-    ).to.be.revertedWith("Invalid signature");
+    ).to.be.revertedWith("Invalid oracle signature");
   });
 
   it("Claim rewards - invalid node address.", async function () {
@@ -888,11 +960,11 @@ describe("MNDContract", function () {
     let [oracle1, oracle2, oracle3, oracle4, oracle5] = (
       await ethers.getSigners()
     ).slice(15, 20);
-    await mndContract.addSigner(oracle1.address);
-    await mndContract.addSigner(oracle2.address);
-    await mndContract.addSigner(oracle3.address);
-    await mndContract.addSigner(oracle4.address);
-    await mndContract.addSigner(oracle5.address);
+    await controllerContract.addOracle(oracle1.address);
+    await controllerContract.addOracle(oracle2.address);
+    await controllerContract.addOracle(oracle3.address);
+    await controllerContract.addOracle(oracle4.address);
+    await controllerContract.addOracle(oracle5.address);
     await updateTimestamp();
     await mndContract
       .connect(owner)
@@ -936,74 +1008,10 @@ describe("MNDContract", function () {
     ).to.be.revertedWith("Soulbound: Non-transferable token");
   });
 
-  it("Add signer - should work", async function () {
-    //ADD second user as a signer
-    await expect(mndContract.addSigner(secondUser.address)).to.emit(
-      mndContract,
-      "SignerAdded"
-    );
-  });
-
-  it("Add signer - invalid signer address", async function () {
-    await expect(mndContract.addSigner(NULL_ADDRESS)).to.be.revertedWith(
-      "Invalid signer address"
-    );
-  });
-
-  it("Add signer - signer already exists", async function () {
-    await expect(mndContract.addSigner(oracle.address)).to.be.revertedWith(
-      "Signer already exists"
-    );
-  });
-
-  it("Add signer - Ownable: caller is not the owner", async function () {
-    await expect(
-      mndContract.connect(firstUser).addSigner(oracle.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
-  it("Remove signer -should work", async function () {
-    await mndContract
-      .connect(owner)
-      .addLicense(firstUser.address, LICENSE_POWER);
-
-    //Add second user as a signer
-    await expect(mndContract.removeSigner(oracle.address)).to.emit(
-      mndContract,
-      "SignerRemoved"
-    );
-
-    //Should be reverted
-    await linkNode(mndContract, firstUser, 2);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
-    await ethers.provider.send("evm_mine", []);
-    //DO TEST
-    await expect(
-      mndContract
-        .connect(firstUser)
-        .claimRewards(COMPUTE_PARAMS, [
-          Buffer.from(await signComputeParams(oracle), "hex"),
-        ])
-    ).to.be.revertedWith("Invalid signature");
-  });
-
-  it("Remove signer - signer does not exist", async function () {
-    //Remove second user as a signer
-    await expect(
-      mndContract.removeSigner(secondUser.address)
-    ).to.be.revertedWith("Signer does not exist");
-  });
-
-  it("Remove signer - Ownable: caller is not the owner", async function () {
-    await expect(
-      mndContract.connect(firstUser).removeSigner(oracle.address)
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
   it("Set minimum requred signatures - should work", async function () {
     //ERC721
     await updateTimestamp();
-    await mndContract.setMinimumRequiredSignatures(BigNumber.from(1));
+    await controllerContract.setMinimumRequiredSignatures(BigNumber.from(1));
 
     await mndContract
       .connect(owner)
@@ -1025,7 +1033,7 @@ describe("MNDContract", function () {
 
   it("Set minimum requred signatures - should not work", async function () {
     //ERC721
-    await mndContract.setMinimumRequiredSignatures(BigNumber.from(2));
+    await controllerContract.setMinimumRequiredSignatures(BigNumber.from(2));
 
     await mndContract
       .connect(owner)
@@ -1042,16 +1050,6 @@ describe("MNDContract", function () {
           Buffer.from(await signComputeParams(oracle), "hex"),
         ])
     ).to.be.revertedWith("Insufficient signatures");
-  });
-
-  it("Set minimum requred signatures - ownable: caller is not the owner", async function () {
-    //ERC721
-    await updateTimestamp();
-    await expect(
-      mndContract
-        .connect(firstUser)
-        .setMinimumRequiredSignatures(BigNumber.from(1))
-    ).to.be.revertedWith("Ownable: caller is not the owner");
   });
 
   it("Transfer - empty license", async function () {

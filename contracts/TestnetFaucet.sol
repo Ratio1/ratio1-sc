@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -11,7 +11,11 @@ contract TestnetFaucet is Ownable {
 
     mapping(address => uint256) public lastRequestTime;
 
-    constructor(IERC20 _token, uint256 _amountPerClaim, uint256 _cooldown) {
+    constructor(
+        IERC20 _token,
+        uint256 _amountPerClaim,
+        uint256 _cooldown
+    ) Ownable(msg.sender) {
         token = _token;
         amountPerClaim = _amountPerClaim;
         cooldown = _cooldown;
