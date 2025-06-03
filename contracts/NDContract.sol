@@ -150,7 +150,7 @@ contract NDContract is
         uint256 totalEpochs
     );
     event LpAddrChanged(address newlpAddr);
-    event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount);
+    event LiquidityAdded(uint256 r1Amount, uint256 usdcAmount);
 
     function initialize(
         address tokenAddress,
