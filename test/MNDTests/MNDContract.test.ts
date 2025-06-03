@@ -44,7 +44,8 @@ const EXPECTED_LICENSE_INFO = {
   claimableEpochs: BigNumber.from(1), //FUNCTION updateTimestamp set current chain timestamp to one day after cliff epoch
   assignTimestamp: BigNumber.from(1738767602),
 };
-describe.only("MNDContract", function () {
+
+describe("MNDContract", function () {
   /*
     .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
     .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
