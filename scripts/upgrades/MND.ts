@@ -10,12 +10,29 @@ async function main() {
   );
   console.log("Previous implementation:", prevImpl);
 
-  const upgraded = await upgrades.upgradeProxy(proxyAddress, NewMNDContract);
+  const upgradeTx = await upgrades.prepareUpgrade(proxyAddress, NewMNDContract);
+  console.log("🔧 New implementation address:", upgradeTx);
 
-  const newImpl = await upgrades.erc1967.getImplementationAddress(
-    upgraded.address
-  );
-  console.log("New implementation:", newImpl);
+  // Get ProxyAdmin
+  const admin = await upgrades.admin.getInstance();
+  const proxyAdminAddress = admin.address;
+  console.log("ProxyAdmin address:", proxyAdminAddress);
+
+  // Encode the upgrade call
+  const proxyAdminIface = new ethers.utils.Interface([
+    "function upgrade(address proxy, address implementation)",
+  ]);
+  const calldata = proxyAdminIface.encodeFunctionData("upgrade", [
+    proxyAddress,
+    upgradeTx,
+  ]);
+
+  console.log("========== Gnosis Safe Transaction ==========");
+  console.log("To:", proxyAdminAddress);
+  console.log("Data:", calldata);
+  console.log("Value: 0");
+  console.log("Operation: 0 (CALL)");
+  console.log("=============================================");
 }
 
 main().catch((error) => {
