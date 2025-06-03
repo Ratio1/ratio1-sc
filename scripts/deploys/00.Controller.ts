@@ -9,8 +9,8 @@ async function main() {
     deployer
   );
   const controllerContract = await ControllerContractFactory.deploy(
-    1747310400,
-    3600,
+    1748016000,
+    86400,
     SAFE_ADDR
   );
   await controllerContract.deployed();
