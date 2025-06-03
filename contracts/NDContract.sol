@@ -114,6 +114,10 @@ contract NDContract is
     mapping(address => uint256) public userUsdMintedAmount;
     mapping(bytes32 => bool) public usedInvoiceUUIDs;
 
+    uint256 public lastLicensePrice;
+    uint256 public lastLicensePriceTier;
+    uint256 public maxAllowedPriceDifference;
+
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
     //.##.......##.....##.##.......####..##....##....##......
@@ -233,6 +237,19 @@ contract NDContract is
             licenseTokenPrice <= maxAcceptedTokenPerLicense,
             "Price exceeds max accepted"
         );
+        if (lastLicensePriceTier == currentPriceTier) {
+            uint256 minPrice = (lastLicensePrice *
+                (MAX_PERCENTAGE - maxAllowedPriceDifference)) / MAX_PERCENTAGE;
+            uint256 maxPrice = (lastLicensePrice *
+                (MAX_PERCENTAGE + maxAllowedPriceDifference)) / MAX_PERCENTAGE;
+            require(
+                licenseTokenPrice >= minPrice && licenseTokenPrice <= maxPrice,
+                "Price exceeds allowed difference"
+            );
+        }
+        lastLicensePrice = licenseTokenPrice;
+        lastLicensePriceTier = currentPriceTier;
+
         uint256 taxableUsdAmount = buyableUnits * priceTier.usdPrice;
         uint256 taxableTokenAmount = buyableUnits * licenseTokenPrice;
         uint256 vatTokenAmount = (taxableUsdAmount * vatPercent) /
@@ -519,6 +536,15 @@ contract NDContract is
             vatUsdcAmount = (totalUsdcAmount * vatAmount) / amountToSwap;
         }
         uint256 companyUsdcAmount = totalUsdcAmount - vatUsdcAmount;
+        uint256 companyExpectedAmount = (getLicensePriceInUSD() *
+            PRICE_DECIMALS *
+            COMPANY_PERCENTAGE) / MAX_PERCENTAGE;
+        require(
+            companyUsdcAmount >= (companyExpectedAmount * 97) / 100 &&
+                companyUsdcAmount <= (companyExpectedAmount * 103) / 100,
+            "Company amount is not within expected range"
+        );
+
         IERC20(_usdcAddr).transfer(companyWallet, companyUsdcAmount);
         if (vatUsdcAmount > 0) {
             IERC20(_usdcAddr).transfer(vatReceiverWallet, vatUsdcAmount);
@@ -796,6 +822,12 @@ contract NDContract is
         _uniswapV2Router = IUniswapV2Router02(uniswapV2Router);
         _uniswapV2Pair = IUniswapV2Pair(uniswapV2Pair);
         _usdcAddr = usdcAddr;
+    }
+
+    function setMaxAllowedPriceDifference(
+        uint256 newMaxAllowedPriceDifference
+    ) public onlyOwner {
+        maxAllowedPriceDifference = newMaxAllowedPriceDifference;
     }
 
     ///// Signature functions
