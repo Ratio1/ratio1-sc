@@ -14,6 +14,11 @@
       "address": "0xE658DF6dA3FB5d4FBa562F1D5934bd0F9c6bd423",
       "txHash": "0x66e9c1e52f669ff1c948681c6f1134d2208720f9323fe4d6e9d3414ae2c4e3d0",
       "kind": "transparent"
+    },
+    {
+      "address": "0xa2fDD4c7E93790Ff68a01f01AA789D619F12c6AC",
+      "txHash": "0x4c383c9887756784dbfdbf912736dfffedc2d217f16ce4fd4ec7ef8d01778418",
+      "kind": "transparent"
     }
   ],
   "impls": {
@@ -814,6 +819,63 @@
               "src": "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol:38"
             }
           ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73"
+            }
+          ]
+        }
+      }
+    },
+    "c83848f0d7ec3ac88ba43df7a7ca8164af009f6dcf10623d160129b7a6c1d99b": {
+      "address": "0xeaD1896801022aBaC2279c27de780342c6C4ce53",
+      "txHash": "0xd015cb61e86b80e23963b2243d71c85b6c8c2d1616c18a7d33beac8014a1534b",
+      "layout": {
+        "solcVersion": "0.8.20",
+        "storage": [
+          {
+            "label": "ndContract",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IND)372",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:73"
+          },
+          {
+            "label": "mndContract",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_contract(IMND)383",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:74"
+          }
+        ],
+        "types": {
+          "t_contract(IMND)383": {
+            "label": "contract IMND",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IND)372": {
+            "label": "contract IND",
+            "numberOfBytes": "20"
+          },
+          "t_uint64": {
+            "label": "uint64"
+          },
+          "t_bool": {
+            "label": "bool"
+          }
+        },
+        "namespaces": {
           "erc7201:openzeppelin.storage.Initializable": [
             {
               "contract": "Initializable",
