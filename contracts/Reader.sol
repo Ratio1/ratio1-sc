@@ -16,6 +16,7 @@ struct MNDLicense {
     address nodeAddress;
     uint256 totalAssignedAmount;
     uint256 totalClaimedAmount;
+    uint256 firstMiningEpoch;
     uint256 lastClaimEpoch;
     uint256 assignTimestamp;
     address lastClaimOracle;
