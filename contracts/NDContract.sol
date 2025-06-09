@@ -237,6 +237,7 @@ contract NDContract is
             licenseTokenPrice <= maxAcceptedTokenPerLicense,
             "Price exceeds max accepted"
         );
+        //Verify that the price is within the allowed difference from the last price
         if (lastLicensePriceTier == currentPriceTier) {
             uint256 minPrice = (lastLicensePrice *
                 (MAX_PERCENTAGE - maxAllowedPriceDifference)) / MAX_PERCENTAGE;
@@ -252,7 +253,7 @@ contract NDContract is
 
         uint256 taxableUsdAmount = buyableUnits * priceTier.usdPrice;
         uint256 taxableTokenAmount = buyableUnits * licenseTokenPrice;
-        uint256 vatTokenAmount = (taxableUsdAmount * vatPercent) /
+        uint256 vatTokenAmount = (taxableTokenAmount * vatPercent) /
             MAX_PERCENTAGE;
         uint256 totalTokenAmount = taxableTokenAmount + vatTokenAmount;
 
@@ -268,7 +269,7 @@ contract NDContract is
             _R1Token.transferFrom(msg.sender, address(this), totalTokenAmount),
             "R1 transfer failed"
         );
-        distributePayment(taxableTokenAmount, vatTokenAmount);
+        distributePayment(taxableTokenAmount, vatTokenAmount, buyableUnits);
 
         uint256[] memory mintedTokens = batchMint(msg.sender, buyableUnits);
 
@@ -516,7 +517,8 @@ contract NDContract is
 
     function distributePayment(
         uint256 taxableAmount,
-        uint256 vatAmount
+        uint256 vatAmount,
+        uint256 nLicenses
     ) private {
         uint256 burnAmount = (taxableAmount * BURN_PERCENTAGE) / MAX_PERCENTAGE;
         uint256 liquidityAmount = (taxableAmount * LIQUIDITY_PERCENTAGE) /
@@ -537,7 +539,8 @@ contract NDContract is
         }
         uint256 companyUsdcAmount = totalUsdcAmount - vatUsdcAmount;
         uint256 companyExpectedAmount = (getLicensePriceInUSD() *
-            PRICE_DECIMALS *
+            nLicenses *
+            10 ** 6 *
             COMPANY_PERCENTAGE) / MAX_PERCENTAGE;
         require(
             companyUsdcAmount >= (companyExpectedAmount * 97) / 100 &&
