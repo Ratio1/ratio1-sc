@@ -116,6 +116,7 @@ contract NDContract is
 
     uint256 public lastLicensePrice;
     uint256 public lastLicensePriceTier;
+    uint256 public lastLicensePriceTimestamp;
     uint256 public maxAllowedPriceDifference;
 
     //.########.##.....##.########.##....##.########..######.
@@ -238,7 +239,10 @@ contract NDContract is
             "Price exceeds max accepted"
         );
         //Verify that the price is within the allowed difference from the last price
-        if (lastLicensePriceTier == currentPriceTier) {
+        if (
+            lastLicensePriceTier == currentPriceTier &&
+            block.timestamp >= lastLicensePriceTimestamp + 1 hours
+        ) {
             uint256 minPrice = (lastLicensePrice *
                 (MAX_PERCENTAGE - maxAllowedPriceDifference)) / MAX_PERCENTAGE;
             uint256 maxPrice = (lastLicensePrice *
@@ -250,6 +254,7 @@ contract NDContract is
         }
         lastLicensePrice = licenseTokenPrice;
         lastLicensePriceTier = currentPriceTier;
+        lastLicensePriceTimestamp = block.timestamp;
 
         uint256 taxableUsdAmount = buyableUnits * priceTier.usdPrice;
         uint256 taxableTokenAmount = buyableUnits * licenseTokenPrice;
