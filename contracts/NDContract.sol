@@ -548,8 +548,7 @@ contract NDContract is
             10 ** 6 *
             COMPANY_PERCENTAGE) / MAX_PERCENTAGE;
         require(
-            companyUsdcAmount >= (companyExpectedAmount * 97) / 100 &&
-                companyUsdcAmount <= (companyExpectedAmount * 103) / 100,
+            companyUsdcAmount >= (companyExpectedAmount * 97) / 100,
             "Company amount is not within expected range"
         );
 
