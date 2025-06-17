@@ -116,8 +116,8 @@ contract NDContract is
 
     uint256 public lastLicensePrice;
     uint256 public lastLicensePriceTier;
-    uint256 public lastLicensePriceTimestamp;
     uint256 public maxAllowedPriceDifference;
+    uint256 public lastLicensePriceTimestamp;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
