@@ -1,6 +1,6 @@
 import { ethers, upgrades } from "hardhat";
 
-const proxyAddress = "0x2b566Be18E9e31ca73E4b30fA3b2b4B299dD2F40";
+const proxyAddress = "0xE658DF6dA3FB5d4FBa562F1D5934bd0F9c6bd423";
 
 async function main() {
   const NewNDContract = await ethers.getContractFactory("NDContract");
@@ -18,18 +18,12 @@ async function main() {
   const proxyAdminAddress = admin.address;
   console.log("ProxyAdmin address:", proxyAdminAddress);
 
-  // Encode the upgrade call
-  const proxyAdminIface = new ethers.utils.Interface([
-    "function upgrade(address proxy, address implementation)",
-  ]);
-  const calldata = proxyAdminIface.encodeFunctionData("upgrade", [
-    proxyAddress,
-    upgradeTx,
-  ]);
-
   console.log("========== Gnosis Safe Transaction ==========");
   console.log("To:", proxyAdminAddress);
-  console.log("Data:", calldata);
+  console.log("Function: upgrade(address proxy, address implementation)");
+  console.log("Arguments:");
+  console.log("  - Proxy Address:", proxyAddress);
+  console.log("  - Implementation Address:", upgradeTx);
   console.log("Value: 0");
   console.log("Operation: 0 (CALL)");
   console.log("=============================================");
