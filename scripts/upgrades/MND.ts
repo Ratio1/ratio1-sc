@@ -1,6 +1,6 @@
 import { ethers, upgrades } from "hardhat";
 
-const proxyAddress = "0x911A520bB6a5F332377D6f24448d8B761Bc1d990";
+const proxyAddress = "0x0C431e546371C87354714Fcc1a13365391A549E2";
 
 async function main() {
   const NewMNDContract = await ethers.getContractFactory("MNDContract");
@@ -10,12 +10,23 @@ async function main() {
   );
   console.log("Previous implementation:", prevImpl);
 
-  const upgraded = await upgrades.upgradeProxy(proxyAddress, NewMNDContract);
+  const upgradeTx = await upgrades.prepareUpgrade(proxyAddress, NewMNDContract);
+  console.log("🔧 New implementation address:", upgradeTx);
 
-  const newImpl = await upgrades.erc1967.getImplementationAddress(
-    upgraded.address
-  );
-  console.log("New implementation:", newImpl);
+  // Get ProxyAdmin
+  const admin = await upgrades.admin.getInstance();
+  const proxyAdminAddress = admin.address;
+  console.log("ProxyAdmin address:", proxyAdminAddress);
+
+  console.log("========== Gnosis Safe Transaction ==========");
+  console.log("To:", proxyAdminAddress);
+  console.log("Function: upgrade(address proxy, address implementation)");
+  console.log("Arguments:");
+  console.log("  - Proxy Address:", proxyAddress);
+  console.log("  - Implementation Address:", upgradeTx);
+  console.log("Value: 0");
+  console.log("Operation: 0 (CALL)");
+  console.log("=============================================");
 }
 
 main().catch((error) => {

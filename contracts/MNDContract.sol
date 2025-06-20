@@ -577,6 +577,16 @@ contract MNDContract is
         _ndContract = IND(ndContract_);
     }
 
+    function setMNDReleaseParams(
+        int256 _logisticPlateau,
+        int256 _k,
+        int256 _midPrc
+    ) public onlyOwner {
+        LOGISTIC_PLATEAU = sd(_logisticPlateau);
+        K = sd(_k);
+        MID_PRC = sd(_midPrc);
+    }
+
     //.##.....##.####.########.##......##....########.##.....##.##....##..######..########.####..#######..##....##..######.
     //.##.....##..##..##.......##..##..##....##.......##.....##.###...##.##....##....##.....##..##.....##.###...##.##....##
     //.##.....##..##..##.......##..##..##....##.......##.....##.####..##.##..........##.....##..##.....##.####..##.##......
@@ -606,10 +616,10 @@ contract MNDContract is
         uint256 licenseId = tokenOfOwnerByIndex(addr, 0);
         License memory license = licenses[licenseId];
 
-        uint256 firstEpochToClaim = (licenseId == GENESIS_TOKEN_ID ||
-            license.lastClaimEpoch >= _controller.MND_NO_MINING_EPOCHS())
+        uint256 firstEpochToClaim = (license.lastClaimEpoch >=
+            license.firstMiningEpoch)
             ? license.lastClaimEpoch
-            : _controller.MND_NO_MINING_EPOCHS();
+            : license.firstMiningEpoch;
 
         uint256 currentEpoch = getCurrentEpoch();
         if (currentEpoch < firstEpochToClaim) {

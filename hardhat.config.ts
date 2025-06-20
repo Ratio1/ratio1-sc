@@ -53,7 +53,7 @@ const config: HardhatUserConfig = {
     timeout: 480000,
     parallel: false,
   },
-  /*etherscan: {
+  etherscan: {
     apiKey: {
       baseSepolia: ETHERSCAN_API_KEY,
       base: ETHERSCAN_API_KEY,
@@ -76,7 +76,7 @@ const config: HardhatUserConfig = {
         },
       },
     ],
-  },*/
+  },
 };
 
 export default config;

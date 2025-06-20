@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+
 struct NDLicense {
     address nodeAddress;
     uint256 totalClaimedAmount;
@@ -14,6 +16,7 @@ struct MNDLicense {
     address nodeAddress;
     uint256 totalAssignedAmount;
     uint256 totalClaimedAmount;
+    uint256 firstMiningEpoch;
     uint256 lastClaimEpoch;
     uint256 assignTimestamp;
     address lastClaimOracle;
@@ -66,14 +69,17 @@ interface IMND is IBaseDeed {
     ) external view returns (MNDLicense memory);
 }
 
-contract Reader {
+contract Reader is Initializable {
     IND public ndContract;
     IMND public mndContract;
 
     uint256 constant ND_LICENSE_ASSIGNED_TOKENS = 1575_188843457943924200;
     uint256 constant GENESIS_TOKEN_ID = 1;
 
-    constructor(address _ndContract, address _mndContract) {
+    function initialize(
+        address _ndContract,
+        address _mndContract
+    ) public initializer {
         ndContract = IND(_ndContract);
         mndContract = IMND(_mndContract);
     }

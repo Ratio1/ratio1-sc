@@ -114,6 +114,11 @@ contract NDContract is
     mapping(address => uint256) public userUsdMintedAmount;
     mapping(bytes32 => bool) public usedInvoiceUUIDs;
 
+    uint256 public lastLicensePrice;
+    uint256 public lastLicensePriceTier;
+    uint256 public maxAllowedPriceDifference;
+    uint256 public lastLicensePriceTimestamp;
+
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
     //.##.......##.....##.##.......####..##....##....##......
@@ -146,7 +151,7 @@ contract NDContract is
         uint256 totalEpochs
     );
     event LpAddrChanged(address newlpAddr);
-    event LiquidityAdded(uint256 tokenAmount, uint256 ethAmount);
+    event LiquidityAdded(uint256 r1Amount, uint256 usdcAmount);
 
     function initialize(
         address tokenAddress,
@@ -233,9 +238,27 @@ contract NDContract is
             licenseTokenPrice <= maxAcceptedTokenPerLicense,
             "Price exceeds max accepted"
         );
+        //Verify that the price is within the allowed difference from the last price
+        if (
+            lastLicensePriceTier == currentPriceTier &&
+            block.timestamp >= lastLicensePriceTimestamp + 1 hours
+        ) {
+            uint256 minPrice = (lastLicensePrice *
+                (MAX_PERCENTAGE - maxAllowedPriceDifference)) / MAX_PERCENTAGE;
+            uint256 maxPrice = (lastLicensePrice *
+                (MAX_PERCENTAGE + maxAllowedPriceDifference)) / MAX_PERCENTAGE;
+            require(
+                licenseTokenPrice >= minPrice && licenseTokenPrice <= maxPrice,
+                "Price exceeds allowed difference"
+            );
+        }
+        lastLicensePrice = licenseTokenPrice;
+        lastLicensePriceTier = currentPriceTier;
+        lastLicensePriceTimestamp = block.timestamp;
+
         uint256 taxableUsdAmount = buyableUnits * priceTier.usdPrice;
         uint256 taxableTokenAmount = buyableUnits * licenseTokenPrice;
-        uint256 vatTokenAmount = (taxableUsdAmount * vatPercent) /
+        uint256 vatTokenAmount = (taxableTokenAmount * vatPercent) /
             MAX_PERCENTAGE;
         uint256 totalTokenAmount = taxableTokenAmount + vatTokenAmount;
 
@@ -251,7 +274,7 @@ contract NDContract is
             _R1Token.transferFrom(msg.sender, address(this), totalTokenAmount),
             "R1 transfer failed"
         );
-        distributePayment(taxableTokenAmount, vatTokenAmount);
+        distributePayment(taxableTokenAmount, vatTokenAmount, buyableUnits);
 
         uint256[] memory mintedTokens = batchMint(msg.sender, buyableUnits);
 
@@ -499,7 +522,8 @@ contract NDContract is
 
     function distributePayment(
         uint256 taxableAmount,
-        uint256 vatAmount
+        uint256 vatAmount,
+        uint256 nLicenses
     ) private {
         uint256 burnAmount = (taxableAmount * BURN_PERCENTAGE) / MAX_PERCENTAGE;
         uint256 liquidityAmount = (taxableAmount * LIQUIDITY_PERCENTAGE) /
@@ -519,6 +543,15 @@ contract NDContract is
             vatUsdcAmount = (totalUsdcAmount * vatAmount) / amountToSwap;
         }
         uint256 companyUsdcAmount = totalUsdcAmount - vatUsdcAmount;
+        uint256 companyExpectedAmount = (getLicensePriceInUSD() *
+            nLicenses *
+            10 ** 6 *
+            COMPANY_PERCENTAGE) / MAX_PERCENTAGE;
+        require(
+            companyUsdcAmount >= (companyExpectedAmount * 97) / 100,
+            "Company amount is not within expected range"
+        );
+
         IERC20(_usdcAddr).transfer(companyWallet, companyUsdcAmount);
         if (vatUsdcAmount > 0) {
             IERC20(_usdcAddr).transfer(vatReceiverWallet, vatUsdcAmount);
@@ -796,6 +829,12 @@ contract NDContract is
         _uniswapV2Router = IUniswapV2Router02(uniswapV2Router);
         _uniswapV2Pair = IUniswapV2Pair(uniswapV2Pair);
         _usdcAddr = usdcAddr;
+    }
+
+    function setMaxAllowedPriceDifference(
+        uint256 newMaxAllowedPriceDifference
+    ) public onlyOwner {
+        maxAllowedPriceDifference = newMaxAllowedPriceDifference;
     }
 
     ///// Signature functions
