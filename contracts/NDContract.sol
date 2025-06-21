@@ -118,6 +118,7 @@ contract NDContract is
     uint256 public lastLicensePriceTier;
     uint256 public maxAllowedPriceDifference;
     uint256 public lastLicensePriceTimestamp;
+    uint256 public directAddLpPercentage;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -152,6 +153,7 @@ contract NDContract is
     );
     event LpAddrChanged(address newlpAddr);
     event LiquidityAdded(uint256 r1Amount, uint256 usdcAmount);
+    event LiquidityReserved(uint256 usdcAmount);
 
     function initialize(
         address tokenAddress,
@@ -562,7 +564,11 @@ contract NDContract is
     function addLiquidity(
         uint256 r1Amount
     ) internal returns (uint256, uint256) {
-        uint256 halfR1Amount = r1Amount / 2;
+        uint256 directAddLpAmount = (r1Amount * directAddLpPercentage) /
+            MAX_PERCENTAGE;
+        uint256 reservedLpAmount = r1Amount - directAddLpAmount;
+
+        uint256 halfR1Amount = directAddLpAmount / 2;
         uint256 usdcAmount = swapR1ForUsdc(halfR1Amount);
 
         require(usdcAmount > 0, "Swap failed");
@@ -591,8 +597,15 @@ contract NDContract is
         if (remainingAmountUsdc > 0) {
             IERC20(_usdcAddr).transfer(lpWallet, remainingAmountUsdc);
         }
-
         emit LiquidityAdded(usedAmountR1, usedAmountUsdc);
+
+        if (reservedLpAmount > 0) {
+            uint256 reservedUsdcAmount = swapR1ForUsdc(reservedLpAmount);
+            require(reservedUsdcAmount > 0, "Swap failed");
+            IERC20(_usdcAddr).transfer(lpWallet, reservedUsdcAmount);
+            emit LiquidityReserved(reservedUsdcAmount);
+        }
+
         return (usedAmountR1, usedAmountUsdc);
     }
 
@@ -736,6 +749,16 @@ contract NDContract is
 
     function setMNDContract(address mndContract_) public onlyOwner {
         _mndContract = IMND(mndContract_);
+    }
+
+    function setDirectAddLpPercentage(
+        uint256 newDirectAddLpPercentage
+    ) public onlyOwner {
+        require(
+            newDirectAddLpPercentage <= MAX_PERCENTAGE,
+            "Percentage cannot exceed 100%"
+        );
+        directAddLpPercentage = newDirectAddLpPercentage;
     }
 
     function banLicense(uint256 licenseId) public onlyOwner {
