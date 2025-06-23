@@ -635,7 +635,7 @@ contract MNDContract is
                 license.firstMiningEpoch)
                 ? license.lastClaimEpoch
                 : license.firstMiningEpoch;
-            uint256 claimableEpochs = (currentEpoch < firstEpochToClaim &&
+            uint256 claimableEpochs = (currentEpoch < firstEpochToClaim ||
                 license.nodeAddress != address(0))
                 ? 0
                 : currentEpoch - firstEpochToClaim;
