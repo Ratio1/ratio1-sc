@@ -185,11 +185,15 @@ contract MNDContract is
             "Invalid license power"
         );
         require(
+            getUserTotalAssignedAmount(to) + newTotalAssignedAmount <=
+                _controller.MND_MAX_TOKENS_ASSIGNED_PER_LICENSE(),
+            "Assigned amount for address exceedes limit"
+        );
+        require(
             totalLicensesAssignedTokensAmount + newTotalAssignedAmount <=
                 _controller.MND_MAX_TOTAL_ASSIGNED_TOKENS(),
             "Max total assigned tokens reached"
         );
-        require(balanceOf(to) == 0, "User already has a license");
 
         uint256 tokenId = safeMint(to);
         totalLicensesAssignedTokensAmount += newTotalAssignedAmount;
@@ -276,34 +280,51 @@ contract MNDContract is
     }
 
     function claimRewards(
-        ComputeRewardsParams memory computeParam,
-        bytes[] memory signatures
+        ComputeRewardsParams[] memory computeParams,
+        bytes[][] memory nodesSignatures
     ) public nonReentrant whenNotPaused {
         require(
-            ownerOf(computeParam.licenseId) == msg.sender,
-            "User does not have the license"
+            computeParams.length == nodesSignatures.length,
+            "Mismatched input arrays length"
         );
-        address firstSigner = verifyRewardsSignatures(computeParam, signatures);
 
-        License storage license = licenses[computeParam.licenseId];
-        uint256 rewardsAmount = calculateLicenseRewards(license, computeParam);
-
-        license.lastClaimEpoch = getCurrentEpoch();
-        license.totalClaimedAmount += rewardsAmount;
-        license.lastClaimOracle = firstSigner;
-
-        if (rewardsAmount > 0) {
-            emit RewardsClaimed(
-                msg.sender,
-                computeParam.licenseId,
-                rewardsAmount,
-                computeParam.epochs.length
+        uint256 totalRewards = 0;
+        for (uint256 i = 0; i < computeParams.length; i++) {
+            require(
+                ownerOf(computeParams[i].licenseId) == msg.sender,
+                "User does not have the license"
             );
-            if (computeParam.licenseId == GENESIS_TOKEN_ID) {
-                mintCompanyFunds(rewardsAmount);
-            } else {
-                _R1Token.mint(msg.sender, rewardsAmount);
+            address firstSigner = verifyRewardsSignatures(
+                computeParams[i],
+                nodesSignatures[i]
+            );
+
+            License storage license = licenses[computeParams[i].licenseId];
+            uint256 rewardsAmount = calculateLicenseRewards(
+                license,
+                computeParams[i]
+            );
+
+            license.lastClaimEpoch = getCurrentEpoch();
+            license.totalClaimedAmount += rewardsAmount;
+            license.lastClaimOracle = firstSigner;
+            if (rewardsAmount > 0) {
+                emit RewardsClaimed(
+                    msg.sender,
+                    computeParams[i].licenseId,
+                    rewardsAmount,
+                    computeParams[i].epochs.length
+                );
+                if (computeParams[i].licenseId == GENESIS_TOKEN_ID) {
+                    mintCompanyFunds(rewardsAmount);
+                } else {
+                    totalRewards += rewardsAmount;
+                }
             }
+        }
+
+        if (totalRewards > 0) {
+            _R1Token.mint(msg.sender, totalRewards);
         }
     }
 
@@ -331,16 +352,22 @@ contract MNDContract is
     }
 
     function calculateRewards(
-        ComputeRewardsParams memory paramsArray
-    ) public view returns (ComputeRewardsResult memory) {
-        License storage license = licenses[paramsArray.licenseId];
-        uint256 rewardsAmount = calculateLicenseRewards(license, paramsArray);
+        ComputeRewardsParams[] memory computeParams
+    ) public view returns (ComputeRewardsResult[] memory) {
+        ComputeRewardsResult[] memory results = new ComputeRewardsResult[](
+            computeParams.length
+        );
 
-        return
-            ComputeRewardsResult({
-                licenseId: paramsArray.licenseId,
-                rewardsAmount: rewardsAmount
+        for (uint256 i = 0; i < computeParams.length; i++) {
+            ComputeRewardsParams memory params = computeParams[i];
+            License memory license = licenses[params.licenseId];
+            results[i] = ComputeRewardsResult({
+                licenseId: params.licenseId,
+                rewardsAmount: calculateLicenseRewards(license, params)
             });
+        }
+
+        return results;
     }
 
     function calculateLicenseRewards(
@@ -522,9 +549,7 @@ contract MNDContract is
         require(
             from == address(0) ||
                 (to == address(0) && initiatedBurn[from]) ||
-                (to != address(0) &&
-                    initiatedTransferReceiver[from] == to &&
-                    balanceOf(to) == 0),
+                (to != address(0) && initiatedTransferReceiver[from] == to),
             "Soulbound: Non-transferable token"
         );
         delete initiatedTransferReceiver[from];
@@ -595,56 +620,27 @@ contract MNDContract is
     //...##.##....##..##.......##..##..##....##.......##.....##.##...###.##....##....##.....##..##.....##.##...###.##....##
     //....###....####.########..###..###.....##........#######..##....##..######.....##....####..#######..##....##..######.
 
-    function getUserLicense(
+    function getLicenses(
         address addr
-    ) public view returns (LicenseInfo memory) {
-        if (balanceOf(addr) == 0) {
-            return
-                LicenseInfo({
-                    licenseId: 0,
-                    nodeAddress: address(0),
-                    totalClaimedAmount: 0,
-                    firstMiningEpoch: 0,
-                    remainingAmount: 0,
-                    lastClaimEpoch: 0,
-                    claimableEpochs: 0,
-                    assignTimestamp: 0,
-                    totalAssignedAmount: 0,
-                    lastClaimOracle: address(0)
-                });
-        }
-        uint256 licenseId = tokenOfOwnerByIndex(addr, 0);
-        License memory license = licenses[licenseId];
-
-        uint256 firstEpochToClaim = (license.lastClaimEpoch >=
-            license.firstMiningEpoch)
-            ? license.lastClaimEpoch
-            : license.firstMiningEpoch;
-
+    ) public view returns (LicenseInfo[] memory) {
+        uint256 balance = balanceOf(addr);
+        LicenseInfo[] memory licensesInfo = new LicenseInfo[](balance);
         uint256 currentEpoch = getCurrentEpoch();
-        if (currentEpoch < firstEpochToClaim) {
-            return
-                LicenseInfo({
-                    licenseId: licenseId,
-                    nodeAddress: license.nodeAddress,
-                    totalAssignedAmount: license.totalAssignedAmount,
-                    totalClaimedAmount: license.totalClaimedAmount,
-                    firstMiningEpoch: license.firstMiningEpoch,
-                    remainingAmount: license.totalAssignedAmount -
-                        license.totalClaimedAmount,
-                    lastClaimEpoch: license.lastClaimEpoch,
-                    claimableEpochs: 0,
-                    assignTimestamp: license.assignTimestamp,
-                    lastClaimOracle: license.lastClaimOracle
-                });
-        }
-        uint256 claimableEpochs = 0;
-        if (license.nodeAddress != address(0)) {
-            claimableEpochs = getCurrentEpoch() - firstEpochToClaim;
-        }
 
-        return
-            LicenseInfo({
+        for (uint256 i = 0; i < balance; i++) {
+            uint256 licenseId = tokenOfOwnerByIndex(addr, i);
+            License memory license = licenses[licenseId];
+
+            uint256 firstEpochToClaim = (license.lastClaimEpoch >=
+                license.firstMiningEpoch)
+                ? license.lastClaimEpoch
+                : license.firstMiningEpoch;
+            uint256 claimableEpochs = (currentEpoch < firstEpochToClaim &&
+                license.nodeAddress != address(0))
+                ? 0
+                : currentEpoch - firstEpochToClaim;
+
+            licensesInfo[i] = LicenseInfo({
                 licenseId: licenseId,
                 nodeAddress: license.nodeAddress,
                 totalAssignedAmount: license.totalAssignedAmount,
@@ -657,6 +653,23 @@ contract MNDContract is
                 assignTimestamp: license.assignTimestamp,
                 lastClaimOracle: license.lastClaimOracle
             });
+        }
+
+        return licensesInfo;
+    }
+
+    function getUserTotalAssignedAmount(
+        address addr
+    ) public view returns (uint256) {
+        uint256 balance = balanceOf(addr);
+        uint256 userTotalAssignedAmount = 0;
+
+        for (uint256 i = 0; i < balance; i++) {
+            uint256 licenseId = tokenOfOwnerByIndex(addr, i);
+            License memory license = licenses[licenseId];
+            userTotalAssignedAmount += license.totalAssignedAmount;
+        }
+        return userTotalAssignedAmount;
     }
 
     function isNodeAlreadyLinked(
