@@ -554,14 +554,20 @@ contract MNDContract is
         );
         delete initiatedTransferReceiver[from];
         delete initiatedBurn[from];
+        License memory license = licenses[tokenId];
         if (to == address(0)) {
-            License memory license = licenses[tokenId];
             uint256 remainingAmount = license.totalAssignedAmount -
                 license.totalClaimedAmount;
             totalLicensesAssignedTokensAmount -= remainingAmount;
             registeredNodeAddresses[license.nodeAddress] = false;
             nodeToLicenseId[license.nodeAddress] = 0;
             delete licenses[tokenId];
+        } else {
+            require(
+                getUserTotalAssignedAmount(to) + license.totalAssignedAmount <=
+                    _controller.MND_MAX_TOKENS_ASSIGNED_PER_LICENSE(),
+                "Assigned amount for address exceedes limit"
+            );
         }
         return super._update(to, tokenId, auth);
     }
