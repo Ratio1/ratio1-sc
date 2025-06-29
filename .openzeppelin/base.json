@@ -846,7 +846,7 @@
             "label": "ndContract",
             "offset": 0,
             "slot": "0",
-            "type": "t_contract(IND)372",
+            "type": "t_contract(IND)23157",
             "contract": "Reader",
             "src": "contracts/Reader.sol:73"
           },
@@ -854,17 +854,17 @@
             "label": "mndContract",
             "offset": 0,
             "slot": "1",
-            "type": "t_contract(IMND)383",
+            "type": "t_contract(IMND)23168",
             "contract": "Reader",
             "src": "contracts/Reader.sol:74"
           }
         ],
         "types": {
-          "t_contract(IMND)383": {
+          "t_contract(IMND)23168": {
             "label": "contract IMND",
             "numberOfBytes": "20"
           },
-          "t_contract(IND)372": {
+          "t_contract(IND)23157": {
             "label": "contract IND",
             "numberOfBytes": "20"
           },
@@ -2576,6 +2576,75 @@
               "src": "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol:38"
             }
           ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73"
+            }
+          ]
+        }
+      }
+    },
+    "ac1d2f05b255028ad0c15b2497f1c46c3748bf1223f526f84cef94148e3d247b": {
+      "address": "0x34a998B8B2a637aF2EC19d8F69617Ef699E46278",
+      "txHash": "0x930e6227fcc76ea3fa1817cb464710977253fae01ebe58d583297d0a292409f7",
+      "layout": {
+        "solcVersion": "0.8.20",
+        "storage": [
+          {
+            "label": "ndContract",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IND)1373",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:80"
+          },
+          {
+            "label": "mndContract",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_contract(IMND)1384",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:81"
+          },
+          {
+            "label": "controller",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_contract(Controller)1260",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:82"
+          }
+        ],
+        "types": {
+          "t_contract(Controller)1260": {
+            "label": "contract Controller",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IMND)1384": {
+            "label": "contract IMND",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IND)1373": {
+            "label": "contract IND",
+            "numberOfBytes": "20"
+          },
+          "t_uint64": {
+            "label": "uint64"
+          },
+          "t_bool": {
+            "label": "bool"
+          }
+        },
+        "namespaces": {
           "erc7201:openzeppelin.storage.Initializable": [
             {
               "contract": "Initializable",
