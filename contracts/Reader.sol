@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "./Controller.sol";
 
 struct NDLicense {
     address nodeAddress;
@@ -42,6 +43,12 @@ struct LicenseDetails {
     bool isBanned;
 }
 
+struct OracleDetails {
+    address oracleAddress;
+    uint256 signaturesCount;
+    uint256 additionTimestamp;
+}
+
 interface IBaseDeed {
     function nodeToLicenseId(address node) external view returns (uint256);
 
@@ -72,16 +79,24 @@ interface IMND is IBaseDeed {
 contract Reader is Initializable {
     IND public ndContract;
     IMND public mndContract;
+    Controller public controller;
 
     uint256 constant ND_LICENSE_ASSIGNED_TOKENS = 1575_188843457943924200;
     uint256 constant GENESIS_TOKEN_ID = 1;
 
     function initialize(
         address _ndContract,
-        address _mndContract
+        address _mndContract,
+        address _controller
     ) public initializer {
         ndContract = IND(_ndContract);
         mndContract = IMND(_mndContract);
+        controller = Controller(_controller);
+    }
+
+    function setController(address _controller) public {
+        require(address(controller) == address(0), "Controller already set");
+        controller = Controller(_controller);
     }
 
     function getNdLicenseDetails(
@@ -211,5 +226,21 @@ contract Reader is Initializable {
             nodes[i + mndBalance] = ndLicense.nodeAddress;
         }
         return nodes;
+    }
+
+    function getOraclesDetails() public view returns (OracleDetails[] memory) {
+        address[] memory oracles = controller.getOracles();
+        OracleDetails[] memory oracleDetails = new OracleDetails[](
+            oracles.length
+        );
+        for (uint256 i = 0; i < oracles.length; i++) {
+            address oracle = oracles[i];
+            oracleDetails[i] = OracleDetails(
+                oracle,
+                controller.oracleSignaturesCount(oracle),
+                controller.oracleAdditionTimestamp(oracle)
+            );
+        }
+        return oracleDetails;
     }
 }
