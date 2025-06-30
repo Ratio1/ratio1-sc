@@ -1,5 +1,5 @@
 import { ethers, upgrades } from "hardhat";
-import { MND_SC_ADDR, ND_SC_ADDR } from "../configs/constants";
+import { CONTROLLER_ADDR, MND_SC_ADDR, ND_SC_ADDR } from "../configs/constants";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -11,7 +11,7 @@ async function main() {
 
   const readerContract = await upgrades.deployProxy(
     ReaderContractFactory,
-    [ND_SC_ADDR, MND_SC_ADDR],
+    [ND_SC_ADDR, MND_SC_ADDR, CONTROLLER_ADDR],
     { initializer: "initialize" }
   );
 
