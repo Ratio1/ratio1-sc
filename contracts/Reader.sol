@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "./Controller.sol";
+import "./R1.sol";
 
 struct NDLicense {
     address nodeAddress;
@@ -49,6 +50,12 @@ struct OracleDetails {
     uint256 additionTimestamp;
 }
 
+struct AddressBalances {
+    address addr;
+    uint256 ethBalance;
+    uint256 r1Balance;
+}
+
 interface IBaseDeed {
     function nodeToLicenseId(address node) external view returns (uint256);
 
@@ -80,6 +87,7 @@ contract Reader is Initializable {
     IND public ndContract;
     IMND public mndContract;
     Controller public controller;
+    R1 public r1Contract;
 
     uint256 constant ND_LICENSE_ASSIGNED_TOKENS = 1575_188843457943924200;
     uint256 constant GENESIS_TOKEN_ID = 1;
@@ -87,16 +95,23 @@ contract Reader is Initializable {
     function initialize(
         address _ndContract,
         address _mndContract,
-        address _controller
+        address _controller,
+        address _r1Contract
     ) public initializer {
         ndContract = IND(_ndContract);
         mndContract = IMND(_mndContract);
         controller = Controller(_controller);
+        r1Contract = R1(_r1Contract);
     }
 
     function setController(address _controller) public {
         require(address(controller) == address(0), "Controller already set");
         controller = Controller(_controller);
+    }
+
+    function setR1Contract(address _r1Contract) public {
+        require(address(r1Contract) == address(0), "R1 contract already set");
+        r1Contract = R1(_r1Contract);
     }
 
     function getNdLicenseDetails(
@@ -242,5 +257,20 @@ contract Reader is Initializable {
             );
         }
         return oracleDetails;
+    }
+
+    function getAddressesBalances(
+        address[] memory addresses
+    ) public view returns (AddressBalances[] memory balances) {
+        balances = new AddressBalances[](addresses.length);
+        for (uint256 i = 0; i < addresses.length; i++) {
+            address addr = addresses[i];
+            balances[i] = AddressBalances(
+                addr,
+                addr.balance,
+                r1Contract.balanceOf(addr)
+            );
+        }
+        return balances;
     }
 }

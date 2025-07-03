@@ -2603,7 +2603,7 @@
             "label": "ndContract",
             "offset": 0,
             "slot": "0",
-            "type": "t_contract(IND)1373",
+            "type": "t_contract(IND)23082",
             "contract": "Reader",
             "src": "contracts/Reader.sol:80"
           },
@@ -2611,7 +2611,7 @@
             "label": "mndContract",
             "offset": 0,
             "slot": "1",
-            "type": "t_contract(IMND)1384",
+            "type": "t_contract(IMND)23093",
             "contract": "Reader",
             "src": "contracts/Reader.sol:81"
           },
@@ -2619,22 +2619,103 @@
             "label": "controller",
             "offset": 0,
             "slot": "2",
-            "type": "t_contract(Controller)1260",
+            "type": "t_contract(Controller)18113",
             "contract": "Reader",
             "src": "contracts/Reader.sol:82"
           }
         ],
         "types": {
-          "t_contract(Controller)1260": {
+          "t_contract(Controller)18113": {
             "label": "contract Controller",
             "numberOfBytes": "20"
           },
-          "t_contract(IMND)1384": {
+          "t_contract(IMND)23093": {
             "label": "contract IMND",
             "numberOfBytes": "20"
           },
-          "t_contract(IND)1373": {
+          "t_contract(IND)23082": {
             "label": "contract IND",
+            "numberOfBytes": "20"
+          },
+          "t_uint64": {
+            "label": "uint64"
+          },
+          "t_bool": {
+            "label": "bool"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73"
+            }
+          ]
+        }
+      }
+    },
+    "3e78e6f174909af5de8b76c925d7954f479842f5e6b9a4c01b28d6a8a01f693a": {
+      "address": "0x2C87185961dd9f67623FA7F06caB1Bf5f1C980F7",
+      "txHash": "0x32bd3ff85d40361791333adaf2dd2c5e755bf06b7edde5a2cc451fc27b9e2a95",
+      "layout": {
+        "solcVersion": "0.8.20",
+        "storage": [
+          {
+            "label": "ndContract",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IND)2456",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:87"
+          },
+          {
+            "label": "mndContract",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_contract(IMND)2467",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:88"
+          },
+          {
+            "label": "controller",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_contract(Controller)2115",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:89"
+          },
+          {
+            "label": "r1Contract",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_contract(R1)2335",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:90"
+          }
+        ],
+        "types": {
+          "t_contract(Controller)2115": {
+            "label": "contract Controller",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IMND)2467": {
+            "label": "contract IMND",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IND)2456": {
+            "label": "contract IND",
+            "numberOfBytes": "20"
+          },
+          "t_contract(R1)2335": {
+            "label": "contract R1",
             "numberOfBytes": "20"
           },
           "t_uint64": {
