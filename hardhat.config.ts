@@ -40,6 +40,16 @@ const config: HardhatUserConfig = {
       url: "https://mainnet.base.org",
       accounts: [BE_SIGNER_PRIVATE_KEY],
     },
+    optimismSepolia: {
+      chainId: 11155420,
+      url: "https://sepolia.optimism.io",
+      accounts: [BE_SIGNER_PRIVATE_KEY],
+    },
+    optimism: {
+      chainId: 10,
+      url: "https://mainnet.optimism.io",
+      accounts: [BE_SIGNER_PRIVATE_KEY],
+    },
   },
   /*gasReporter: {
     currency: "EUR",
