@@ -15,6 +15,8 @@ describe.only("PoAIManager", function () {
   let snapshotId: string;
   let mockUsdc: Contract;
   let mockR1: Contract;
+  let mockUniswapRouter: Contract;
+  let mockUniswapPair: Contract;
 
   const START_EPOCH_TIMESTAMP = 1738767600;
   const ONE_DAY = 86400;
@@ -64,6 +66,20 @@ describe.only("PoAIManager", function () {
     mockUsdc = await MockERC20.deploy();
     mockR1 = await MockERC20.deploy();
 
+    // Deploy mock Uniswap router and pair
+    const UniswapMockRouter = await ethers.getContractFactory(
+      "UniswapMockRouter"
+    );
+    mockUniswapRouter = await UniswapMockRouter.deploy();
+    await mockUniswapRouter.deployed();
+
+    const UniswapMockPair = await ethers.getContractFactory("UniswapMockPair");
+    mockUniswapPair = await UniswapMockPair.deploy(
+      mockUsdc.address,
+      mockR1.address
+    );
+    await mockUniswapPair.deployed();
+
     // Deploy CSP Escrow implementation
     const CspEscrow = await ethers.getContractFactory("CspEscrow");
     const cspEscrowImplementation = await CspEscrow.deploy();
@@ -80,6 +96,8 @@ describe.only("PoAIManager", function () {
         controller.address,
         mockUsdc.address,
         mockR1.address,
+        mockUniswapRouter.address,
+        mockUniswapPair.address,
         await owner.getAddress(),
       ],
       { initializer: "initialize" }
@@ -101,12 +119,6 @@ describe.only("PoAIManager", function () {
     snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
 
-  it("should revert if user does not own an oracle node", async function () {
-    await expect(
-      poaiManager.connect(user).deployCspEscrow()
-    ).to.be.revertedWith("No oracle node owned");
-  });
-
   // Helper for linkNode signature (matches MND test)
   async function signLinkNode(
     signer: Signer,
@@ -120,21 +132,45 @@ describe.only("PoAIManager", function () {
     return signer.signMessage(ethers.utils.arrayify(messageHash));
   }
 
-  it("should deploy a new CSP Escrow for a user with an oracle node (MND path)", async function () {
-    // Prepare signature for addLicense (simulate backend signature)
-    // For MND, we use addLicense instead of buyLicense
+  // Helper function to setup user with MND license and linked oracle node
+  async function setupUserWithOracleNode(
+    userSigner: Signer,
+    oracleSigner: Signer
+  ) {
+    // Add MND license to user
     const newTotalAssignedAmount = ethers.utils.parseEther("1000");
     await mndContract
       .connect(owner)
-      .addLicense(await user.getAddress(), newTotalAssignedAmount);
+      .addLicense(await userSigner.getAddress(), newTotalAssignedAmount);
 
     // Link node to oracle address using MNDContract
     const licenseId = 2; // First non-genesis license minted
-    const nodeAddress = await oracle.getAddress();
-    const linkSignature = await signLinkNode(oracle, user, nodeAddress);
+    const nodeAddress = await oracleSigner.getAddress();
+    const linkSignature = await signLinkNode(
+      oracleSigner,
+      userSigner,
+      nodeAddress
+    );
     await mndContract
-      .connect(user)
+      .connect(userSigner)
       .linkNode(licenseId, nodeAddress, linkSignature);
+  }
+
+  // Helper function to setup user with escrow deployed
+  async function setupUserWithEscrow(userSigner: Signer, oracleSigner: Signer) {
+    await setupUserWithOracleNode(userSigner, oracleSigner);
+    await poaiManager.connect(userSigner).deployCspEscrow();
+    return await poaiManager.ownerToEscrow(await userSigner.getAddress());
+  }
+
+  it("should revert if user does not own an oracle node", async function () {
+    await expect(
+      poaiManager.connect(user).deployCspEscrow()
+    ).to.be.revertedWith("No oracle node owned");
+  });
+
+  it("should deploy a new CSP Escrow for a user with an oracle node (MND path)", async function () {
+    await setupUserWithOracleNode(user, oracle);
 
     // Now user has a node that is an oracle, should succeed
     expect(await poaiManager.connect(user).deployCspEscrow()).not.to.be
@@ -142,17 +178,8 @@ describe.only("PoAIManager", function () {
   });
 
   it("should not allow double escrow deploy for the same user", async function () {
-    // Setup: user gets MND license and links oracle node
-    const newTotalAssignedAmount = ethers.utils.parseEther("1000");
-    await mndContract
-      .connect(owner)
-      .addLicense(await user.getAddress(), newTotalAssignedAmount);
-    const licenseId = 2;
-    const nodeAddress = await oracle.getAddress();
-    const linkSignature = await signLinkNode(oracle, user, nodeAddress);
-    await mndContract
-      .connect(user)
-      .linkNode(licenseId, nodeAddress, linkSignature);
+    await setupUserWithOracleNode(user, oracle);
+
     // First deploy should succeed
     await poaiManager.connect(user).deployCspEscrow();
     // Second deploy should revert
@@ -162,16 +189,8 @@ describe.only("PoAIManager", function () {
   });
 
   it("should emit EscrowDeployed event with correct params", async function () {
-    const newTotalAssignedAmount = ethers.utils.parseEther("1000");
-    await mndContract
-      .connect(owner)
-      .addLicense(await user.getAddress(), newTotalAssignedAmount);
-    const licenseId = 2;
-    const nodeAddress = await oracle.getAddress();
-    const linkSignature = await signLinkNode(oracle, user, nodeAddress);
-    await mndContract
-      .connect(user)
-      .linkNode(licenseId, nodeAddress, linkSignature);
+    await setupUserWithOracleNode(user, oracle);
+
     await expect(await poaiManager.connect(user).deployCspEscrow())
       .to.emit(poaiManager, "EscrowDeployed")
       .withArgs(
@@ -181,23 +200,7 @@ describe.only("PoAIManager", function () {
   });
 
   it("should allow CSP owner to create a job", async function () {
-    // Setup: user gets MND license and links oracle node, then deploys escrow
-    const newTotalAssignedAmount = ethers.utils.parseEther("1000");
-    await mndContract
-      .connect(owner)
-      .addLicense(await user.getAddress(), newTotalAssignedAmount);
-    const licenseId = 2;
-    const nodeAddress = await oracle.getAddress();
-    const linkSignature = await signLinkNode(oracle, user, nodeAddress);
-    await mndContract
-      .connect(user)
-      .linkNode(licenseId, nodeAddress, linkSignature);
-    await poaiManager.connect(user).deployCspEscrow();
-
-    // Get the deployed escrow address
-    const escrowAddress = await poaiManager.ownerToEscrow(
-      await user.getAddress()
-    );
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
     const CspEscrow = await ethers.getContractFactory("CspEscrow");
     const cspEscrow = CspEscrow.attach(escrowAddress);
 
@@ -233,23 +236,7 @@ describe.only("PoAIManager", function () {
   });
 
   it("should revert createJob with invalid parameters", async function () {
-    // Setup: user gets MND license and links oracle node, then deploys escrow
-    const newTotalAssignedAmount = ethers.utils.parseEther("1000");
-    await mndContract
-      .connect(owner)
-      .addLicense(await user.getAddress(), newTotalAssignedAmount);
-    const licenseId = 2;
-    const nodeAddress = await oracle.getAddress();
-    const linkSignature = await signLinkNode(oracle, user, nodeAddress);
-    await mndContract
-      .connect(user)
-      .linkNode(licenseId, nodeAddress, linkSignature);
-    await poaiManager.connect(user).deployCspEscrow();
-
-    // Get the deployed escrow address
-    const escrowAddress = await poaiManager.ownerToEscrow(
-      await user.getAddress()
-    );
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
     const CspEscrow = await ethers.getContractFactory("CspEscrow");
     const cspEscrow = CspEscrow.attach(escrowAddress);
 
@@ -283,23 +270,7 @@ describe.only("PoAIManager", function () {
   });
 
   it("should allow oracle to update active nodes and start job", async function () {
-    // Setup: user gets MND license and links oracle node, then deploys escrow
-    const newTotalAssignedAmount = ethers.utils.parseEther("1000");
-    await mndContract
-      .connect(owner)
-      .addLicense(await user.getAddress(), newTotalAssignedAmount);
-    const licenseId = 2;
-    const nodeAddress = await oracle.getAddress();
-    const linkSignature = await signLinkNode(oracle, user, nodeAddress);
-    await mndContract
-      .connect(user)
-      .linkNode(licenseId, nodeAddress, linkSignature);
-    await poaiManager.connect(user).deployCspEscrow();
-
-    // Get the deployed escrow address
-    const escrowAddress = await poaiManager.ownerToEscrow(
-      await user.getAddress()
-    );
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
     const CspEscrow = await ethers.getContractFactory("CspEscrow");
     const cspEscrow = CspEscrow.attach(escrowAddress);
 
@@ -341,23 +312,7 @@ describe.only("PoAIManager", function () {
   });
 
   it("should not allow non-oracle to update active nodes", async function () {
-    // Setup: user gets MND license and links oracle node, then deploys escrow
-    const newTotalAssignedAmount = ethers.utils.parseEther("1000");
-    await mndContract
-      .connect(owner)
-      .addLicense(await user.getAddress(), newTotalAssignedAmount);
-    const licenseId = 2;
-    const nodeAddress = await oracle.getAddress();
-    const linkSignature = await signLinkNode(oracle, user, nodeAddress);
-    await mndContract
-      .connect(user)
-      .linkNode(licenseId, nodeAddress, linkSignature);
-    await poaiManager.connect(user).deployCspEscrow();
-
-    // Get the deployed escrow address
-    const escrowAddress = await poaiManager.ownerToEscrow(
-      await user.getAddress()
-    );
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
     const CspEscrow = await ethers.getContractFactory("CspEscrow");
     const cspEscrow = CspEscrow.attach(escrowAddress);
 
@@ -378,7 +333,7 @@ describe.only("PoAIManager", function () {
     // Non-oracle tries to update active nodes
     const activeNodes = [await user.getAddress()];
     await expect(
-      cspEscrow.connect(user).updateActiveNodes(0, activeNodes)
+      cspEscrow.connect(user).updateActiveNodes(1, activeNodes)
     ).to.be.revertedWith("Not an oracle");
   });
 });

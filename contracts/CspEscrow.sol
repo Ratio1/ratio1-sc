@@ -3,6 +3,8 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 
 interface IPoAIManager {
     function getNewJobId() external returns (uint256);
@@ -43,6 +45,8 @@ contract CspEscrow is Initializable {
     address public usdcToken;
     address public r1Token;
     IController public controller;
+    IUniswapV2Router02 public uniswapV2Router;
+    IUniswapV2Pair public uniswapV2Pair;
 
     // Job details: job id -> JobDetails
     mapping(uint256 => JobDetails) public jobDetails;
@@ -85,16 +89,29 @@ contract CspEscrow is Initializable {
         address _poaiManager,
         address _usdcToken,
         address _r1Token,
-        address _controller
+        address _controller,
+        address _uniswapV2Router,
+        address _uniswapV2Pair
     ) public initializer {
         require(_usdcToken != address(0), "USDC token cannot be zero address");
         require(_r1Token != address(0), "R1 token cannot be zero address");
         require(_controller != address(0), "Controller cannot be zero address");
+        require(
+            _uniswapV2Router != address(0),
+            "Uniswap router cannot be zero address"
+        );
+        require(
+            _uniswapV2Pair != address(0),
+            "Uniswap pair cannot be zero address"
+        );
+
         cspOwner = _cspOwner;
         poaiManager = IPoAIManager(_poaiManager);
         usdcToken = _usdcToken;
         r1Token = _r1Token;
         controller = IController(_controller);
+        uniswapV2Router = IUniswapV2Router02(_uniswapV2Router);
+        uniswapV2Pair = IUniswapV2Pair(_uniswapV2Pair);
     }
 
     function createJob(
@@ -152,6 +169,23 @@ contract CspEscrow is Initializable {
     ) external onlyPoAIManager returns (uint256) {
         // TODO: Iterate over allocated rewards, calculate amounts, clear storage
         return 0; // placeholder
+    }
+
+    // Swap USDC for R1 tokens using Uniswap
+    function swapUsdcForR1(uint256 amount) private returns (uint256) {
+        address[] memory path = new address[](2);
+        path[0] = usdcToken;
+        path[1] = r1Token;
+
+        IERC20(usdcToken).approve(address(uniswapV2Router), amount);
+        uint256[] memory amounts = uniswapV2Router.swapExactTokensForTokens(
+            amount, // Amount of tokens to swap
+            0, // Minimum amount of tokens to receive
+            path, // Path of tokens to swap
+            address(this), // Address to receive the swapped tokens
+            block.timestamp // Deadline
+        );
+        return amounts[1];
     }
 
     //.##.....##.####.########.##......##..######.

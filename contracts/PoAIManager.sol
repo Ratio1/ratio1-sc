@@ -69,6 +69,8 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     IController public controller;
     address public usdcToken;
     address public r1Token;
+    address public uniswapV2Router;
+    address public uniswapV2Pair;
 
     uint256 public nextJobId;
 
@@ -113,6 +115,8 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         address _controller,
         address _usdcToken,
         address _r1Token,
+        address _uniswapV2Router,
+        address _uniswapV2Pair,
         address newOwner
     ) public initializer {
         __Ownable_init(newOwner);
@@ -125,6 +129,8 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         controller = IController(_controller);
         usdcToken = _usdcToken;
         r1Token = _r1Token;
+        uniswapV2Router = _uniswapV2Router;
+        uniswapV2Pair = _uniswapV2Pair;
         nextJobId = 1;
     }
 
@@ -135,12 +141,14 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         require(_hasOracleNode(sender), "No oracle node owned");
         // Deploy BeaconProxy for the new CSP Escrow
         bytes memory data = abi.encodeWithSignature(
-            "initialize(address,address,address,address,address)",
+            "initialize(address,address,address,address,address,address,address)",
             sender,
             address(this),
             usdcToken,
             r1Token,
-            address(controller)
+            address(controller),
+            uniswapV2Router,
+            uniswapV2Pair
         );
         BeaconProxy proxy = new BeaconProxy(address(cspEscrowBeacon), data);
         address escrowAddr = address(proxy);
