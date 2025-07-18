@@ -218,10 +218,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     }
 
     modifier onlyCspEscrow() {
-        require(
-            ownerToEscrow[escrowToOwner[msg.sender]] != address(0),
-            "Not a CSP Escrow"
-        );
+        require(escrowToOwner[msg.sender] != address(0), "Not a CSP Escrow");
         _;
     }
 }
