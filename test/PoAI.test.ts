@@ -269,7 +269,7 @@ describe.only("PoAIManager", function () {
     ).to.be.revertedWith("Number of nodes must be greater than 0");
   });
 
-  it("should allow oracle to update active nodes and start job", async function () {
+  it("should allow oracle to update active nodes and start job via consensus", async function () {
     const escrowAddress = await setupUserWithEscrow(user, oracle);
     const CspEscrow = await ethers.getContractFactory("CspEscrow");
     const cspEscrow = CspEscrow.attach(escrowAddress);
@@ -293,25 +293,31 @@ describe.only("PoAIManager", function () {
     expect(jobDetailsBefore.startTimestamp).to.equal(0);
     expect(jobDetailsBefore.activeNodes.length).to.equal(0);
 
-    // Oracle updates active nodes
+    // Oracle submits node update for consensus
     const activeNodes = [await oracle.getAddress(), await other.getAddress()];
     const blockBeforeUpdate = await ethers.provider.getBlock("latest");
 
-    await expect(cspEscrow.connect(oracle).updateActiveNodes(1, activeNodes))
-      .to.emit(cspEscrow, "JobStarted")
-      .withArgs(1, blockBeforeUpdate.timestamp + 1)
-      .and.to.emit(cspEscrow, "NodesUpdated")
-      .withArgs(1, activeNodes);
+    await expect(poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes))
+      .to.emit(poaiManager, "NodeUpdateSubmitted")
+      .withArgs(
+        1,
+        await oracle.getAddress(),
+        ethers.utils.keccak256(
+          ethers.utils.defaultAbiCoder.encode(["address[]"], [activeNodes])
+        )
+      );
 
-    // Verify job details updated
+    // Since we only have 1 oracle, consensus won't be reached yet
     const jobDetailsAfter = await cspEscrow.getJobDetails(1);
-    expect(jobDetailsAfter.startTimestamp).to.equal(
-      blockBeforeUpdate.timestamp + 1
-    );
-    expect(jobDetailsAfter.activeNodes).to.deep.equal(activeNodes);
+    expect(jobDetailsAfter.startTimestamp).to.equal(0);
+    expect(jobDetailsAfter.activeNodes.length).to.equal(0);
+
+    // Check that consensus was not reached
+    const status = await poaiManager.getConsensusStatus(1);
+    expect(status.consensusReached).to.be.false;
   });
 
-  it("should not allow non-oracle to update active nodes", async function () {
+  it("should not allow non-oracle to submit node updates", async function () {
     const escrowAddress = await setupUserWithEscrow(user, oracle);
     const CspEscrow = await ethers.getContractFactory("CspEscrow");
     const cspEscrow = CspEscrow.attach(escrowAddress);
@@ -330,10 +336,247 @@ describe.only("PoAIManager", function () {
       .connect(user)
       .createJob(jobType, jobPrice, numberOfEpochs, numberOfNodesRequested);
 
-    // Non-oracle tries to update active nodes
+    // Non-oracle tries to submit node update
     const activeNodes = [await user.getAddress()];
     await expect(
-      cspEscrow.connect(user).updateActiveNodes(1, activeNodes)
+      poaiManager.connect(user).submitNodeUpdate(1, activeNodes)
     ).to.be.revertedWith("Not an oracle");
+  });
+
+  describe("Consensus Mechanism", function () {
+    let oracle2: Signer;
+    let oracle3: Signer;
+    let oracle4: Signer;
+    let oracle5: Signer;
+
+    beforeEach(async function () {
+      [owner, user, oracle, other, oracle2, oracle3, oracle4, oracle5] =
+        await ethers.getSigners();
+
+      // Add more oracles to test consensus
+      await controller.addOracle(await oracle2.getAddress());
+      await controller.addOracle(await oracle3.getAddress());
+      await controller.addOracle(await oracle4.getAddress());
+      await controller.addOracle(await oracle5.getAddress());
+    });
+
+    it("should allow oracles to submit node updates", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow = CspEscrow.attach(escrowAddress);
+
+      // Create job
+      const jobPrice = ethers.utils.parseEther("100");
+      await mockUsdc.mint(await user.getAddress(), jobPrice);
+      await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
+
+      await cspEscrow.connect(user).createJob(1, jobPrice, 31, 5);
+
+      const activeNodes = [
+        await oracle.getAddress(),
+        await oracle2.getAddress(),
+      ];
+
+      await expect(poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes))
+        .to.emit(poaiManager, "NodeUpdateSubmitted")
+        .withArgs(
+          1,
+          await oracle.getAddress(),
+          ethers.utils.keccak256(
+            ethers.utils.defaultAbiCoder.encode(["address[]"], [activeNodes])
+          )
+        );
+    });
+
+    it("should not allow oracle to submit twice for the same job", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow = CspEscrow.attach(escrowAddress);
+
+      // Create job
+      const jobPrice = ethers.utils.parseEther("100");
+      await mockUsdc.mint(await user.getAddress(), jobPrice);
+      await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
+
+      await cspEscrow.connect(user).createJob(1, jobPrice, 31, 5);
+
+      const activeNodes = [await oracle.getAddress()];
+
+      // First submission should succeed
+      await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
+
+      // Second submission should fail
+      await expect(
+        poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes)
+      ).to.be.revertedWith("Already submitted");
+    });
+
+    it("should not allow submission for non-existent job", async function () {
+      const activeNodes = [await oracle.getAddress()];
+
+      await expect(
+        poaiManager.connect(oracle).submitNodeUpdate(999, activeNodes)
+      ).to.be.revertedWith("Job does not exist");
+    });
+
+    it("should reach consensus when 33%+1 oracles agree", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow = CspEscrow.attach(escrowAddress);
+
+      // Create job
+      const jobPrice = ethers.utils.parseEther("100");
+      await mockUsdc.mint(await user.getAddress(), jobPrice);
+      await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
+
+      await cspEscrow.connect(user).createJob(1, jobPrice, 31, 5);
+
+      const consensusNodes = [
+        await oracle.getAddress(),
+        await oracle2.getAddress(),
+      ];
+
+      // Submit from 3 oracles (50%+1 of 5 oracles) with same nodes
+      await poaiManager.connect(oracle).submitNodeUpdate(1, consensusNodes);
+      await poaiManager.connect(oracle2).submitNodeUpdate(1, consensusNodes);
+      await poaiManager.connect(oracle3).submitNodeUpdate(1, consensusNodes);
+
+      // Check consensus status
+      const status = await poaiManager.getConsensusStatus(1);
+      expect(status.consensusReached).to.be.true;
+      expect(status.submissionCount).to.equal(3);
+
+      // Verify escrow was updated
+      const jobDetails = await cspEscrow.getJobDetails(1);
+      expect(jobDetails.activeNodes).to.deep.equal(consensusNodes);
+      expect(jobDetails.startTimestamp).to.be.gt(0);
+    });
+
+    it("should not reach consensus when oracles disagree", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow = CspEscrow.attach(escrowAddress);
+
+      // Create job
+      const jobPrice = ethers.utils.parseEther("100");
+      await mockUsdc.mint(await user.getAddress(), jobPrice);
+      await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
+
+      await cspEscrow.connect(user).createJob(1, jobPrice, 31, 5);
+
+      const nodes1 = [await oracle.getAddress()];
+      const nodes2 = [await oracle2.getAddress()];
+      const nodes3 = [await oracle3.getAddress()];
+
+      // Submit different nodes from oracles
+      await poaiManager.connect(oracle).submitNodeUpdate(1, nodes1);
+      await poaiManager.connect(oracle2).submitNodeUpdate(1, nodes2);
+      await poaiManager.connect(oracle3).submitNodeUpdate(1, nodes3);
+
+      // Check consensus status - should not be reached
+      const status = await poaiManager.getConsensusStatus(1);
+      expect(status.consensusReached).to.be.false;
+      expect(status.submissionCount).to.equal(3);
+
+      // Verify escrow was not updated
+      const jobDetails = await cspEscrow.getJobDetails(1);
+      expect(jobDetails.activeNodes.length).to.equal(0);
+      expect(jobDetails.startTimestamp).to.equal(0);
+    });
+
+    it("should emit correct events during consensus process", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow = CspEscrow.attach(escrowAddress);
+
+      // Create job
+      const jobPrice = ethers.utils.parseEther("100");
+      await mockUsdc.mint(await user.getAddress(), jobPrice);
+      await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
+
+      await cspEscrow.connect(user).createJob(1, jobPrice, 31, 5);
+
+      const consensusNodes = [
+        await oracle.getAddress(),
+        await oracle2.getAddress(),
+      ];
+
+      // Submit and expect events
+      await expect(
+        poaiManager.connect(oracle).submitNodeUpdate(1, consensusNodes)
+      )
+        .to.emit(poaiManager, "NodeUpdateSubmitted")
+        .withArgs(
+          1,
+          await oracle.getAddress(),
+          ethers.utils.keccak256(
+            ethers.utils.defaultAbiCoder.encode(["address[]"], [consensusNodes])
+          )
+        );
+
+      await expect(
+        poaiManager.connect(oracle2).submitNodeUpdate(1, consensusNodes)
+      )
+        .to.emit(poaiManager, "NodeUpdateSubmitted")
+        .withArgs(
+          1,
+          await oracle2.getAddress(),
+          ethers.utils.keccak256(
+            ethers.utils.defaultAbiCoder.encode(["address[]"], [consensusNodes])
+          )
+        );
+
+      await expect(
+        poaiManager.connect(oracle3).submitNodeUpdate(1, consensusNodes)
+      )
+        .to.emit(poaiManager, "NodeUpdateSubmitted")
+        .withArgs(
+          1,
+          await oracle3.getAddress(),
+          ethers.utils.keccak256(
+            ethers.utils.defaultAbiCoder.encode(["address[]"], [consensusNodes])
+          )
+        )
+        .and.to.emit(poaiManager, "ConsensusReached")
+        .withArgs(1, consensusNodes);
+    });
+
+    it("should correctly track oracle submissions", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow = CspEscrow.attach(escrowAddress);
+
+      // Create job
+      const jobPrice = ethers.utils.parseEther("100");
+      await mockUsdc.mint(await user.getAddress(), jobPrice);
+      await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
+
+      await cspEscrow.connect(user).createJob(1, jobPrice, 31, 5);
+
+      const nodes = [await oracle.getAddress()];
+
+      // Submit from oracle
+      await poaiManager.connect(oracle).submitNodeUpdate(1, nodes);
+
+      // Check submission details
+      const submission = await poaiManager.getOracleSubmission(
+        1,
+        await oracle.getAddress()
+      );
+      expect(submission.hasSubmitted).to.be.true;
+      expect(submission.nodesHash).to.equal(
+        ethers.utils.keccak256(
+          ethers.utils.defaultAbiCoder.encode(["address[]"], [nodes])
+        )
+      );
+
+      // Check non-submitted oracle
+      const nonSubmission = await poaiManager.getOracleSubmission(
+        1,
+        await oracle2.getAddress()
+      );
+      expect(nonSubmission.hasSubmitted).to.be.false;
+      expect(nonSubmission.nodesHash).to.equal(ethers.constants.HashZero);
+    });
   });
 });

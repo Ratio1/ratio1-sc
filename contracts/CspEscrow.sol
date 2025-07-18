@@ -148,11 +148,11 @@ contract CspEscrow is Initializable {
         emit JobCreated(jobId, cspOwner, jobType, price);
     }
 
-    // Receive real-time updates from oracles
+    // Receive consensus-based updates from PoAI Manager
     function updateActiveNodes(
         uint256 jobId,
         address[] memory activeNodes
-    ) external onlyOracle {
+    ) external onlyPoAIManager {
         require(jobDetails[jobId].id != 0, "Job does not exist");
         jobDetails[jobId].activeNodes = activeNodes;
         if (jobDetails[jobId].startTimestamp == 0) {

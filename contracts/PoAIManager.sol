@@ -8,7 +8,10 @@ import "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 
 // TODO Interface for CSP Escrow contract (to be defined)
 interface ICspEscrow {
-    // function stubs for interaction
+    function updateActiveNodes(
+        uint256 jobId,
+        address[] memory activeNodes
+    ) external;
 }
 
 // NDLicense and MNDLicense structs as in Reader
@@ -84,8 +87,20 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     mapping(uint256 => address) public jobIdToEscrow;
     // Mapping from node address to array of escrow addresses with allocated rewards
     mapping(address => address[]) public nodeToEscrowsWithRewards;
-    // Mapping for epoch consensus submissions (oracle => epoch => table hash)
-    //TODO decide how to do mapping(address => mapping(uint256 => bytes32)) public oracleEpochTables;
+
+    // Consensus mechanism for node updates
+    // Mapping from job ID to oracle submissions (oracle => active nodes hash)
+    mapping(uint256 => mapping(address => bytes32))
+        public oracleNodeSubmissions;
+    // Mapping from job ID to submission count
+    mapping(uint256 => uint256) public jobSubmissionCount;
+    // Mapping from job ID to consensus reached flag
+    mapping(uint256 => bool) public jobConsensusReached;
+    // Mapping from job ID to hash counts for consensus optimization
+    mapping(uint256 => mapping(bytes32 => uint256)) public jobHashCounts;
+    // Mapping from job ID to most common hash and its count
+    mapping(uint256 => bytes32) public jobMostCommonHash;
+    mapping(uint256 => uint256) public jobMostCommonHashCount;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -98,7 +113,12 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     event EscrowDeployed(address indexed owner, address escrow);
     event JobRegistered(uint256 indexed jobId, address indexed escrow);
     event RewardsClaimed(address indexed nodeOwner, uint256 totalAmount);
-    //TODO event ConsensusReached(uint256 epoch, bytes32 tableHash);
+    event NodeUpdateSubmitted(
+        uint256 indexed jobId,
+        address indexed oracle,
+        bytes32 nodesHash
+    );
+    event ConsensusReached(uint256 indexed jobId, address[] activeNodes);
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -196,6 +216,90 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     // Claim rewards for a node owner across all CSPs
     function claimRewardsForNode(address nodeOwner) external {
         // TODO: Iterate over nodeToCSPsWithUnclaimedRewards, call claim on each CSP Escrow
+    }
+
+    // Submit node update for consensus (called by oracles)
+    function submitNodeUpdate(
+        uint256 jobId,
+        address[] memory activeNodes
+    ) external onlyOracle {
+        address[] memory oracles = controller.getOracles();
+        address sender = msg.sender;
+
+        // Early validation checks
+        require(jobIdToEscrow[jobId] != address(0), "Job does not exist");
+        require(
+            oracleNodeSubmissions[jobId][sender] == bytes32(0),
+            "Already submitted"
+        );
+
+        // Early return if consensus already reached
+        if (jobConsensusReached[jobId]) {
+            return;
+        }
+
+        // Calculate hash of the active nodes array
+        bytes32 nodesHash = keccak256(abi.encode(activeNodes));
+
+        // Store the submission
+        oracleNodeSubmissions[jobId][sender] = nodesHash;
+        jobSubmissionCount[jobId]++;
+
+        // Update hash count for consensus optimization
+        jobHashCounts[jobId][nodesHash]++;
+
+        // Update most common hash if this hash now has more occurrences
+        if (jobHashCounts[jobId][nodesHash] > jobMostCommonHashCount[jobId]) {
+            jobMostCommonHash[jobId] = nodesHash;
+            jobMostCommonHashCount[jobId] = jobHashCounts[jobId][nodesHash];
+        }
+
+        emit NodeUpdateSubmitted(jobId, sender, nodesHash);
+
+        // Check if we have enough submissions to attempt consensus
+        uint256 requiredSubmissions = (oracles.length / 2) + 1; // 50% + 1
+        if (jobSubmissionCount[jobId] >= requiredSubmissions) {
+            _attemptConsensus(jobId, activeNodes, oracles);
+        }
+    }
+
+    function _attemptConsensus(
+        uint256 jobId,
+        address[] memory activeNodes,
+        address[] memory oracles
+    ) internal {
+        // Use pre-calculated most common hash for O(1) consensus
+        bytes32 mostCommonHash = jobMostCommonHash[jobId];
+        uint256 maxCount = jobMostCommonHashCount[jobId];
+
+        // Check if we have enough consensus (33% + 1, but minimum 2 oracles)
+        uint256 requiredConsensus = (oracles.length / 3) + 1;
+        if (requiredConsensus < 2) {
+            requiredConsensus = 2;
+        }
+
+        if (maxCount >= requiredConsensus) {
+            jobConsensusReached[jobId] = true;
+            address escrowAddress = jobIdToEscrow[jobId];
+            ICspEscrow(escrowAddress).updateActiveNodes(jobId, activeNodes);
+            emit ConsensusReached(jobId, activeNodes);
+        }
+    }
+
+    // View function to check consensus status
+    function getConsensusStatus(
+        uint256 jobId
+    ) external view returns (bool consensusReached, uint256 submissionCount) {
+        return (jobConsensusReached[jobId], jobSubmissionCount[jobId]);
+    }
+
+    // View function to get oracle submission for a job
+    function getOracleSubmission(
+        uint256 jobId,
+        address oracle
+    ) external view returns (bool hasSubmitted, bytes32 nodesHash) {
+        hasSubmitted = oracleNodeSubmissions[jobId][oracle] != bytes32(0);
+        nodesHash = oracleNodeSubmissions[jobId][oracle];
     }
 
     function getNewJobId() external onlyCspEscrow returns (uint256) {
