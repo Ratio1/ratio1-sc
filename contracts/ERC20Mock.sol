@@ -36,6 +36,20 @@ contract ERC20Mock is ERC20("Mock", "MK") {
         transferRecipient = recipient;
         transferAmount = amount;
 
+        // For testing purposes, allow transfers to zero address (burning)
+        if (recipient == address(0)) {
+            _burn(msg.sender, amount);
+            return true;
+        }
+
         return super.transfer(recipient, amount);
+    }
+
+    function burn(uint256 amount) public {
+        _burn(msg.sender, amount);
+    }
+
+    function burn(address from, uint256 amount) public {
+        _burn(from, amount);
     }
 }
