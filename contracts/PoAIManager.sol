@@ -454,9 +454,50 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         return nodeToEscrowsWithRewards[nodeAddress];
     }
 
-    // Get all job IDs that have node updates submitted but no consensus reached yet
-    function getUnvalidatedJobIds() external view returns (uint256[] memory) {
-        return unvalidatedJobIds;
+    // Get all job IDs that have node updates submitted but no consensus reached yet that a specific oracle has not submitted yet
+    function getUnvalidatedJobIds(
+        address oracle
+    ) external view returns (uint256[] memory) {
+        uint256 count = 0;
+        // Count matching jobs
+        for (uint256 i = 0; i < unvalidatedJobIds.length; i++) {
+            NodesTransitionProposal[]
+                storage proposals = nodesTransactionProposals[
+                    unvalidatedJobIds[i]
+                ][getCurrentEpoch()];
+            bool found = false;
+            for (uint256 j = 0; j < proposals.length; j++) {
+                if (proposals[j].proposer == oracle) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                count++;
+            }
+        }
+        // Create array with the correct size
+        uint256[] memory _unvalidatedJobIds = new uint256[](count);
+        // Populate array
+        uint256 index = 0;
+        for (uint256 i = 0; i < unvalidatedJobIds.length; i++) {
+            NodesTransitionProposal[]
+                storage proposals = nodesTransactionProposals[
+                    unvalidatedJobIds[i]
+                ][getCurrentEpoch()];
+            bool found = false;
+            for (uint256 j = 0; j < proposals.length; j++) {
+                if (proposals[j].proposer == oracle) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                _unvalidatedJobIds[index] = unvalidatedJobIds[i];
+                index++;
+            }
+        }
+        return _unvalidatedJobIds;
     }
 
     function getIsLastEpochAllocated() external view returns (bool) {
