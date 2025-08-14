@@ -1,0 +1,517 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
+import "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
+import "./Controller.sol";
+import "./CspEscrow.sol";
+
+struct NDLicense {
+    uint256 licenseId;
+    address nodeAddress;
+    uint256 totalClaimedAmount;
+    uint256 remainingAmount;
+    uint256 lastClaimEpoch;
+    uint256 claimableEpochs;
+    uint256 assignTimestamp;
+    address lastClaimOracle;
+    bool isBanned;
+}
+
+struct MNDLicense {
+    uint256 licenseId;
+    address nodeAddress;
+    uint256 totalAssignedAmount;
+    uint256 totalClaimedAmount;
+    uint256 firstMiningEpoch;
+    uint256 remainingAmount;
+    uint256 lastClaimEpoch;
+    uint256 claimableEpochs;
+    uint256 assignTimestamp;
+    address lastClaimOracle;
+}
+
+interface IND {
+    function getLicenses(
+        address owner
+    ) external view returns (NDLicense[] memory);
+    function getNodeOwner(address nodeAddress) external view returns (address);
+}
+
+interface IMND {
+    function getLicenses(
+        address owner
+    ) external view returns (MNDLicense[] memory);
+}
+
+struct NodesTransitionProposal {
+    address proposer;
+    address[] newActiveNodes;
+    bytes32 newActiveNodesHash;
+}
+
+struct JobWithAllDetails {
+    uint256 id;
+    bytes32 projectHash;
+    uint256 requestTimestamp;
+    uint256 startTimestamp;
+    uint256 lastNodesChangeTimestamp;
+    uint256 jobType;
+    uint256 pricePerEpoch;
+    uint256 lastExecutionEpoch;
+    uint256 numberOfNodesRequested;
+    int256 balance;
+    uint256 lastAllocatedEpoch;
+    address[] activeNodes;
+    address escrowAddress;
+    address escrowOwner;
+}
+
+contract PoAIManager is Initializable, OwnableUpgradeable {
+    //..######..########..#######..########.....###.....######...########
+    //.##....##....##....##.....##.##.....##...##.##...##....##..##......
+    //.##..........##....##.....##.##.....##..##...##..##........##......
+    //..######.....##....##.....##.########..##.....##.##...####.######..
+    //.......##....##....##.....##.##...##...#########.##....##..##......
+    //.##....##....##....##.....##.##....##..##.....##.##....##..##......
+    //..######.....##.....#######..##.....##.##.....##..######...########
+
+    // Address of the UpgradeableBeacon for CSP Escrow contracts
+    UpgradeableBeacon public cspEscrowBeacon;
+    IND public ndContract;
+    IMND public mndContract;
+    Controller public controller;
+    address public usdcToken;
+    address public r1Token;
+    address public uniswapV2Router;
+    address public uniswapV2Pair;
+
+    uint256 public nextJobId;
+    uint256 public lastAllocatedEpoch;
+    // Array of all deployed CSP Escrow addresses
+    address[] public allEscrows;
+    // Mapping from owner address to their CSP Escrow address
+    mapping(address => address) public ownerToEscrow;
+    // Mapping from CSP Escrow address to owner address
+    mapping(address => address) public escrowToOwner;
+    // Mapping from Job ID to CSP Escrow address
+    mapping(uint256 => address) public jobIdToEscrow;
+    // Mapping from node address to array of escrow addresses with allocated rewards
+    mapping(address => address[]) public nodeToEscrowsWithRewards;
+
+    // Consensus mechanism for node updates
+    /// jobId => epochId => proposals
+    mapping(uint256 => mapping(uint256 => NodesTransitionProposal[]))
+        public nodesTransactionProposals;
+
+    // Array to track unvalidated job IDs (jobs with pending consensus)
+    uint256[] public unvalidatedJobIds;
+    // Mapping to track if a job is already in the unvalidated list
+    mapping(uint256 => bool) public isJobUnvalidated;
+
+    //.########.##.....##.########.##....##.########..######.
+    //.##.......##.....##.##.......###...##....##....##....##
+    //.##.......##.....##.##.......####..##....##....##......
+    //.######...##.....##.######...##.##.##....##.....######.
+    //.##........##...##..##.......##..####....##..........##
+    //.##.........##.##...##.......##...###....##....##....##
+    //.########....###....########.##....##....##.....######.
+
+    event EscrowDeployed(address indexed owner, address escrow);
+    event JobRegistered(uint256 indexed jobId, address indexed escrow);
+    event RewardsClaimed(
+        address indexed nodeAddr,
+        address indexed nodeOwner,
+        uint256 totalAmount
+    );
+    event NodeUpdateSubmitted(
+        uint256 indexed jobId,
+        address indexed oracle,
+        bytes32 nodesHash
+    );
+    event ConsensusReached(uint256 indexed jobId, address[] activeNodes);
+
+    //.########.##....##.########..########...#######..####.##....##.########..######.
+    //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
+    //.##.......####..##.##.....##.##.....##.##.....##..##..####..##....##....##......
+    //.######...##.##.##.##.....##.########..##.....##..##..##.##.##....##.....######.
+    //.##.......##..####.##.....##.##........##.....##..##..##..####....##..........##
+    //.##.......##...###.##.....##.##........##.....##..##..##...###....##....##....##
+    //.########.##....##.########..##.........#######..####.##....##....##.....######.
+
+    function initialize(
+        address _cspEscrowImplementation,
+        address _ndContract,
+        address _mndContract,
+        address _controller,
+        address _usdcToken,
+        address _r1Token,
+        address _uniswapV2Router,
+        address _uniswapV2Pair,
+        address newOwner
+    ) public initializer {
+        __Ownable_init(newOwner);
+        cspEscrowBeacon = new UpgradeableBeacon(
+            _cspEscrowImplementation,
+            newOwner
+        );
+        ndContract = IND(_ndContract);
+        mndContract = IMND(_mndContract);
+        controller = Controller(_controller);
+        usdcToken = _usdcToken;
+        r1Token = _r1Token;
+        uniswapV2Router = _uniswapV2Router;
+        uniswapV2Pair = _uniswapV2Pair;
+        nextJobId = 1;
+    }
+
+    // Deploy a new CSP Escrow contract for a given owner
+    function deployCspEscrow() external {
+        address sender = msg.sender;
+        require(ownerToEscrow[sender] == address(0), "Already has escrow");
+        require(_hasOracleNode(sender), "No oracle node owned");
+        // Deploy BeaconProxy for the new CSP Escrow
+        bytes memory data = abi.encodeWithSignature(
+            "initialize(address,address,address,address,address,address,address)",
+            sender,
+            address(this),
+            usdcToken,
+            r1Token,
+            address(controller),
+            uniswapV2Router,
+            uniswapV2Pair
+        );
+        BeaconProxy proxy = new BeaconProxy(address(cspEscrowBeacon), data);
+        address escrowAddr = address(proxy);
+        allEscrows.push(escrowAddr);
+        ownerToEscrow[sender] = escrowAddr;
+        escrowToOwner[escrowAddr] = sender;
+        emit EscrowDeployed(sender, escrowAddr);
+    }
+
+    // Internal function to check if user owns at least one ND or MND with a linked node address that is an oracle
+    function _hasOracleNode(address user) internal view returns (bool) {
+        address[] memory oracles = controller.getOracles();
+        // Check MND licenses
+        MNDLicense[] memory mndLicenses = mndContract.getLicenses(user);
+        for (uint256 i = 0; i < mndLicenses.length; i++) {
+            address nodeAddr = mndLicenses[i].nodeAddress;
+            if (nodeAddr != address(0) && _isOracle(nodeAddr, oracles)) {
+                return true;
+            }
+        }
+        // Check ND licenses
+        NDLicense[] memory ndLicenses = ndContract.getLicenses(user);
+        for (uint256 i = 0; i < ndLicenses.length; i++) {
+            address nodeAddr = ndLicenses[i].nodeAddress;
+            if (nodeAddr != address(0) && _isOracle(nodeAddr, oracles)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Internal helper to check if a node address is in the oracles array
+    function _isOracle(
+        address node,
+        address[] memory oracles
+    ) private pure returns (bool) {
+        for (uint256 i = 0; i < oracles.length; i++) {
+            if (oracles[i] == node) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Claim rewards for a node owner across all CSPs
+    function claimRewardsForNode(address nodeAddr) external {
+        address nodeOwner = ndContract.getNodeOwner(nodeAddr);
+        address[] memory escrows = nodeToEscrowsWithRewards[nodeAddr];
+        uint256 totalClaimed = 0;
+
+        for (uint256 i = 0; i < escrows.length; i++) {
+            address escrowAddress = escrows[i];
+            uint256 claimedAmount = CspEscrow(escrowAddress)
+                .claimRewardsForNode(nodeAddr, nodeOwner);
+            totalClaimed += claimedAmount;
+        }
+
+        emit RewardsClaimed(nodeAddr, nodeOwner, totalClaimed);
+    }
+
+    // Submit node update for consensus (called by oracles)
+    function submitNodeUpdate(
+        uint256 jobId,
+        address[] memory newActiveNodes
+    ) external onlyOracle {
+        address[] memory oracles = controller.getOracles();
+        address sender = msg.sender;
+        uint256 currentEpoch = getCurrentEpoch();
+        NodesTransitionProposal[] storage proposals = nodesTransactionProposals[
+            jobId
+        ][currentEpoch];
+        require(jobIdToEscrow[jobId] != address(0), "Job does not exist");
+        // Check if the sender is already in the proposals
+        for (uint256 i = 0; i < proposals.length; i++) {
+            require(proposals[i].proposer != sender, "Already submitted");
+        }
+        // Check if the nodes are not the same as the current active nodes
+        bytes32 newActiveNodesHash = keccak256(abi.encode(newActiveNodes));
+        JobWithAllDetails memory jobDetails = getJobDetails(jobId);
+        require(
+            keccak256(abi.encode(jobDetails.activeNodes)) != newActiveNodesHash,
+            "New proposed nodes are the same as current"
+        );
+        proposals.push(
+            NodesTransitionProposal({
+                proposer: sender,
+                newActiveNodes: newActiveNodes,
+                newActiveNodesHash: newActiveNodesHash
+            })
+        );
+
+        // Add job to unvalidated list if it's the first proposal
+        if (!isJobUnvalidated[jobId]) {
+            unvalidatedJobIds.push(jobId);
+            isJobUnvalidated[jobId] = true;
+        }
+
+        emit NodeUpdateSubmitted(jobId, sender, newActiveNodesHash);
+
+        // Check if we have enough submissions to attempt consensus
+        uint256 requiredSubmissions = (oracles.length / 2) + 1; // 50% + 1
+        if (proposals.length >= requiredSubmissions) {
+            _attemptConsensus(jobId, oracles.length, proposals);
+        }
+    }
+
+    function _attemptConsensus(
+        uint256 jobId,
+        uint256 oraclesCount,
+        NodesTransitionProposal[] storage proposals
+    ) internal {
+        // Find the most common newActiveNodes
+        uint256 maxCount = 0;
+        address[] memory mostCommonNewActiveNodes;
+        for (uint256 i = 0; i < proposals.length; i++) {
+            NodesTransitionProposal storage proposal = proposals[i];
+            // Count occurrences of each newActiveNodes
+            uint256 count = 1;
+            for (uint256 j = i + 1; j < proposals.length; j++) {
+                if (
+                    proposals[j].newActiveNodesHash ==
+                    proposal.newActiveNodesHash
+                ) {
+                    count++;
+                }
+            }
+            // If this is the first or has more occurrences, update the max
+            if (count > maxCount) {
+                maxCount = count;
+                mostCommonNewActiveNodes = proposal.newActiveNodes;
+            }
+        }
+
+        // Check if we have enough consensus (33% + 1)
+        uint256 requiredConsensus = (oraclesCount / 3) + 1;
+        if (maxCount >= requiredConsensus) {
+            address escrowAddress = jobIdToEscrow[jobId];
+            CspEscrow(escrowAddress).updateActiveNodes(
+                jobId,
+                mostCommonNewActiveNodes
+            );
+            emit ConsensusReached(jobId, mostCommonNewActiveNodes);
+            uint256 currentEpoch = getCurrentEpoch();
+            delete nodesTransactionProposals[jobId][currentEpoch];
+
+            // Remove job from unvalidated list
+            _removeJobFromUnvalidatedList(jobId);
+        }
+    }
+
+    // Public function to allocate rewards across all CSP Escrows
+    function allocateRewardsAcrossAllEscrows() external {
+        uint256 escrowCount = allEscrows.length;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            address escrowAddress = allEscrows[i];
+            CspEscrow(escrowAddress).allocateRewardsToNodes();
+        }
+        lastAllocatedEpoch = getCurrentEpoch() - 1;
+    }
+
+    function getNewJobId() external onlyCspEscrow returns (uint256) {
+        uint256 newJobId = nextJobId;
+        nextJobId++;
+        jobIdToEscrow[newJobId] = msg.sender;
+        return newJobId;
+    }
+
+    // Register a node that has rewards to claim in a specific escrow
+    function registerNodeWithRewards(
+        address nodeAddress
+    ) external onlyCspEscrow {
+        address[] storage escrows = nodeToEscrowsWithRewards[nodeAddress];
+        // Check if this escrow is already in the list to avoid duplicates
+        for (uint256 i = 0; i < escrows.length; i++) {
+            if (escrows[i] == msg.sender) {
+                return; // Already registered
+            }
+        }
+        escrows.push(msg.sender);
+    }
+
+    // Remove a node from the rewards list when rewards are claimed
+    function removeNodeFromRewardsList(
+        address nodeAddress
+    ) external onlyCspEscrow {
+        address escrowAddress = msg.sender;
+        address[] storage escrows = nodeToEscrowsWithRewards[nodeAddress];
+        for (uint256 i = 0; i < escrows.length; i++) {
+            if (escrows[i] == escrowAddress) {
+                // Remove by swapping with the last element and popping
+                escrows[i] = escrows[escrows.length - 1];
+                escrows.pop();
+                break;
+            }
+        }
+    }
+
+    function getCurrentEpoch() public view returns (uint256) {
+        return _calculateEpoch(block.timestamp);
+    }
+
+    function _calculateEpoch(uint256 timestamp) private view returns (uint256) {
+        uint256 startEpochTimestamp = controller.startEpochTimestamp();
+        uint256 epochDuration = controller.epochDuration();
+        require(
+            timestamp >= startEpochTimestamp,
+            "Timestamp is before the start epoch."
+        );
+
+        return (timestamp - startEpochTimestamp) / epochDuration;
+    }
+
+    // Helper function to remove a job from the unvalidated list
+    function _removeJobFromUnvalidatedList(uint256 jobId) private {
+        if (!isJobUnvalidated[jobId]) {
+            return; // Job is not in the list
+        }
+
+        // Find the job in the array and remove it by swapping with the last element
+        for (uint256 i = 0; i < unvalidatedJobIds.length; i++) {
+            if (unvalidatedJobIds[i] == jobId) {
+                // Swap with the last element
+                unvalidatedJobIds[i] = unvalidatedJobIds[
+                    unvalidatedJobIds.length - 1
+                ];
+                unvalidatedJobIds.pop();
+                isJobUnvalidated[jobId] = false;
+                break;
+            }
+        }
+    }
+
+    // View function to get job details by job ID
+    function getJobDetails(
+        uint256 jobId
+    ) public view returns (JobWithAllDetails memory) {
+        address escrowAddress = jobIdToEscrow[jobId];
+        address escrowOwner = escrowToOwner[escrowAddress];
+        JobDetails memory jobDetails = CspEscrow(escrowAddress).getJobDetails(
+            jobId
+        );
+        return
+            JobWithAllDetails({
+                id: jobDetails.id,
+                projectHash: jobDetails.projectHash,
+                requestTimestamp: jobDetails.requestTimestamp,
+                startTimestamp: jobDetails.startTimestamp,
+                lastNodesChangeTimestamp: jobDetails.lastNodesChangeTimestamp,
+                jobType: jobDetails.jobType,
+                pricePerEpoch: jobDetails.pricePerEpoch,
+                lastExecutionEpoch: jobDetails.lastExecutionEpoch,
+                numberOfNodesRequested: jobDetails.numberOfNodesRequested,
+                balance: jobDetails.balance,
+                lastAllocatedEpoch: jobDetails.lastAllocatedEpoch,
+                activeNodes: jobDetails.activeNodes,
+                escrowAddress: escrowAddress,
+                escrowOwner: escrowOwner
+            });
+    }
+
+    // Get all deployed escrow addresses
+    function getAllEscrows() external view returns (address[] memory) {
+        return allEscrows;
+    }
+
+    // Get escrows with rewards for a specific node
+    function getEscrowsWithRewardsForNode(
+        address nodeAddress
+    ) external view returns (address[] memory) {
+        return nodeToEscrowsWithRewards[nodeAddress];
+    }
+
+    // Get all job IDs that have node updates submitted but no consensus reached yet that a specific oracle has not submitted yet
+    function getUnvalidatedJobIds(
+        address oracle
+    ) external view returns (uint256[] memory) {
+        uint256 count = 0;
+        // Count matching jobs
+        for (uint256 i = 0; i < unvalidatedJobIds.length; i++) {
+            NodesTransitionProposal[]
+                storage proposals = nodesTransactionProposals[
+                    unvalidatedJobIds[i]
+                ][getCurrentEpoch()];
+            bool found = false;
+            for (uint256 j = 0; j < proposals.length; j++) {
+                if (proposals[j].proposer == oracle) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                count++;
+            }
+        }
+        // Create array with the correct size
+        uint256[] memory _unvalidatedJobIds = new uint256[](count);
+        // Populate array
+        uint256 index = 0;
+        for (uint256 i = 0; i < unvalidatedJobIds.length; i++) {
+            NodesTransitionProposal[]
+                storage proposals = nodesTransactionProposals[
+                    unvalidatedJobIds[i]
+                ][getCurrentEpoch()];
+            bool found = false;
+            for (uint256 j = 0; j < proposals.length; j++) {
+                if (proposals[j].proposer == oracle) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                _unvalidatedJobIds[index] = unvalidatedJobIds[i];
+                index++;
+            }
+        }
+        return _unvalidatedJobIds;
+    }
+
+    function getIsLastEpochAllocated() external view returns (bool) {
+        return lastAllocatedEpoch >= getCurrentEpoch() - 1;
+    }
+
+    modifier onlyOracle() {
+        address[] memory oracles = controller.getOracles();
+        require(_isOracle(msg.sender, oracles), "Not an oracle");
+        _;
+    }
+
+    modifier onlyCspEscrow() {
+        require(escrowToOwner[msg.sender] != address(0), "Not a CSP Escrow");
+        _;
+    }
+}

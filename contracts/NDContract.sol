@@ -843,6 +843,10 @@ contract NDContract is
         return false;
     }
 
+    function getNodeOwner(address nodeAddress) public view returns (address) {
+        return ownerOf(nodeToLicenseId[nodeAddress]);
+    }
+
     // LP setup
     function setUniswapParams(
         address uniswapV2Router,
