@@ -126,12 +126,17 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         address indexed nodeOwner,
         uint256 totalAmount
     );
-    event NodeUpdateSubmitted(
+    event NodeUpdateSubmittedV2(
         uint256 indexed jobId,
         address indexed oracle,
+        address[] newActiveNodes,
         bytes32 nodesHash
     );
-    event ConsensusReached(uint256 indexed jobId, address[] activeNodes);
+    event ConsensusReachedV2(
+        uint256 indexed jobId,
+        address[] activeNodes,
+        address[] participants
+    );
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -258,13 +263,17 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         for (uint256 i = 0; i < proposals.length; i++) {
             require(proposals[i].proposer != sender, "Already submitted");
         }
-        // Check if the nodes are not the same as the current active nodes
+        // Check if the nodes are the same as the current active nodes
         bytes32 newActiveNodesHash = keccak256(abi.encode(newActiveNodes));
         JobWithAllDetails memory jobDetails = getJobDetails(jobId);
-        require(
-            keccak256(abi.encode(jobDetails.activeNodes)) != newActiveNodesHash,
-            "New proposed nodes are the same as current"
-        );
+        if (
+            keccak256(abi.encode(jobDetails.activeNodes)) != newActiveNodesHash
+        ) {
+            if (!isJobUnvalidated[jobId]) {
+                //do not open a new consensus session if the node is reporting the same nodes (probably a late oracle)
+                return;
+            }
+        }
         proposals.push(
             NodesTransitionProposal({
                 proposer: sender,
@@ -279,7 +288,12 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             isJobUnvalidated[jobId] = true;
         }
 
-        emit NodeUpdateSubmitted(jobId, sender, newActiveNodesHash);
+        emit NodeUpdateSubmittedV2(
+            jobId,
+            sender,
+            newActiveNodes,
+            newActiveNodesHash
+        );
 
         // Check if we have enough submissions to attempt consensus
         uint256 requiredSubmissions = (oracles.length / 2) + 1; // 50% + 1
@@ -318,12 +332,35 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         // Check if we have enough consensus (33% + 1)
         uint256 requiredConsensus = (oraclesCount / 3) + 1;
         if (maxCount >= requiredConsensus) {
+            JobWithAllDetails memory jobDetails = getJobDetails(jobId);
+            bytes32 newActiveNodesHash = keccak256(
+                abi.encode(mostCommonNewActiveNodes)
+            );
+            if (
+                keccak256(abi.encode(jobDetails.activeNodes)) ==
+                newActiveNodesHash
+            ) {
+                return;
+            }
+
             address escrowAddress = jobIdToEscrow[jobId];
             CspEscrow(escrowAddress).updateActiveNodes(
                 jobId,
                 mostCommonNewActiveNodes
             );
-            emit ConsensusReached(jobId, mostCommonNewActiveNodes);
+            address[] memory participants = new address[](maxCount);
+            uint256 addedParticipants = 0;
+            for (uint256 i = 0; i < proposals.length; i++) {
+                if (proposals[i].newActiveNodesHash == newActiveNodesHash) {
+                    participants[addedParticipants] = proposals[i].proposer;
+                    addedParticipants++;
+                }
+            }
+            emit ConsensusReachedV2(
+                jobId,
+                mostCommonNewActiveNodes,
+                participants
+            );
             uint256 currentEpoch = getCurrentEpoch();
             delete nodesTransactionProposals[jobId][currentEpoch];
 
