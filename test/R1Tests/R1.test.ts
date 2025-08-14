@@ -36,7 +36,6 @@ describe("R1 contract", function () {
   let firstUser: SignerWithAddress;
   let secondUser: SignerWithAddress;
   let backend: SignerWithAddress;
-  let maxUnits: number;
   let snapshotId: string;
 
   before(async function () {
@@ -45,8 +44,6 @@ describe("R1 contract", function () {
     firstUser = user1;
     secondUser = user2;
     backend = backendSigner;
-
-    maxUnits = 5; //TODO change with storage when updated (with maxUnits = 100 it could take up to 95s)
 
     const R1Contract = await ethers.getContractFactory("R1");
     r1Contract = await R1Contract.deploy(owner.address);
@@ -153,9 +150,43 @@ describe("R1 contract", function () {
     );
   });
 
-  it("burn- not allowed minter", async function () {
+  it("burn- not allowed burner", async function () {
     await expect(
       r1Contract.connect(owner).burn(firstUser.address, ONE_TOKEN.mul(100))
     ).to.be.revertedWith("Only allowed contracts can burn");
+  });
+
+  it("Add burner- should work", async function () {
+    await expect(r1Contract.addBurner(owner.address)).not.to.be.reverted;
+  });
+
+  it("Add burner- invalid burner address", async function () {
+    await expect(r1Contract.addBurner(NULL_ADDRESS)).to.be.revertedWith(
+      "Invalid burner address"
+    );
+  });
+
+  it("Add burner- not the owner", async function () {
+    await expect(
+      r1Contract.connect(firstUser).addBurner(owner.address)
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
+  });
+
+  it("Remove burner- should work", async function () {
+    await expect(r1Contract.addBurner(owner.address)).not.to.be.reverted;
+    await expect(r1Contract.removeBurner(owner.address)).not.to.be.reverted;
+  });
+
+  it("Remove burner- Address is not a burner", async function () {
+    await expect(r1Contract.addBurner(owner.address)).not.to.be.reverted;
+    await expect(r1Contract.removeBurner(firstUser.address)).to.be.revertedWith(
+      "Address is not a burner"
+    );
+  });
+
+  it("Remove burner- not the owner", async function () {
+    await expect(
+      r1Contract.connect(firstUser).removeBurner(owner.address)
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 });
