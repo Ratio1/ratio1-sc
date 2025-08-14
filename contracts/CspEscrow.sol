@@ -34,10 +34,27 @@ uint256 constant JOB_TYPE_N_MED2 = 18;
 uint256 constant JOB_TYPE_N_HIGH = 19;
 uint256 constant JOB_TYPE_N_ULTRA = 20;
 // GPU job types
-uint256 constant JOB_TYPE_G_ENTRY = 21;
-uint256 constant JOB_TYPE_G_MED = 22;
-uint256 constant JOB_TYPE_G_HIGH = 23;
-uint256 constant JOB_TYPE_G_ULTRA = 24;
+uint256 constant JOB_TYPE_G_ENTRY_MED1 = 21;
+uint256 constant JOB_TYPE_G_ENTRY_MED2 = 22;
+uint256 constant JOB_TYPE_G_ENTRY_HIGH1 = 23;
+uint256 constant JOB_TYPE_G_ENTRY_HIGH2 = 24;
+uint256 constant JOB_TYPE_G_ENTRY_ULTRA1 = 25;
+uint256 constant JOB_TYPE_G_ENTRY_ULTRA2 = 26;
+uint256 constant JOB_TYPE_G_ENTRY_N_ENTRY = 27;
+uint256 constant JOB_TYPE_G_ENTRY_N_MED1 = 28;
+uint256 constant JOB_TYPE_G_ENTRY_N_MED2 = 29;
+uint256 constant JOB_TYPE_G_ENTRY_N_HIGH = 30;
+uint256 constant JOB_TYPE_G_ENTRY_N_ULTRA = 31;
+
+uint256 constant JOB_TYPE_G_MED_MED2 = 32;
+uint256 constant JOB_TYPE_G_MED_HIGH1 = 33;
+uint256 constant JOB_TYPE_G_MED_HIGH2 = 34;
+uint256 constant JOB_TYPE_G_MED_ULTRA1 = 35;
+uint256 constant JOB_TYPE_G_MED_ULTRA2 = 36;
+uint256 constant JOB_TYPE_G_MED_N_MED1 = 37;
+uint256 constant JOB_TYPE_G_MED_N_MED2 = 38;
+uint256 constant JOB_TYPE_G_MED_N_HIGH = 39;
+uint256 constant JOB_TYPE_G_MED_N_ULTRA = 40;
 
 interface IPoAIManager {
     function getNewJobId() external returns (uint256);
@@ -273,6 +290,7 @@ contract CspEscrow is Initializable {
             uint256 lastAllocatedEpoch = job.lastAllocatedEpoch;
             // Finish the loop if job ID is not set (no more jobs)
             if (job.id == 0) {
+                //TODO this is not correct
                 break;
             }
             // Skip if job has no active nodes
@@ -288,7 +306,13 @@ contract CspEscrow is Initializable {
             if (
                 lastAllocatedEpoch + epochsToAllocate > job.lastExecutionEpoch
             ) {
-                epochsToAllocate = job.lastExecutionEpoch - lastAllocatedEpoch;
+                if (job.lastExecutionEpoch < lastAllocatedEpoch) {
+                    epochsToAllocate = 0;
+                } else {
+                    epochsToAllocate =
+                        job.lastExecutionEpoch -
+                        lastAllocatedEpoch;
+                }
             }
             if (epochsToAllocate == 0) {
                 continue;
@@ -450,10 +474,27 @@ contract CspEscrow is Initializable {
         if (jobType == JOB_TYPE_N_ULTRA) return 13333333; // $400/month
 
         // GPU Apps
-        if (jobType == JOB_TYPE_G_ENTRY) return 1200000; // $36/month
-        if (jobType == JOB_TYPE_G_MED) return 2400000; // $72/month
-        if (jobType == JOB_TYPE_G_HIGH) return 4800000; // $144/month
-        if (jobType == JOB_TYPE_G_ULTRA) return 30000000; // $900/month
+        if (jobType == JOB_TYPE_G_ENTRY_MED1) return 3116666; // $93.5/month
+        if (jobType == JOB_TYPE_G_ENTRY_MED2) return 4116666; // $123.5/month
+        if (jobType == JOB_TYPE_G_ENTRY_HIGH1) return 4950000; // $148.5/month
+        if (jobType == JOB_TYPE_G_ENTRY_HIGH2) return 6533333; // $196/month
+        if (jobType == JOB_TYPE_G_ENTRY_ULTRA1) return 9533333; // $286/month
+        if (jobType == JOB_TYPE_G_ENTRY_ULTRA2) return 13700000; // $411/month
+        if (jobType == JOB_TYPE_G_ENTRY_N_ENTRY) return 3700000; // $111/month
+        if (jobType == JOB_TYPE_G_ENTRY_N_MED1) return 4950000; // $148.5/month
+        if (jobType == JOB_TYPE_G_ENTRY_N_MED2) return 7200000; // $216/month
+        if (jobType == JOB_TYPE_G_ENTRY_N_HIGH) return 10200000; // $306/month
+        if (jobType == JOB_TYPE_G_ENTRY_N_ULTRA) return 14533333; // $436/month
+
+        if (jobType == JOB_TYPE_G_MED_MED2) return 5316666; // $159.5/month
+        if (jobType == JOB_TYPE_G_MED_HIGH1) return 6150000; // $184.5/month
+        if (jobType == JOB_TYPE_G_MED_HIGH2) return 7733333; // $232/month
+        if (jobType == JOB_TYPE_G_MED_ULTRA1) return 10733333; // $322/month
+        if (jobType == JOB_TYPE_G_MED_ULTRA2) return 14900000; // $447/month
+        if (jobType == JOB_TYPE_G_MED_N_MED1) return 4950000; // $148.5/month
+        if (jobType == JOB_TYPE_G_MED_N_MED2) return 6533333; // $196/month
+        if (jobType == JOB_TYPE_G_MED_N_HIGH) return 9533333; // $286/month
+        if (jobType == JOB_TYPE_G_MED_N_ULTRA) return 13700000; // $411/month
 
         revert("Invalid job type");
     }
