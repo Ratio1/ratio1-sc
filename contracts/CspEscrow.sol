@@ -62,6 +62,10 @@ interface IPoAIManager {
     function removeNodeFromRewardsList(address nodeAddress) external;
 }
 
+interface INDContract {
+    function getNodeOwner(address nodeAddress) external view returns (address);
+}
+
 struct JobDetails {
     uint256 id;
     bytes32 projectHash;
@@ -123,15 +127,17 @@ contract CspEscrow is Initializable {
     );
     event JobStarted(uint256 indexed jobId, uint256 startTimestamp);
     event NodesUpdated(uint256 indexed jobId, address[] activeNodes);
-    event RewardsClaimed(
+    event RewardsClaimedV2(
         address indexed nodeAddr,
         address indexed nodeOwner,
-        uint256 totalAmount
+        uint256 usdcAmount,
+        uint256 r1Amount
     );
-    event RewardsAllocated(
+    event RewardsAllocatedV2(
         uint256 indexed jobId,
-        address[] activeNodes,
-        uint256 totalAmount
+        address nodeAddress,
+        address nodeOwner,
+        uint256 usdcAmount
     );
     event TokensBurned(uint256 usdcAmount, uint256 r1Amount);
 
@@ -274,7 +280,12 @@ contract CspEscrow is Initializable {
         require(r1TokensToSend > 0, "Swap failed");
         r1Token.transfer(nodeOwner, r1TokensToSend);
 
-        emit RewardsClaimed(nodeAddr, nodeOwner, claimableAmount);
+        emit RewardsClaimedV2(
+            nodeAddr,
+            nodeOwner,
+            claimableAmount,
+            r1TokensToSend
+        );
         return claimableAmount;
     }
 
@@ -318,6 +329,10 @@ contract CspEscrow is Initializable {
                 continue;
             }
 
+            INDContract ndContract = INDContract(
+                address(controller.ndContract())
+            );
+
             // Calculate reward per node for this epoch
             uint256 rewardPerNode = job.pricePerEpoch * epochsToAllocate;
             uint256 amountToBurnPerNode = (rewardPerNode * BURN_PERCENTAGE) /
@@ -326,11 +341,18 @@ contract CspEscrow is Initializable {
             uint256 totalRewardsToNodes = amountRewardsPerNode *
                 job.activeNodes.length;
             for (uint256 j = 0; j < job.activeNodes.length; j++) {
-                virtualWalletBalance[
-                    job.activeNodes[j]
-                ] += amountRewardsPerNode;
+                address nodeAddress = job.activeNodes[j];
+                virtualWalletBalance[nodeAddress] += amountRewardsPerNode;
                 // Register node with rewards in PoAI Manager
-                poaiManager.registerNodeWithRewards(job.activeNodes[j]);
+                poaiManager.registerNodeWithRewards(nodeAddress);
+                // Emit event for rewards allocation
+                address nodeOwner = ndContract.getNodeOwner(nodeAddress);
+                emit RewardsAllocatedV2(
+                    jobId,
+                    nodeAddress,
+                    nodeOwner,
+                    totalRewardsToNodes
+                );
             }
 
             // Add to total burn amount
@@ -340,9 +362,6 @@ contract CspEscrow is Initializable {
             job.lastAllocatedEpoch = lastEpoch;
 
             require(job.balance >= 0, "No balance left"); //TODO will change in V2
-
-            // Emit event for rewards allocation
-            emit RewardsAllocated(jobId, job.activeNodes, totalRewardsToNodes);
         }
 
         // Burn 15% of total rewards by swapping USDC for R1 and burning R1
