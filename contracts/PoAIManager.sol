@@ -69,6 +69,11 @@ struct JobWithAllDetails {
     address escrowOwner;
 }
 
+struct CspWithOwner {
+    address cspAddress;
+    address cspOwner;
+}
+
 contract PoAIManager is Initializable, OwnableUpgradeable {
     //..######..########..#######..########.....###.....######...########
     //.##....##....##....##.....##.##.....##...##.##...##....##..##......
@@ -482,6 +487,22 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     // Get all deployed escrow addresses
     function getAllEscrows() external view returns (address[] memory) {
         return allEscrows;
+    }
+
+    function getAllCspsWithOwner()
+        external
+        view
+        returns (CspWithOwner[] memory)
+    {
+        uint256 escrowCount = allEscrows.length;
+        CspWithOwner[] memory cspsWithOwner = new CspWithOwner[](escrowCount);
+        for (uint256 i = 0; i < escrowCount; i++) {
+            cspsWithOwner[i] = CspWithOwner({
+                cspAddress: allEscrows[i],
+                cspOwner: escrowToOwner[allEscrows[i]]
+            });
+        }
+        return cspsWithOwner;
     }
 
     // Get escrows with rewards for a specific node
