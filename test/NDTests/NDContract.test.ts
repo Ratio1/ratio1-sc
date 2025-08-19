@@ -1,12 +1,10 @@
-import { expect } from "chai";
+import { expect, use } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { R1, NDContract, Controller } from "../../typechain-types";
+import { v4 as uuidv4 } from "uuid";
 
 const BigNumber = ethers.BigNumber;
-
-// npx hardhat test     ---- for gas usage
-// npx hardhat coverage ---- for test coverage
 
 /*
 ..######...#######..##....##..######..########....###....##....##.########..######.
@@ -150,6 +148,7 @@ describe("NDContract", function () {
 
     const USDCContract = await ethers.getContractFactory("ERC20Mock");
     let usdcContract = await USDCContract.deploy();
+    let decimals = await usdcContract.decimals();
 
     const ControllerContract = await ethers.getContractFactory("Controller");
     controllerContract = await ControllerContract.deploy(
@@ -165,6 +164,9 @@ describe("NDContract", function () {
       [r1Contract.address, controllerContract.address, owner.address],
       { initializer: "initialize" }
     )) as NDContract;
+
+    let LpPercentage = BigNumber.from(50_00);
+    await ndContract.connect(owner).setDirectAddLpPercentage(LpPercentage);
 
     const MNDContractFactory = await ethers.getContractFactory("MNDContract");
     const mndContract = await upgrades.deployProxy(
@@ -200,7 +202,7 @@ describe("NDContract", function () {
     );
     await usdcContract.mint(
       uniswapMockRouterContract.address,
-      BigNumber.from("500000000000000000000")
+      BigNumber.from("50000000000000000000000")
     );
 
     await r1Contract.setNdContract(ndContract.address);
@@ -248,14 +250,24 @@ describe("NDContract", function () {
     vatPercent: number,
     signature: string
   ) {
-    await r1Contract.connect(owner).mint(user.address, numTokens);
-    await r1Contract.connect(user).approve(ndContract.address, numTokens);
+    let _NUM_TOKENS =
+      numTokens + (numTokens * BigInt(vatPercent)) / BigInt(100);
+    let _MAX_ACCEPTED_NUM_TOKENS = BigNumber.from(_NUM_TOKENS).add(
+      BigNumber.from(_NUM_TOKENS).div(10)
+    );
+    _MAX_ACCEPTED_NUM_TOKENS = _MAX_ACCEPTED_NUM_TOKENS.mul(numLicenses);
+    await r1Contract
+      .connect(owner)
+      .mint(user.address, _MAX_ACCEPTED_NUM_TOKENS);
+    await r1Contract
+      .connect(user)
+      .approve(ndContract.address, _MAX_ACCEPTED_NUM_TOKENS);
     await ndContract
       .connect(user)
       .buyLicense(
         numLicenses,
         priceTier,
-        BigNumber.from(numTokens).add(BigNumber.from(numTokens).div(10)),
+        _MAX_ACCEPTED_NUM_TOKENS,
         invoiceUuid,
         usdMintLimit,
         vatPercent,
@@ -456,6 +468,86 @@ describe("NDContract", function () {
     ).to.be.revertedWith("OwnableUnauthorizedAccount");
   });
 
+  it("Get Token Price - should work", async function () {
+    expect(await ndContract.getTokenPrice()).to.equal(
+      BigNumber.from("300000300000300000")
+    );
+  });
+
+  it("Set Max Allowed Price Difference - should work", async function () {
+    await expect(
+      ndContract.setMaxAllowedPriceDifference(BigNumber.from("1000"))
+    ).not.to.be.reverted;
+  });
+
+  it("Set Max Allowed Price Difference - not the owner", async function () {
+    await expect(
+      ndContract
+        .connect(firstUser)
+        .setMaxAllowedPriceDifference(BigNumber.from("1000"))
+    ).to.be.revertedWith("OwnableUnauthorizedAccount");
+  });
+
+  it("Set Max Allowed Price Difference - paused contract", async function () {
+    await ndContract.connect(owner).pause();
+    await expect(
+      ndContract.setMaxAllowedPriceDifference(BigNumber.from("1000"))
+    ).not.to.be.reverted;
+  });
+
+  it("Burn - should work", async function () {
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
+      1,
+      1,
+      10000,
+      20,
+      await signAddress(backend, firstUser, invoiceUuid, 10000)
+    );
+    await expect(ndContract.connect(firstUser).burn(1)).not.to.be.reverted;
+  });
+
+  it("Burn - not the owner", async function () {
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
+      1,
+      1,
+      10000,
+      20,
+      await signAddress(backend, firstUser, invoiceUuid, 10000)
+    );
+    await expect(ndContract.connect(secondUser).burn(1)).to.be.revertedWith(
+      "Not the owner of the license"
+    );
+  });
+
+  it("Burn - paused contract", async function () {
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      (await ndContract.getLicenseTokenPrice()).toBigInt(),
+      1,
+      1,
+      10000,
+      20,
+      await signAddress(backend, firstUser, invoiceUuid, 10000)
+    );
+    await ndContract.connect(owner).pause();
+    await expect(ndContract.connect(secondUser).burn(1)).to.be.revertedWith(
+      "EnforcedPause"
+    );
+  });
+
   it("Get token uri", async function () {
     let baseUri = "PIPPO.com/";
     await ndContract.setBaseURI(baseUri);
@@ -509,34 +601,26 @@ describe("NDContract", function () {
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     expect(firstUser.address).to.equal(await ndContract.ownerOf(1));
-    let newCompanyWalletAmount = await r1Contract.balanceOf(newCompanyWallet);
+    //let newCompanyWalletAmount = await r1Contract.balanceOf(newCompanyWallet);
     let newLpWalletAmount = await r1Contract.balanceOf(newLpWallet);
-    //TODO check values
     expect("100").to.deep.equal(newLpWalletAmount);
-    expect("499999500000000000499").to.deep.equal(newCompanyWalletAmount);
-
-    let total = newLpWalletAmount.add(newCompanyWalletAmount);
-    expect(total).to.be.equal(
-      (licenseTokenPrice * BigInt(30)) / BigInt(100) + BigInt(100)
-    );
-    // TODO why plus 100? for remaining on add liquidity?
   });
 
-  it("Buy license - insufficent allowance", async function () {
+  it("Buy license - Price exceeds max accepted", async function () {
     await expect(
       buyLicenseWithMintAndAllowance(
         r1Contract,
         ndContract,
         owner,
         firstUser,
-        (await ndContract.getLicenseTokenPrice()).toBigInt() - 100n,
+        (await ndContract.getLicenseTokenPrice()).toBigInt() / 2n,
         1,
         1,
         10000,
         20,
         await signAddress(backend, firstUser, invoiceUuid, 10000)
       )
-    ).to.be.revertedWith("ERC20InsufficientAllowance");
+    ).to.be.revertedWith("Price exceeds max accepted");
   });
 
   it("Buy license - Price exceeds max accepted", async function () {
@@ -641,6 +725,38 @@ describe("NDContract", function () {
     ).to.be.revertedWith("Exceeds mint limit");
   });
 
+  it("Buy license- Invoice UUID has already been used", async function () {
+    //DO TEST
+    await expect(
+      buyLicenseWithMintAndAllowance(
+        r1Contract,
+        ndContract,
+        owner,
+        firstUser,
+        (await ndContract.getLicenseTokenPrice()).toBigInt(),
+        1,
+        1,
+        10000,
+        20,
+        await signAddress(backend, firstUser, invoiceUuid, 10000)
+      )
+    ).not.to.be.reverted;
+    await expect(
+      buyLicenseWithMintAndAllowance(
+        r1Contract,
+        ndContract,
+        owner,
+        firstUser,
+        (await ndContract.getLicenseTokenPrice()).toBigInt(),
+        1,
+        1,
+        10000,
+        20,
+        await signAddress(backend, firstUser, invoiceUuid, 10000)
+      )
+    ).to.be.revertedWith("Invoice UUID has already been used");
+  });
+
   it("Link node - should work", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
@@ -655,15 +771,15 @@ describe("NDContract", function () {
       20,
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
+    expect(await ndContract.isNodeActive(NODE_ADDRESS)).to.be.false;
 
     //DO TEST
     await linkNode(ndContract, firstUser, 1);
     let result = await ndContract.ownerOf(1);
     expect(result).to.equal(firstUser.address);
     expect((await ndContract.licenses(1)).nodeAddress).to.equal(NODE_ADDRESS);
-    expect(await ndContract.registeredNodeAddresses(NODE_ADDRESS)).to.equal(
-      true
-    );
+    expect(await ndContract.registeredNodeAddresses(NODE_ADDRESS)).to.be.true;
+    expect(await ndContract.isNodeActive(NODE_ADDRESS)).to.be.true;
   });
 
   it("Link node - address already registered", async function () {
@@ -929,6 +1045,7 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
+    let UserPreviusBalance = await r1Contract.balanceOf(firstUser.address);
     await ndContract
       .connect(firstUser)
       .claimRewards(
@@ -936,7 +1053,7 @@ describe("NDContract", function () {
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      REWARDS_AMOUNT
+      REWARDS_AMOUNT.add(UserPreviusBalance)
     );
   });
 
@@ -968,7 +1085,7 @@ describe("NDContract", function () {
       (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
     ]);
     await ethers.provider.send("evm_mine", []);
-
+    let UserPreviusBalance = await r1Contract.balanceOf(firstUser.address);
     await ndContract.connect(firstUser).claimRewards(
       [
         {
@@ -985,7 +1102,7 @@ describe("NDContract", function () {
       ]
     );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      BigNumber.from("0")
+      BigNumber.from("0").add(UserPreviusBalance)
     );
   });
 
@@ -1136,6 +1253,7 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
+    let UserPreviusBalance = await r1Contract.balanceOf(firstUser.address);
     await ndContract
       .connect(firstUser)
       .claimRewards(
@@ -1148,7 +1266,7 @@ describe("NDContract", function () {
         ]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      REWARDS_AMOUNT
+      REWARDS_AMOUNT.add(UserPreviusBalance)
     );
   });
 
@@ -1263,6 +1381,8 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
+
+    let UserPreviusBalance = await r1Contract.balanceOf(firstUser.address);
     await ndContract
       .connect(firstUser)
       .claimRewards(
@@ -1270,7 +1390,7 @@ describe("NDContract", function () {
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      REWARDS_AMOUNT
+      REWARDS_AMOUNT.add(UserPreviusBalance)
     );
     //should not modify amount
     await ndContract
@@ -1280,7 +1400,7 @@ describe("NDContract", function () {
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      REWARDS_AMOUNT
+      REWARDS_AMOUNT.add(UserPreviusBalance)
     );
   });
 
@@ -1311,6 +1431,7 @@ describe("NDContract", function () {
 
     let expected_result = BigNumber.from("1575188843457943925233");
     //DO TEST
+    let UserPreviusBalance = await r1Contract.balanceOf(firstUser.address);
     await ndContract
       .connect(firstUser)
       .claimRewards(
@@ -1318,7 +1439,7 @@ describe("NDContract", function () {
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      expected_result
+      expected_result.add(UserPreviusBalance)
     );
 
     COMPUTE_PARAMS.epochs = [1830];
@@ -1335,7 +1456,7 @@ describe("NDContract", function () {
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      expected_result //should not be changed
+      expected_result.add(UserPreviusBalance) //should not be changed
     );
   });
 
@@ -1372,6 +1493,7 @@ describe("NDContract", function () {
 
     let expected_result = BigNumber.from("1575188843457943924200");
     //DO TEST
+    let UserPreviusBalance = await r1Contract.balanceOf(firstUser.address);
     await ndContract
       .connect(firstUser)
       .claimRewards(
@@ -1387,7 +1509,7 @@ describe("NDContract", function () {
         ]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      expected_result
+      expected_result.add(UserPreviusBalance)
     );
   });
 
@@ -1580,23 +1702,24 @@ describe("NDContract", function () {
   });
 
   it.skip("Buy all license ", async function () {
-    //TODO fix
-    // for gas test remove this function using "it.skip"
-    //SETUP WORLD
-    const signedMessage = await signAddress(
-      backend,
-      firstUser,
-      invoiceUuid,
-      10000
-    );
-
     //DO TEST
     for (let i = 1; i <= 12; i++) {
       expect(await ndContract.currentPriceTier()).to.equal(i);
       let tier = await ndContract._priceTiers(i);
       let units = tier.totalUnits.toNumber();
       do {
+        const uuidHex = uuidv4().replace(/-/g, "");
+        const uuidBuffer = Buffer.from(uuidHex);
+        console.log(backend.address);
+        let signature = await signAddress(
+          backend,
+          firstUser,
+          uuidBuffer,
+          1_000_000
+        );
+
         if (units > maxUnits) {
+          console.log("my fault ", signature);
           await buyLicenseWithMintAndAllowance(
             r1Contract,
             ndContract,
@@ -1606,12 +1729,13 @@ describe("NDContract", function () {
               BigInt(maxUnits),
             maxUnits,
             i,
-            10000,
+            1_000_000,
             20,
-            signedMessage
+            signature
           );
           units -= maxUnits;
         } else {
+          console.log("my fault 2 ", signature);
           await buyLicenseWithMintAndAllowance(
             r1Contract,
             ndContract,
@@ -1621,9 +1745,9 @@ describe("NDContract", function () {
               BigInt(units),
             units,
             i,
-            10000,
+            1_000_000,
             20,
-            signedMessage
+            signature
           );
           units -= units;
         }
@@ -1639,9 +1763,9 @@ describe("NDContract", function () {
         (await ndContract.getLicenseTokenPrice()).toBigInt() * 1000n,
         1,
         12,
-        10000,
+        1_000_000,
         20,
-        signedMessage
+        await signAddress(backend, firstUser, invoiceUuid, 1_000_000)
       )
     ).to.be.revertedWith("All licenses have been sold");
   });

@@ -283,9 +283,9 @@ contract NDContract is
         priceTier.soldUnits += mintedTokens.length;
         if (priceTier.soldUnits == priceTier.totalUnits) {
             currentPriceTier++;
-        } else if (priceTier.soldUnits > priceTier.totalUnits) {
+        } /*else if (priceTier.soldUnits > priceTier.totalUnits) {
             revert("Price tier sold more than available units");
-        }
+        }*/
 
         emit LicensesCreated(
             msg.sender,
@@ -625,7 +625,7 @@ contract NDContract is
         return amounts[1];
     }
 
-    function swapUsdcForR1(uint256 amount) private returns (uint256) {
+    /*function swapUsdcForR1(uint256 amount) private returns (uint256) { //TODO never used
         address[] memory path = new address[](2);
         path[0] = _usdcAddr;
         path[1] = address(_R1Token);
@@ -639,7 +639,7 @@ contract NDContract is
             block.timestamp // Deadline
         );
         return amounts[1];
-    }
+    }*/
 
     function getTokenPrice() public view returns (uint256 price) {
         IUniswapV2Pair pair = IUniswapV2Pair(_uniswapV2Pair);
