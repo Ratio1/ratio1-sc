@@ -115,6 +115,10 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     uint256[] public unvalidatedJobIds;
     // Mapping to track if a job is already in the unvalidated list
     mapping(uint256 => bool) public isJobUnvalidated;
+    // Mapping to track when consensus was last reached for each job (for cooldown period)
+    mapping(uint256 => uint256) public jobConsensusTimestamp;
+    // Cooldown period after consensus (5 minutes)
+    uint256 public constant CONSENSUS_COOLDOWN_PERIOD = 300;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -141,6 +145,11 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         uint256 indexed jobId,
         address[] activeNodes,
         address[] participants
+    );
+    event ConsensusCooldownEnforced(
+        uint256 indexed jobId,
+        address indexed oracle,
+        uint256 remainingCooldownTime
     );
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
@@ -271,14 +280,20 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         // Check if the nodes are the same as the current active nodes
         bytes32 newActiveNodesHash = keccak256(abi.encode(newActiveNodes));
         JobWithAllDetails memory jobDetails = getJobDetails(jobId);
+        //do not open a new consensus session if the node is reporting the same nodes (probably a late oracle)
         if (
-            keccak256(abi.encode(jobDetails.activeNodes)) != newActiveNodesHash
+            !isJobUnvalidated[jobId] &&
+            keccak256(abi.encode(jobDetails.activeNodes)) == newActiveNodesHash
         ) {
-            if (!isJobUnvalidated[jobId]) {
-                //do not open a new consensus session if the node is reporting the same nodes (probably a late oracle)
-                return;
-            }
+            return;
         }
+        // Check if we're in the cooldown period after consensus
+        require(
+            block.timestamp - jobConsensusTimestamp[jobId] >=
+                CONSENSUS_COOLDOWN_PERIOD,
+            "Consensus cooldown not expired"
+        );
+
         proposals.push(
             NodesTransitionProposal({
                 proposer: sender,
@@ -369,6 +384,8 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             uint256 currentEpoch = getCurrentEpoch();
             delete nodesTransactionProposals[jobId][currentEpoch];
 
+            // Set consensus timestamp for cooldown period
+            jobConsensusTimestamp[jobId] = block.timestamp;
             // Remove job from unvalidated list
             _removeJobFromUnvalidatedList(jobId);
         }
@@ -560,6 +577,21 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
 
     function getIsLastEpochAllocated() external view returns (bool) {
         return lastAllocatedEpoch >= getCurrentEpoch() - 1;
+    }
+
+    // Get remaining cooldown time for a specific job after consensus
+    function getRemainingCooldownTime(
+        uint256 jobId
+    ) external view returns (uint256) {
+        uint256 lastConsensusTime = jobConsensusTimestamp[jobId];
+        if (lastConsensusTime == 0) {
+            return 0; // No consensus reached yet
+        }
+        uint256 timeSinceConsensus = block.timestamp - lastConsensusTime;
+        if (timeSinceConsensus >= CONSENSUS_COOLDOWN_PERIOD) {
+            return 0; // Cooldown period has expired
+        }
+        return CONSENSUS_COOLDOWN_PERIOD - timeSinceConsensus;
     }
 
     modifier onlyOracle() {
