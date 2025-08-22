@@ -19,6 +19,12 @@ interface IMND {
     function registeredNodeAddresses(address node) external view returns (bool);
 }
 
+interface IPoAIManager {
+    function getNodePoAIRewards(
+        address nodeAddress
+    ) external view returns (uint256 usdcRewards, uint256 r1Rewards);
+}
+
 struct ComputeRewardsParams {
     uint256 licenseId;
     address nodeAddress;
@@ -56,6 +62,8 @@ struct LicenseInfo {
     uint256 assignTimestamp;
     address lastClaimOracle;
     bool isBanned;
+    uint256 usdcPoaiRewards;
+    uint256 r1PoaiRewards;
 }
 
 contract NDContract is
@@ -119,6 +127,8 @@ contract NDContract is
     uint256 public maxAllowedPriceDifference;
     uint256 public lastLicensePriceTimestamp;
     uint256 public directAddLpPercentage;
+
+    IPoAIManager public poaiManager;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -751,6 +761,10 @@ contract NDContract is
         _mndContract = IMND(mndContract_);
     }
 
+    function setPoAIManager(address _poaiManager) public onlyOwner {
+        poaiManager = IPoAIManager(_poaiManager);
+    }
+
     function setDirectAddLpPercentage(
         uint256 newDirectAddLpPercentage
     ) public onlyOwner {
@@ -802,6 +816,14 @@ contract NDContract is
                 claimableEpochs = currentEpoch - license.lastClaimEpoch;
             }
 
+            // Get PoAI rewards for this node
+            uint256 usdcPoaiRewards = 0;
+            uint256 r1PoaiRewards = 0;
+            if (license.nodeAddress != address(0)) {
+                (usdcPoaiRewards, r1PoaiRewards) = poaiManager
+                    .getNodePoAIRewards(license.nodeAddress);
+            }
+
             licensesInfo[i] = LicenseInfo({
                 licenseId: licenseId,
                 nodeAddress: license.nodeAddress,
@@ -812,7 +834,9 @@ contract NDContract is
                 claimableEpochs: claimableEpochs,
                 assignTimestamp: license.assignTimestamp,
                 lastClaimOracle: license.lastClaimOracle,
-                isBanned: license.isBanned
+                isBanned: license.isBanned,
+                usdcPoaiRewards: usdcPoaiRewards,
+                r1PoaiRewards: r1PoaiRewards
             });
         }
 
