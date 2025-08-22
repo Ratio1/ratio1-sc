@@ -249,6 +249,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     // Claim rewards for a node owner across all CSPs
     function claimRewardsForNode(address nodeAddr) external {
         address nodeOwner = ndContract.getNodeOwner(nodeAddr);
+        require(nodeOwner == msg.sender, "Not the owner of the node");
         address[] memory escrows = nodeToEscrowsWithRewards[nodeAddr];
         uint256 totalClaimed = 0;
 
@@ -260,6 +261,24 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         }
 
         emit RewardsClaimed(nodeAddr, nodeOwner, totalClaimed);
+    }
+
+    function claimRewardsForNodes(address[] memory nodeAddrs) external {
+        for (uint256 i = 0; i < nodeAddrs.length; i++) {
+            address nodeAddr = nodeAddrs[i];
+            address nodeOwner = ndContract.getNodeOwner(nodeAddr);
+            require(nodeOwner == msg.sender, "Not the owner of the node");
+            address[] memory escrows = nodeToEscrowsWithRewards[nodeAddr];
+            uint256 totalClaimed = 0;
+
+            for (uint256 j = 0; j < escrows.length; j++) {
+                address escrowAddress = escrows[j];
+                uint256 claimedAmount = CspEscrow(escrowAddress)
+                    .claimRewardsForNode(nodeAddr, nodeOwner);
+                totalClaimed += claimedAmount;
+            }
+            emit RewardsClaimed(nodeAddr, nodeOwner, totalClaimed);
+        }
     }
 
     // Submit node update for consensus (called by oracles)
