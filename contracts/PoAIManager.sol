@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import "./Controller.sol";
 import "./CspEscrow.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 struct NDLicense {
     uint256 licenseId;
@@ -592,6 +593,47 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             return 0; // Cooldown period has expired
         }
         return CONSENSUS_COOLDOWN_PERIOD - timeSinceConsensus;
+    }
+
+    // Get PoAI rewards for a specific node
+    function getNodePoAIRewards(
+        address nodeAddress
+    ) external view returns (uint256 usdcRewards, uint256 r1Rewards) {
+        usdcRewards = 0;
+        r1Rewards = 0;
+
+        if (nodeAddress != address(0)) {
+            // Get all escrows with rewards for this node
+            address[] memory escrowsWithRewards = nodeToEscrowsWithRewards[
+                nodeAddress
+            ];
+
+            // Sum up virtual wallet balances from all escrows
+            for (uint256 i = 0; i < escrowsWithRewards.length; i++) {
+                address escrowAddress = escrowsWithRewards[i];
+                usdcRewards += CspEscrow(escrowAddress).virtualWalletBalance(
+                    nodeAddress
+                );
+            }
+
+            // Calculate R1 rewards from USDC rewards using Uniswap
+            if (usdcRewards > 0) {
+                address[] memory path = new address[](2);
+                path[0] = usdcToken;
+                path[1] = r1Token;
+
+                try
+                    IUniswapV2Router02(uniswapV2Router).getAmountsOut(
+                        usdcRewards,
+                        path
+                    )
+                returns (uint256[] memory amounts) {
+                    r1Rewards = amounts[1];
+                } catch {
+                    r1Rewards = 0; // If swap calculation fails, set to 0
+                }
+            }
+        }
     }
 
     modifier onlyOracle() {

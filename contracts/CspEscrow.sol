@@ -329,10 +329,6 @@ contract CspEscrow is Initializable {
                 continue;
             }
 
-            INDContract ndContract = INDContract(
-                address(controller.ndContract())
-            );
-
             // Calculate reward per node for this epoch
             uint256 rewardPerNode = job.pricePerEpoch * epochsToAllocate;
             uint256 amountToBurnPerNode = (rewardPerNode * BURN_PERCENTAGE) /
@@ -340,6 +336,9 @@ contract CspEscrow is Initializable {
             uint256 amountRewardsPerNode = rewardPerNode - amountToBurnPerNode;
             uint256 totalRewardsToNodes = amountRewardsPerNode *
                 job.activeNodes.length;
+            INDContract ndContract = INDContract(
+                address(controller.ndContract())
+            );
             for (uint256 j = 0; j < job.activeNodes.length; j++) {
                 address nodeAddress = job.activeNodes[j];
                 virtualWalletBalance[nodeAddress] += amountRewardsPerNode;
