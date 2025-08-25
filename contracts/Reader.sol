@@ -42,6 +42,8 @@ struct LicenseDetails {
     uint256 assignTimestamp;
     address lastClaimOracle;
     bool isBanned;
+    uint256 usdcPoaiRewards;
+    uint256 r1PoaiRewards;
 }
 
 struct OracleDetails {
@@ -83,11 +85,18 @@ interface IMND is IBaseDeed {
     ) external view returns (MNDLicense memory);
 }
 
+interface IPoAIManager {
+    function getNodePoAIRewards(
+        address nodeAddress
+    ) external view returns (uint256 usdcRewards, uint256 r1Rewards);
+}
+
 contract Reader is Initializable {
     IND public ndContract;
     IMND public mndContract;
     Controller public controller;
     R1 public r1Contract;
+    IPoAIManager public poaiManager;
 
     uint256 constant ND_LICENSE_ASSIGNED_TOKENS = 1575_188843457943924200;
     uint256 constant GENESIS_TOKEN_ID = 1;
@@ -96,12 +105,14 @@ contract Reader is Initializable {
         address _ndContract,
         address _mndContract,
         address _controller,
-        address _r1Contract
+        address _r1Contract,
+        address _poaiManager
     ) public initializer {
         ndContract = IND(_ndContract);
         mndContract = IMND(_mndContract);
         controller = Controller(_controller);
         r1Contract = R1(_r1Contract);
+        poaiManager = IPoAIManager(_poaiManager);
     }
 
     function setController(address _controller) public {
@@ -114,10 +125,23 @@ contract Reader is Initializable {
         r1Contract = R1(_r1Contract);
     }
 
+    function setPoAIManager(address _poaiManager) public {
+        require(address(poaiManager) == address(0), "PoAI Manager already set");
+        poaiManager = IPoAIManager(_poaiManager);
+    }
+
     function getNdLicenseDetails(
         uint256 licenseId
     ) public view returns (LicenseDetails memory) {
         NDLicense memory ndLicense = ndContract.licenses(licenseId);
+        // Get PoAI rewards for this node
+        uint256 usdcPoaiRewards = 0;
+        uint256 r1PoaiRewards = 0;
+        if (ndLicense.nodeAddress != address(0)) {
+            (usdcPoaiRewards, r1PoaiRewards) = poaiManager.getNodePoAIRewards(
+                ndLicense.nodeAddress
+            );
+        }
         return
             LicenseDetails(
                 LicenseType.ND,
@@ -129,7 +153,9 @@ contract Reader is Initializable {
                 ndLicense.lastClaimEpoch,
                 ndLicense.assignTimestamp,
                 ndLicense.lastClaimOracle,
-                ndLicense.isBanned
+                ndLicense.isBanned,
+                usdcPoaiRewards,
+                r1PoaiRewards
             );
     }
 
@@ -150,7 +176,9 @@ contract Reader is Initializable {
                 mndLicense.lastClaimEpoch,
                 mndLicense.assignTimestamp,
                 mndLicense.lastClaimOracle,
-                false
+                false,
+                0,
+                0
             );
     }
 
@@ -176,7 +204,9 @@ contract Reader is Initializable {
                 0,
                 0,
                 address(0),
-                false
+                false,
+                0,
+                0
             );
     }
 
