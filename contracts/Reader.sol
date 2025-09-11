@@ -58,6 +58,19 @@ struct AddressBalances {
     uint256 r1Balance;
 }
 
+struct MndDetails {
+    uint256 licenseId;
+    address owner;
+    address nodeAddress;
+    uint256 totalAssignedAmount;
+    uint256 totalClaimedAmount;
+    uint256 firstMiningEpoch;
+    uint256 lastClaimEpoch;
+    uint256 assignTimestamp;
+    address lastClaimOracle;
+    uint256 remainingAmount;
+}
+
 interface IBaseDeed {
     function nodeToLicenseId(address node) external view returns (uint256);
 
@@ -71,6 +84,8 @@ interface IBaseDeed {
     ) external view returns (uint256);
 
     function totalSupply() external view returns (uint256);
+
+    function tokenByIndex(uint256 index) external view returns (uint256);
 }
 
 interface IND is IBaseDeed {
@@ -236,6 +251,34 @@ contract Reader is Initializable {
         returns (uint256 mndSupply, uint256 ndSupply)
     {
         return (mndContract.totalSupply(), ndContract.totalSupply());
+    }
+
+    function getAllMndsDetails()
+        public
+        view
+        returns (MndDetails[] memory mnds)
+    {
+        uint256 supply = mndContract.totalSupply();
+        mnds = new MndDetails[](supply);
+        for (uint256 i = 0; i < supply; i++) {
+            uint256 licenseId = mndContract.tokenByIndex(i);
+            MNDLicense memory lic = mndContract.licenses(licenseId);
+            address owner = mndContract.ownerOf(licenseId);
+            mnds[i] = MndDetails({
+                licenseId: licenseId,
+                owner: owner,
+                nodeAddress: lic.nodeAddress,
+                totalAssignedAmount: lic.totalAssignedAmount,
+                totalClaimedAmount: lic.totalClaimedAmount,
+                firstMiningEpoch: lic.firstMiningEpoch,
+                lastClaimEpoch: lic.lastClaimEpoch,
+                assignTimestamp: lic.assignTimestamp,
+                lastClaimOracle: lic.lastClaimOracle,
+                remainingAmount: lic.totalAssignedAmount -
+                    lic.totalClaimedAmount
+            });
+        }
+        return mnds;
     }
 
     function getNodeLicenseDetailsByNode(
