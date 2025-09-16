@@ -71,7 +71,9 @@ async function resolveImplementationAddress(
   const address = receipt.contractAddress ?? result.to;
 
   if (!address) {
-    throw new Error("Could not determine implementation address from deployment response");
+    throw new Error(
+      "Could not determine implementation address from deployment response"
+    );
   }
 
   return ethers.utils.getAddress(address);
@@ -143,7 +145,9 @@ async function main() {
         continue;
       }
 
-      console.log(`✅ New implementation deployed at: ${newImplementationAddress}`);
+      console.log(
+        `✅ New implementation deployed at: ${newImplementationAddress}`
+      );
 
       const data = proxyAdminContract!.interface.encodeFunctionData("upgrade", [
         targetAddress,
@@ -196,7 +200,9 @@ async function main() {
         continue;
       }
 
-      console.log(`✅ New implementation deployed at: ${newImplementationAddress}`);
+      console.log(
+        `✅ New implementation deployed at: ${newImplementationAddress}`
+      );
 
       const data = beacon.interface.encodeFunctionData("upgradeTo", [
         newImplementationAddress,
@@ -236,6 +242,12 @@ async function main() {
     }
 
     safeTransactions.push(safeTx);
+  }
+
+  console.log("----------------------------------------------------");
+  if (safeTransactions.length === 0) {
+    console.log("No upgrades were prepared. Exiting.");
+    return;
   }
 
   const safeBatch = {

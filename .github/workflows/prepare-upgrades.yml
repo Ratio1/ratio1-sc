@@ -74,19 +74,12 @@ jobs:
           echo "OPENZEPPELIN_FILE=$OPENZEPPELIN_FILE" >> "$GITHUB_ENV"
           npx hardhat run --network "$NETWORK_NAME" scripts/ci/prepare-upgrade-txs.ts
 
-      - name: Collect OpenZeppelin manifest
-        if: steps.gate.outputs.skip != 'true'
-        run: |
-          mkdir -p "${OUTPUT_DIR}/openzeppelin"
-          cp ".openzeppelin/${OPENZEPPELIN_FILE}" "${OUTPUT_DIR}/openzeppelin/${OPENZEPPELIN_FILE}"
-
       - name: Upload upgrade artifacts
         if: steps.gate.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.stage }}-upgrade-artifacts
           path: ${{ env.OUTPUT_DIR }}
-          if-no-files-found: error
 
       - name: Commit manifest updates
         if: steps.gate.outputs.skip != 'true'
