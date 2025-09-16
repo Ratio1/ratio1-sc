@@ -679,10 +679,6 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         }
     }
 
-    function testVersion() external pure returns (uint256) {
-        return 2;
-    }
-
     modifier onlyOracle() {
         address[] memory oracles = controller.getOracles();
         require(_isOracle(msg.sender, oracles), "Not an oracle");
