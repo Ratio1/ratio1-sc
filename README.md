@@ -74,7 +74,7 @@ This repository contains all the smart contracts for the Ratio1 Ecosystem.
 The project is configured for the Base mainnet and Base Sepolia testnet in `hardhat.config.ts`.  
 Set your environment variables for deployment:
 
-- `BE_SIGNER_PRIVATE_KEY` – Private key of the deployer
+- `SIGNER_PRIVATE_KEY` – Private key of the deployer
 - `ETHERSCAN_API_KEY` – For contract verification
 
 ### Deploying Contracts
@@ -103,3 +103,24 @@ You can also run tests with gas reporting:
 ```sh
 REPORT_GAS=true npx hardhat test
 ```
+
+## CI/CD Pipeline
+
+GitHub Actions automates contract compilation, testing, and upgrade preparation.
+
+- **Triggers**
+  - `dev` branch push → prepares Devnet upgrades on Base Sepolia.
+  - `main` branch push → prepares Mainnet (Base) and Testnet (Base Sepolia) upgrades.
+- **Secrets** (Settings → Secrets and variables → Actions → Repository secrets)
+  - `SIGNER_PRIVATE_KEY` – deployer key used for `prepareUpgrade` transactions.
+  - `ETHERSCAN_API_KEY` – required for automatic Basescan/Base Sepolia verification.
+- **Variables** (Settings → Secrets and variables → Actions → Repository variables)
+  - `DEVNET_SAFE_ADDRESS`, `TESTNET_SAFE_ADDRESS`, `MAINNET_SAFE_ADDRESS` – SAFE multisig per environment.
+  - `DEVNET_UPGRADE_TARGETS`, `TESTNET_UPGRADE_TARGETS`, `MAINNET_UPGRADE_TARGETS` – comma or newline separated list using `ContractName:0xAddress[:proxy|beacon]`. The `:proxy`/`:beacon` suffix is optional (defaults to `proxy`). Example: `CspEscrow:0x01eafd...:beacon`.
+
+Each workflow run compiles contracts, executes `scripts/ci/prepare-upgrade-txs.ts`, verifies new implementations on Basescan/Base Sepolia when the API key is configured, and uploads artifacts containing:
+
+- `safe-transactions/<stage>/upgrade-*.json` – multisig-ready upgrade payloads (including Safe Transaction Builder metadata).
+- `safe-transactions/<stage>/openzeppelin/` – updated `.openzeppelin` manifest for the targeted network (e.g., `base.json`, `base-sepolia.json`).
+
+Download the artifact from the workflow run summary to retrieve the implementation addresses and Safe transaction data for submission to the multisig.

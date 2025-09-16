@@ -9,8 +9,9 @@ import "@typechain/hardhat";
 import { config as dotEnvConfig } from "dotenv";
 dotEnvConfig();
 
-const BE_SIGNER_PRIVATE_KEY = process.env.BE_SIGNER_PRIVATE_KEY || "";
+const SIGNER_PRIVATE_KEY = process.env.SIGNER_PRIVATE_KEY || "";
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || "";
+const accounts = SIGNER_PRIVATE_KEY ? [SIGNER_PRIVATE_KEY] : undefined;
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -33,12 +34,12 @@ const config: HardhatUserConfig = {
     baseSepolia: {
       chainId: 84532,
       url: "https://base-sepolia-rpc.publicnode.com",
-      accounts: [BE_SIGNER_PRIVATE_KEY],
+      accounts,
     },
     base: {
       chainId: 8453,
       url: "https://mainnet.base.org",
-      accounts: [BE_SIGNER_PRIVATE_KEY],
+      accounts,
     },
   },
   /*gasReporter: {

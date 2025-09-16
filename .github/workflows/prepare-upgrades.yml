@@ -1,0 +1,134 @@
+name: Prepare Upgrade Transactions
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+env:
+  HARDHAT_DISABLE_TELEMETRY: "1"
+
+jobs:
+  checks:
+    name: Install and Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile contracts
+        run: npx hardhat compile
+
+      - name: Run tests
+        run: npm test
+
+  devnet-upgrades:
+    name: Prepare Devnet Upgrades
+    if: github.ref == 'refs/heads/dev'
+    needs: checks
+    runs-on: ubuntu-latest
+    env:
+      UPGRADE_STAGE: devnet
+      OUTPUT_DIR: safe-transactions/devnet
+      SAFE_ADDRESS: ${{ vars.DEVNET_SAFE_ADDRESS }}
+      UPGRADE_TARGETS: ${{ vars.DEVNET_UPGRADE_TARGETS }}
+      SIGNER_PRIVATE_KEY: ${{ secrets.SIGNER_PRIVATE_KEY }}
+      ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+      OPENZEPPELIN_FILE: base-sepolia.json
+      VERIFY_ON_ETHERSCAN: "true"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile contracts
+        run: npx hardhat compile
+
+      - name: Prepare upgrade transactions
+        run: npx hardhat run --network baseSepolia scripts/ci/prepare-upgrade-txs.ts
+
+      - name: Collect OpenZeppelin manifest
+        run: |
+          mkdir -p "${OUTPUT_DIR}/openzeppelin"
+          cp ".openzeppelin/${OPENZEPPELIN_FILE}" "${OUTPUT_DIR}/openzeppelin/${OPENZEPPELIN_FILE}"
+
+      - name: Upload upgrade artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: devnet-upgrade-artifacts
+          path: ${{ env.OUTPUT_DIR }}
+          if-no-files-found: error
+
+  release-upgrades:
+    name: Prepare ${{ matrix.stage }} Upgrades
+    if: github.ref == 'refs/heads/main'
+    needs: checks
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        stage: [mainnet, testnet]
+    env:
+      UPGRADE_STAGE: ${{ matrix.stage }}
+      OUTPUT_DIR: safe-transactions/${{ matrix.stage }}
+      SAFE_ADDRESS: ${{ matrix.stage == 'mainnet' && vars.MAINNET_SAFE_ADDRESS || vars.TESTNET_SAFE_ADDRESS }}
+      UPGRADE_TARGETS: ${{ matrix.stage == 'mainnet' && vars.MAINNET_UPGRADE_TARGETS || vars.TESTNET_UPGRADE_TARGETS }}
+      SIGNER_PRIVATE_KEY: ${{ secrets.SIGNER_PRIVATE_KEY }}
+      ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+      OPENZEPPELIN_FILE: ${{ matrix.stage == 'mainnet' && 'base.json' || 'base-sepolia.json' }}
+      VERIFY_ON_ETHERSCAN: "true"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile contracts
+        run: npx hardhat compile
+
+      - name: Prepare upgrade transactions
+        run: |
+          if [ "${{ matrix.stage }}" = "mainnet" ]; then
+            NETWORK_NAME="base"
+          else
+            NETWORK_NAME="baseSepolia"
+          fi
+          echo "Using Hardhat network: $NETWORK_NAME"
+          npx hardhat run --network "$NETWORK_NAME" scripts/ci/prepare-upgrade-txs.ts
+
+      - name: Collect OpenZeppelin manifest
+        run: |
+          mkdir -p "${OUTPUT_DIR}/openzeppelin"
+          cp ".openzeppelin/${OPENZEPPELIN_FILE}" "${OUTPUT_DIR}/openzeppelin/${OPENZEPPELIN_FILE}"
+
+      - name: Upload upgrade artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.stage }}-upgrade-artifacts
+          path: ${{ env.OUTPUT_DIR }}
+          if-no-files-found: error
