@@ -15,41 +15,12 @@ interface SafeTransaction {
   to: string;
   value: string;
   data: string;
-  operation: number;
   contractMethod: {
     name: string;
     payable: boolean;
     inputs: Array<{ name: string; type: string }>;
   };
   contractInputsValues: Record<string, string>;
-}
-
-interface UpgradeSummary {
-  stage: string;
-  network: string;
-  chainId: number;
-  safeAddress: string;
-  generatedAt: string;
-  upgrades: Array<{
-    contract: string;
-    target: string;
-    kind: UpgradeKind;
-    previousImplementation: string;
-    newImplementation: string;
-    proxyAdmin?: string;
-    safeTransaction: SafeTransaction;
-  }>;
-  safeTxBuilder: {
-    version: string;
-    chainId: number;
-    createdAt: string;
-    meta: {
-      stage: string;
-      network: string;
-    };
-    safeAddress: string;
-    transactions: SafeTransaction[];
-  };
 }
 
 function parseTargets(rawTargets: string | undefined): UpgradeTarget[] {
@@ -89,6 +60,23 @@ function parseTargets(rawTargets: string | undefined): UpgradeTarget[] {
   return targets;
 }
 
+async function resolveImplementationAddress(
+  result: DeployImplementationResponse
+): Promise<string> {
+  if (typeof result === "string") {
+    return ethers.utils.getAddress(result);
+  }
+
+  const receipt = await result.wait();
+  const address = receipt.contractAddress ?? result.to;
+
+  if (!address) {
+    throw new Error("Could not determine implementation address from deployment response");
+  }
+
+  return ethers.utils.getAddress(address);
+}
+
 async function main() {
   const stage = (process.env.UPGRADE_STAGE ?? network.name).toLowerCase();
   const outputDir =
@@ -100,15 +88,14 @@ async function main() {
 
   const safeAddress = ethers.utils.getAddress(safeAddressEnv);
   const targets = parseTargets(process.env.UPGRADE_TARGETS);
-  const timestamp = new Date().toISOString();
   const providerNetwork = await ethers.provider.getNetwork();
   const chainId = providerNetwork.chainId;
   const verifySetting = (process.env.VERIFY_ON_ETHERSCAN ?? "").toLowerCase();
   const shouldVerify = ["1", "true", "yes"].includes(verifySetting);
+  const createdAt = Date.now();
 
   mkdirSync(outputDir, { recursive: true });
 
-  const upgradesData: UpgradeSummary["upgrades"] = [];
   const safeTransactions: SafeTransaction[] = [];
 
   let proxyAdminContract:
@@ -127,7 +114,7 @@ async function main() {
 
     let previousImplementation: string;
     let newImplementation: DeployImplementationResponse;
-    let adminAddress: string | undefined;
+    let newImplementationAddress: string;
     let safeTx: SafeTransaction;
 
     if (target.kind === "proxy") {
@@ -142,27 +129,31 @@ async function main() {
       console.log(`Previous implementation: ${previousImplementation}`);
 
       newImplementation = await upgrades.prepareUpgrade(targetAddress, factory);
-      if (newImplementation === previousImplementation) {
+      newImplementationAddress = await resolveImplementationAddress(
+        newImplementation
+      );
+
+      if (
+        ethers.utils.getAddress(previousImplementation) ===
+        newImplementationAddress
+      ) {
         console.log(
           `🔄 New implementation is the same as the previous one for ${target.contract} at ${targetAddress}. Skipping...`
         );
         continue;
       }
 
-      console.log(`✅ New implementation deployed at: ${newImplementation}`);
-
-      adminAddress = proxyAdminAddress;
+      console.log(`✅ New implementation deployed at: ${newImplementationAddress}`);
 
       const data = proxyAdminContract!.interface.encodeFunctionData("upgrade", [
         targetAddress,
-        newImplementation,
+        newImplementationAddress,
       ]);
 
       safeTx = {
         to: proxyAdminAddress!,
         value: "0",
         data,
-        operation: 0,
         contractMethod: {
           name: "upgrade",
           payable: false,
@@ -173,7 +164,7 @@ async function main() {
         },
         contractInputsValues: {
           proxy: targetAddress,
-          implementation: newImplementation.toString(),
+          implementation: newImplementationAddress,
         },
       };
     } else {
@@ -191,31 +182,37 @@ async function main() {
           kind: "beacon",
         }
       );
-      if (newImplementation === previousImplementation) {
+      newImplementationAddress = await resolveImplementationAddress(
+        newImplementation
+      );
+
+      if (
+        ethers.utils.getAddress(previousImplementation) ===
+        newImplementationAddress
+      ) {
         console.log(
           `🔄 New implementation is the same as the previous one for ${target.contract} at ${targetAddress}. Skipping...`
         );
         continue;
       }
 
-      console.log(`✅ New implementation deployed at: ${newImplementation}`);
+      console.log(`✅ New implementation deployed at: ${newImplementationAddress}`);
 
       const data = beacon.interface.encodeFunctionData("upgradeTo", [
-        newImplementation.toString(),
+        newImplementationAddress,
       ]);
 
       safeTx = {
         to: targetAddress,
         value: "0",
         data,
-        operation: 0,
         contractMethod: {
           name: "upgradeTo",
           payable: false,
           inputs: [{ name: "newImplementation", type: "address" }],
         },
         contractInputsValues: {
-          newImplementation: newImplementation.toString(),
+          newImplementation: newImplementationAddress,
         },
       };
     }
@@ -226,53 +223,38 @@ async function main() {
           `Verifying implementation for ${target.contract} on block explorer`
         );
         await run("verify:verify", {
-          address: newImplementation,
+          address: newImplementationAddress,
           constructorArguments: [],
         });
-        console.log(`Verification successful for ${newImplementation}`);
+        console.log(`Verification successful for ${newImplementationAddress}`);
       } catch (error) {
         console.warn(
-          `Verification skipped or failed for ${newImplementation}:`,
+          `Verification skipped or failed for ${newImplementationAddress}:`,
           (error as Error).message ?? error
         );
       }
     }
 
-    upgradesData.push({
-      contract: target.contract,
-      target: targetAddress,
-      kind: target.kind,
-      previousImplementation,
-      newImplementation: newImplementation.toString(),
-      proxyAdmin: adminAddress,
-      safeTransaction: safeTx,
-    });
-
     safeTransactions.push(safeTx);
   }
 
-  const summary: UpgradeSummary = {
-    stage,
-    network: network.name,
-    chainId,
-    safeAddress,
-    generatedAt: timestamp,
-    upgrades: upgradesData,
-    safeTxBuilder: {
-      version: "1.0",
-      chainId,
-      createdAt: timestamp,
-      meta: {
-        stage,
-        network: network.name,
-      },
-      safeAddress,
-      transactions: safeTransactions,
+  const safeBatch = {
+    version: "1.0",
+    chainId: chainId.toString(),
+    createdAt,
+    meta: {
+      name: `Ratio1 ${stage} upgrades`,
+      description: "",
+      txBuilderVersion: "1.0.0",
+      createdFromSafeAddress: safeAddress,
+      createdFromOwnerAddress: "",
+      checksum: "",
     },
+    transactions: safeTransactions,
   };
 
   const filePath = path.join(outputDir, `upgrade-${stage}-${Date.now()}.json`);
-  writeFileSync(filePath, JSON.stringify(summary, null, 2));
+  writeFileSync(filePath, JSON.stringify(safeBatch, null, 2));
   console.log(`Upgrade data written to ${filePath}`);
 }
 
