@@ -680,7 +680,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     }
 
     function testVersion() external pure returns (uint256) {
-        return 1;
+        return 2;
     }
 
     modifier onlyOracle() {

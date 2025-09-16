@@ -118,6 +118,7 @@ async function main() {
 
   for (const target of targets) {
     const targetAddress = ethers.utils.getAddress(target.target);
+    console.log(`----------------------------------------------------`);
     console.log(
       `Preparing ${target.kind} upgrade for ${target.contract} at ${targetAddress}`
     );
@@ -143,12 +144,12 @@ async function main() {
       newImplementation = await upgrades.prepareUpgrade(targetAddress, factory);
       if (newImplementation === previousImplementation) {
         console.log(
-          `New implementation is the same as the previous one for ${target.contract} at ${targetAddress}. Skipping...`
+          `🔄 New implementation is the same as the previous one for ${target.contract} at ${targetAddress}. Skipping...`
         );
         continue;
       }
 
-      console.log(`New implementation deployed at: ${newImplementation}`);
+      console.log(`✅ New implementation deployed at: ${newImplementation}`);
 
       adminAddress = proxyAdminAddress;
 
@@ -192,12 +193,12 @@ async function main() {
       );
       if (newImplementation === previousImplementation) {
         console.log(
-          `New implementation is the same as the previous one for ${target.contract} at ${targetAddress}. Skipping...`
+          `🔄 New implementation is the same as the previous one for ${target.contract} at ${targetAddress}. Skipping...`
         );
         continue;
       }
 
-      console.log(`New implementation deployed at: ${newImplementation}`);
+      console.log(`✅ New implementation deployed at: ${newImplementation}`);
 
       const data = beacon.interface.encodeFunctionData("upgradeTo", [
         newImplementation.toString(),

@@ -7,6 +7,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 env:
   HARDHAT_DISABLE_TELEMETRY: "1"
 
@@ -78,6 +81,18 @@ jobs:
           path: ${{ env.OUTPUT_DIR }}
           if-no-files-found: error
 
+      - name: Commit manifest updates
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ".openzeppelin/${OPENZEPPELIN_FILE}"
+          if git diff --cached --quiet; then
+            echo "No manifest changes to commit"
+          else
+            git commit -m "chore: update ${UPGRADE_STAGE} manifest [skip ci]"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+
   release-upgrades:
     name: Prepare ${{ matrix.stage }} Upgrades
     if: github.ref == 'refs/heads/main'
@@ -86,6 +101,7 @@ jobs:
     strategy:
       matrix:
         stage: [mainnet, testnet]
+      max-parallel: 1
     env:
       UPGRADE_STAGE: ${{ matrix.stage }}
       OUTPUT_DIR: safe-transactions/${{ matrix.stage }}
@@ -132,3 +148,15 @@ jobs:
           name: ${{ matrix.stage }}-upgrade-artifacts
           path: ${{ env.OUTPUT_DIR }}
           if-no-files-found: error
+
+      - name: Commit manifest updates
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ".openzeppelin/${OPENZEPPELIN_FILE}"
+          if git diff --cached --quiet; then
+            echo "No manifest changes to commit"
+          else
+            git commit -m "chore: update ${UPGRADE_STAGE} manifest [skip ci]"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
