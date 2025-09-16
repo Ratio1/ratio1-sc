@@ -1,0 +1,95 @@
+name: Prepare Upgrade Transactions
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  HARDHAT_DISABLE_TELEMETRY: "1"
+
+jobs:
+  upgrades:
+    name: Prepare ${{ matrix.stage }} Upgrades
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        stage: [devnet, testnet, mainnet]
+      max-parallel: 1
+    env:
+      UPGRADE_STAGE: ${{ matrix.stage }}
+      SAFE_ADDRESS: ${{ matrix.stage == 'mainnet' && vars.MAINNET_SAFE_ADDRESS || matrix.stage == 'testnet' && vars.TESTNET_SAFE_ADDRESS || vars.DEVNET_SAFE_ADDRESS }}
+      UPGRADE_TARGETS: ${{ matrix.stage == 'mainnet' && vars.MAINNET_UPGRADE_TARGETS || matrix.stage == 'testnet' && vars.TESTNET_UPGRADE_TARGETS || vars.DEVNET_UPGRADE_TARGETS }}
+      SIGNER_PRIVATE_KEY: ${{ secrets.SIGNER_PRIVATE_KEY }}
+      ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+      VERIFY_ON_ETHERSCAN: "true"
+    steps:
+      - name: Determine matrix skip
+        id: gate
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/dev" ] && [ "${{ matrix.stage }}" != "devnet" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+      - name: Checkout repository
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        if: steps.gate.outputs.skip != 'true'
+        run: npm ci
+
+      - name: Compile contracts
+        if: steps.gate.outputs.skip != 'true'
+        run: npx hardhat compile
+
+      - name: Prepare upgrade transactions
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          case "${{ matrix.stage }}" in
+            devnet|testnet)
+              NETWORK_NAME="baseSepolia"
+              OUTPUT_DIR="safe-transactions/${{ matrix.stage }}"
+              OPENZEPPELIN_FILE="base-sepolia.json"
+              ;;
+            *)
+              NETWORK_NAME="base"
+              OUTPUT_DIR="safe-transactions/${{ matrix.stage }}"
+              OPENZEPPELIN_FILE="base.json"
+              ;;
+          esac
+          echo "OUTPUT_DIR=$OUTPUT_DIR" >> "$GITHUB_ENV"
+          echo "OPENZEPPELIN_FILE=$OPENZEPPELIN_FILE" >> "$GITHUB_ENV"
+          npx hardhat run --network "$NETWORK_NAME" scripts/ci/prepare-upgrade-txs.ts
+
+      - name: Upload upgrade artifacts
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.stage }}-upgrade-artifacts
+          path: ${{ env.OUTPUT_DIR }}
+
+      - name: Commit manifest updates
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ".openzeppelin/${OPENZEPPELIN_FILE}"
+          if git diff --cached --quiet; then
+            echo "No manifest changes to commit"
+          else
+            git commit -m "chore: update ${UPGRADE_STAGE} manifest [skip ci]"
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi

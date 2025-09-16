@@ -36,30 +36,36 @@ uint256 constant JOB_TYPE_N_ULTRA = 20;
 // GPU job types
 uint256 constant JOB_TYPE_G_ENTRY_MED1 = 21;
 uint256 constant JOB_TYPE_G_ENTRY_MED2 = 22;
-uint256 constant JOB_TYPE_G_ENTRY_HIGH1 = 23;
-uint256 constant JOB_TYPE_G_ENTRY_HIGH2 = 24;
-uint256 constant JOB_TYPE_G_ENTRY_ULTRA1 = 25;
-uint256 constant JOB_TYPE_G_ENTRY_ULTRA2 = 26;
-uint256 constant JOB_TYPE_G_ENTRY_N_ENTRY = 27;
-uint256 constant JOB_TYPE_G_ENTRY_N_MED1 = 28;
-uint256 constant JOB_TYPE_G_ENTRY_N_MED2 = 29;
-uint256 constant JOB_TYPE_G_ENTRY_N_HIGH = 30;
-uint256 constant JOB_TYPE_G_ENTRY_N_ULTRA = 31;
+uint256 constant JOB_TYPE_G_ENTRY_N_ENTRY = 23;
+uint256 constant JOB_TYPE_G_ENTRY_N_MED1 = 24;
 
-uint256 constant JOB_TYPE_G_MED_MED2 = 32;
-uint256 constant JOB_TYPE_G_MED_HIGH1 = 33;
-uint256 constant JOB_TYPE_G_MED_HIGH2 = 34;
-uint256 constant JOB_TYPE_G_MED_ULTRA1 = 35;
-uint256 constant JOB_TYPE_G_MED_ULTRA2 = 36;
-uint256 constant JOB_TYPE_G_MED_N_MED1 = 37;
-uint256 constant JOB_TYPE_G_MED_N_MED2 = 38;
-uint256 constant JOB_TYPE_G_MED_N_HIGH = 39;
-uint256 constant JOB_TYPE_G_MED_N_ULTRA = 40;
+uint256 constant JOB_TYPE_G_MED_MED2 = 25;
+uint256 constant JOB_TYPE_G_MED_HIGH1 = 26;
+uint256 constant JOB_TYPE_G_MED_HIGH2 = 27;
+uint256 constant JOB_TYPE_G_MED_ULTRA1 = 28;
+uint256 constant JOB_TYPE_G_MED_N_MED1 = 29;
+uint256 constant JOB_TYPE_G_MED_N_MED2 = 30;
+uint256 constant JOB_TYPE_G_MED_N_HIGH = 31;
+
+uint256 constant JOB_TYPE_G_HIGH_HIGH2 = 32;
+uint256 constant JOB_TYPE_G_HIGH_ULTRA1 = 33;
+uint256 constant JOB_TYPE_G_HIGH_ULTRA2 = 34;
+uint256 constant JOB_TYPE_G_HIGH_N_MED2 = 35;
+uint256 constant JOB_TYPE_G_HIGH_N_HIGH = 36;
+uint256 constant JOB_TYPE_G_HIGH_N_ULTRA = 37;
+
+uint256 constant JOB_TYPE_G_ULTRA_ULTRA1 = 38;
+uint256 constant JOB_TYPE_G_ULTRA_ULTRA2 = 39;
+uint256 constant JOB_TYPE_G_ULTRA_N_ULTRA = 40;
 
 interface IPoAIManager {
     function getNewJobId() external returns (uint256);
     function registerNodeWithRewards(address nodeAddress) external;
     function removeNodeFromRewardsList(address nodeAddress) external;
+}
+
+interface INDContract {
+    function getNodeOwner(address nodeAddress) external view returns (address);
 }
 
 struct JobDetails {
@@ -123,15 +129,17 @@ contract CspEscrow is Initializable {
     );
     event JobStarted(uint256 indexed jobId, uint256 startTimestamp);
     event NodesUpdated(uint256 indexed jobId, address[] activeNodes);
-    event RewardsClaimed(
+    event RewardsClaimedV2(
         address indexed nodeAddr,
         address indexed nodeOwner,
-        uint256 totalAmount
+        uint256 usdcAmount,
+        uint256 r1Amount
     );
-    event RewardsAllocated(
+    event RewardsAllocatedV2(
         uint256 indexed jobId,
-        address[] activeNodes,
-        uint256 totalAmount
+        address nodeAddress,
+        address nodeOwner,
+        uint256 usdcAmount
     );
     event TokensBurned(uint256 usdcAmount, uint256 r1Amount);
 
@@ -274,7 +282,12 @@ contract CspEscrow is Initializable {
         require(r1TokensToSend > 0, "Swap failed");
         r1Token.transfer(nodeOwner, r1TokensToSend);
 
-        emit RewardsClaimed(nodeAddr, nodeOwner, claimableAmount);
+        emit RewardsClaimedV2(
+            nodeAddr,
+            nodeOwner,
+            claimableAmount,
+            r1TokensToSend
+        );
         return claimableAmount;
     }
 
@@ -325,12 +338,22 @@ contract CspEscrow is Initializable {
             uint256 amountRewardsPerNode = rewardPerNode - amountToBurnPerNode;
             uint256 totalRewardsToNodes = amountRewardsPerNode *
                 job.activeNodes.length;
+            INDContract ndContract = INDContract(
+                address(controller.ndContract())
+            );
             for (uint256 j = 0; j < job.activeNodes.length; j++) {
-                virtualWalletBalance[
-                    job.activeNodes[j]
-                ] += amountRewardsPerNode;
+                address nodeAddress = job.activeNodes[j];
+                virtualWalletBalance[nodeAddress] += amountRewardsPerNode;
                 // Register node with rewards in PoAI Manager
-                poaiManager.registerNodeWithRewards(job.activeNodes[j]);
+                poaiManager.registerNodeWithRewards(nodeAddress);
+                // Emit event for rewards allocation
+                address nodeOwner = ndContract.getNodeOwner(nodeAddress);
+                emit RewardsAllocatedV2(
+                    jobId,
+                    nodeAddress,
+                    nodeOwner,
+                    totalRewardsToNodes
+                );
             }
 
             // Add to total burn amount
@@ -340,9 +363,6 @@ contract CspEscrow is Initializable {
             job.lastAllocatedEpoch = lastEpoch;
 
             require(job.balance >= 0, "No balance left"); //TODO will change in V2
-
-            // Emit event for rewards allocation
-            emit RewardsAllocated(jobId, job.activeNodes, totalRewardsToNodes);
         }
 
         // Burn 15% of total rewards by swapping USDC for R1 and burning R1
@@ -448,53 +468,55 @@ contract CspEscrow is Initializable {
 
     // Get price for job type (pure function, no storage) - prices in USDC (6 decimals)
     function getPriceForJobType(uint256 jobType) public pure returns (uint256) {
-        if (jobType == JOB_TYPE_ENTRY) return 375000; // $11.25/month
-        if (jobType == JOB_TYPE_LOW1) return 750000; // $22.5/month
-        if (jobType == JOB_TYPE_LOW2) return 1000000; // $30/month
-        if (jobType == JOB_TYPE_MED1) return 1916666; // $57.5/month
-        if (jobType == JOB_TYPE_MED2) return 2916666; // $87.5/month
-        if (jobType == JOB_TYPE_HIGH1) return 3750000; // $112.5/month
-        if (jobType == JOB_TYPE_HIGH2) return 5333333; // $160/month
-        if (jobType == JOB_TYPE_ULTRA1) return 8333333; // $250/month
-        if (jobType == JOB_TYPE_ULTRA2) return 12500000; // $375/month
+        if (jobType == JOB_TYPE_ENTRY) return 375_000; // $11.25/month
+        if (jobType == JOB_TYPE_LOW1) return 750_000; // $22.5/month
+        if (jobType == JOB_TYPE_LOW2) return 1_000_000; // $30/month
+        if (jobType == JOB_TYPE_MED1) return 1_916_666; // $57.5/month
+        if (jobType == JOB_TYPE_MED2) return 2_916_666; // $87.5/month
+        if (jobType == JOB_TYPE_HIGH1) return 3_750_000; // $112.5/month
+        if (jobType == JOB_TYPE_HIGH2) return 5_333_333; // $160/month
+        if (jobType == JOB_TYPE_ULTRA1) return 8_333_333; // $250/month
+        if (jobType == JOB_TYPE_ULTRA2) return 12_500_000; // $375/month
 
         // Services
-        if (jobType == JOB_TYPE_PGSQL_LOW) return 1000000; // $30/month
-        if (jobType == JOB_TYPE_PGSQL_MED) return 2166666; // $65/month
-        if (jobType == JOB_TYPE_MYSQL_LOW) return 1000000; // $30/month
-        if (jobType == JOB_TYPE_MYSQL_MED) return 2166666; // $65/month
-        if (jobType == JOB_TYPE_NOSQL_LOW) return 1000000; // $30/month
-        if (jobType == JOB_TYPE_NOSQL_MED) return 2166666; // $65/month
+        if (jobType == JOB_TYPE_PGSQL_LOW) return 1_000_000; // $30/month
+        if (jobType == JOB_TYPE_PGSQL_MED) return 2_166_666; // $65/month
+        if (jobType == JOB_TYPE_MYSQL_LOW) return 1_000_000; // $30/month
+        if (jobType == JOB_TYPE_MYSQL_MED) return 2_166_666; // $65/month
+        if (jobType == JOB_TYPE_NOSQL_LOW) return 1_000_000; // $30/month
+        if (jobType == JOB_TYPE_NOSQL_MED) return 2_166_666; // $65/month
 
         // Native Apps
-        if (jobType == JOB_TYPE_N_ENTRY) return 2500000; // $75/month
-        if (jobType == JOB_TYPE_N_MED1) return 3750000; // $112.5/month
-        if (jobType == JOB_TYPE_N_MED2) return 6000000; // $180/month
-        if (jobType == JOB_TYPE_N_HIGH) return 9000000; // $270/month
-        if (jobType == JOB_TYPE_N_ULTRA) return 13333333; // $400/month
+        if (jobType == JOB_TYPE_N_ENTRY) return 2_500_000; // $75/month
+        if (jobType == JOB_TYPE_N_MED1) return 3_750_000; // $112.5/month
+        if (jobType == JOB_TYPE_N_MED2) return 6_000_000; // $180/month
+        if (jobType == JOB_TYPE_N_HIGH) return 9_000_000; // $270/month
+        if (jobType == JOB_TYPE_N_ULTRA) return 13_333_333; // $400/month
 
         // GPU Apps
-        if (jobType == JOB_TYPE_G_ENTRY_MED1) return 3116666; // $93.5/month
-        if (jobType == JOB_TYPE_G_ENTRY_MED2) return 4116666; // $123.5/month
-        if (jobType == JOB_TYPE_G_ENTRY_HIGH1) return 4950000; // $148.5/month
-        if (jobType == JOB_TYPE_G_ENTRY_HIGH2) return 6533333; // $196/month
-        if (jobType == JOB_TYPE_G_ENTRY_ULTRA1) return 9533333; // $286/month
-        if (jobType == JOB_TYPE_G_ENTRY_ULTRA2) return 13700000; // $411/month
-        if (jobType == JOB_TYPE_G_ENTRY_N_ENTRY) return 3700000; // $111/month
-        if (jobType == JOB_TYPE_G_ENTRY_N_MED1) return 4950000; // $148.5/month
-        if (jobType == JOB_TYPE_G_ENTRY_N_MED2) return 7200000; // $216/month
-        if (jobType == JOB_TYPE_G_ENTRY_N_HIGH) return 10200000; // $306/month
-        if (jobType == JOB_TYPE_G_ENTRY_N_ULTRA) return 14533333; // $436/month
+        if (jobType == JOB_TYPE_G_ENTRY_MED1) return 3_116_666; // $57.5 + $36 = $93.5/month
+        if (jobType == JOB_TYPE_G_ENTRY_MED2) return 4_116_666; // $87.5 + $36 = $123.5/month
+        if (jobType == JOB_TYPE_G_ENTRY_N_ENTRY) return 3_700_000; // $75 + $36 = $111/month
+        if (jobType == JOB_TYPE_G_ENTRY_N_MED1) return 4_950_000; // $112.5 + $36 = $148.5/month
 
-        if (jobType == JOB_TYPE_G_MED_MED2) return 5316666; // $159.5/month
-        if (jobType == JOB_TYPE_G_MED_HIGH1) return 6150000; // $184.5/month
-        if (jobType == JOB_TYPE_G_MED_HIGH2) return 7733333; // $232/month
-        if (jobType == JOB_TYPE_G_MED_ULTRA1) return 10733333; // $322/month
-        if (jobType == JOB_TYPE_G_MED_ULTRA2) return 14900000; // $447/month
-        if (jobType == JOB_TYPE_G_MED_N_MED1) return 4950000; // $148.5/month
-        if (jobType == JOB_TYPE_G_MED_N_MED2) return 6533333; // $196/month
-        if (jobType == JOB_TYPE_G_MED_N_HIGH) return 9533333; // $286/month
-        if (jobType == JOB_TYPE_G_MED_N_ULTRA) return 13700000; // $411/month
+        if (jobType == JOB_TYPE_G_MED_MED2) return 5_316_666; // $87.5 + $72 = $159.5/month
+        if (jobType == JOB_TYPE_G_MED_HIGH1) return 6_150_000; // $112.5 + $72 = $184.5/month
+        if (jobType == JOB_TYPE_G_MED_HIGH2) return 7_733_333; // $160 + $72 = $232/month
+        if (jobType == JOB_TYPE_G_MED_ULTRA1) return 10_733_333; // $250 + $72 = $322/month
+        if (jobType == JOB_TYPE_G_MED_N_MED1) return 6_150_000; // $112.5 + $72 = $184.5/month
+        if (jobType == JOB_TYPE_G_MED_N_MED2) return 8_400_000; // $180 + $72 = $252/month
+        if (jobType == JOB_TYPE_G_MED_N_HIGH) return 11_400_000; // $270 + $72 = $342/month
+
+        if (jobType == JOB_TYPE_G_HIGH_HIGH2) return 10_133_333; // $160 + $144 = $304/month
+        if (jobType == JOB_TYPE_G_HIGH_ULTRA1) return 13_133_333; // $250 + $144 = $394/month
+        if (jobType == JOB_TYPE_G_HIGH_ULTRA2) return 17_300_000; // $375 + $144 = $519/month
+        if (jobType == JOB_TYPE_G_HIGH_N_MED2) return 10_800_000; // $180 + $144 = $324/month
+        if (jobType == JOB_TYPE_G_HIGH_N_HIGH) return 13_800_000; // $270 + $144 = $414/month
+        if (jobType == JOB_TYPE_G_HIGH_N_ULTRA) return 18_133_333; // $400 + $144 = $544/month
+
+        if (jobType == JOB_TYPE_G_ULTRA_ULTRA1) return 38_333_333; // $250 + $900 = $1150/month
+        if (jobType == JOB_TYPE_G_ULTRA_ULTRA2) return 42_500_000; // $375 + $900 = $1275/month
+        if (jobType == JOB_TYPE_G_ULTRA_N_ULTRA) return 43_333_333; // $400 + $900 = $1300/month
 
         revert("Invalid job type");
     }

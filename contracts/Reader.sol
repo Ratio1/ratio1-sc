@@ -42,6 +42,8 @@ struct LicenseDetails {
     uint256 assignTimestamp;
     address lastClaimOracle;
     bool isBanned;
+    uint256 usdcPoaiRewards;
+    uint256 r1PoaiRewards;
 }
 
 struct OracleDetails {
@@ -54,6 +56,19 @@ struct AddressBalances {
     address addr;
     uint256 ethBalance;
     uint256 r1Balance;
+}
+
+struct MndDetails {
+    uint256 licenseId;
+    address owner;
+    address nodeAddress;
+    uint256 totalAssignedAmount;
+    uint256 totalClaimedAmount;
+    uint256 firstMiningEpoch;
+    uint256 lastClaimEpoch;
+    uint256 assignTimestamp;
+    address lastClaimOracle;
+    uint256 remainingAmount;
 }
 
 interface IBaseDeed {
@@ -69,6 +84,8 @@ interface IBaseDeed {
     ) external view returns (uint256);
 
     function totalSupply() external view returns (uint256);
+
+    function tokenByIndex(uint256 index) external view returns (uint256);
 }
 
 interface IND is IBaseDeed {
@@ -83,11 +100,18 @@ interface IMND is IBaseDeed {
     ) external view returns (MNDLicense memory);
 }
 
+interface IPoAIManager {
+    function getNodePoAIRewards(
+        address nodeAddress
+    ) external view returns (uint256 usdcRewards, uint256 r1Rewards);
+}
+
 contract Reader is Initializable {
     IND public ndContract;
     IMND public mndContract;
     Controller public controller;
     R1 public r1Contract;
+    IPoAIManager public poaiManager;
 
     uint256 constant ND_LICENSE_ASSIGNED_TOKENS = 1575_188843457943924200;
     uint256 constant GENESIS_TOKEN_ID = 1;
@@ -96,12 +120,14 @@ contract Reader is Initializable {
         address _ndContract,
         address _mndContract,
         address _controller,
-        address _r1Contract
+        address _r1Contract,
+        address _poaiManager
     ) public initializer {
         ndContract = IND(_ndContract);
         mndContract = IMND(_mndContract);
         controller = Controller(_controller);
         r1Contract = R1(_r1Contract);
+        poaiManager = IPoAIManager(_poaiManager);
     }
 
     function setController(address _controller) public {
@@ -114,10 +140,23 @@ contract Reader is Initializable {
         r1Contract = R1(_r1Contract);
     }
 
+    function setPoAIManager(address _poaiManager) public {
+        require(address(poaiManager) == address(0), "PoAI Manager already set");
+        poaiManager = IPoAIManager(_poaiManager);
+    }
+
     function getNdLicenseDetails(
         uint256 licenseId
     ) public view returns (LicenseDetails memory) {
         NDLicense memory ndLicense = ndContract.licenses(licenseId);
+        // Get PoAI rewards for this node
+        uint256 usdcPoaiRewards = 0;
+        uint256 r1PoaiRewards = 0;
+        if (ndLicense.nodeAddress != address(0)) {
+            (usdcPoaiRewards, r1PoaiRewards) = poaiManager.getNodePoAIRewards(
+                ndLicense.nodeAddress
+            );
+        }
         return
             LicenseDetails(
                 LicenseType.ND,
@@ -129,7 +168,9 @@ contract Reader is Initializable {
                 ndLicense.lastClaimEpoch,
                 ndLicense.assignTimestamp,
                 ndLicense.lastClaimOracle,
-                ndLicense.isBanned
+                ndLicense.isBanned,
+                usdcPoaiRewards,
+                r1PoaiRewards
             );
     }
 
@@ -150,7 +191,9 @@ contract Reader is Initializable {
                 mndLicense.lastClaimEpoch,
                 mndLicense.assignTimestamp,
                 mndLicense.lastClaimOracle,
-                false
+                false,
+                0,
+                0
             );
     }
 
@@ -176,7 +219,9 @@ contract Reader is Initializable {
                 0,
                 0,
                 address(0),
-                false
+                false,
+                0,
+                0
             );
     }
 
@@ -206,6 +251,34 @@ contract Reader is Initializable {
         returns (uint256 mndSupply, uint256 ndSupply)
     {
         return (mndContract.totalSupply(), ndContract.totalSupply());
+    }
+
+    function getAllMndsDetails()
+        public
+        view
+        returns (MndDetails[] memory mnds)
+    {
+        uint256 supply = mndContract.totalSupply();
+        mnds = new MndDetails[](supply);
+        for (uint256 i = 0; i < supply; i++) {
+            uint256 licenseId = mndContract.tokenByIndex(i);
+            MNDLicense memory lic = mndContract.licenses(licenseId);
+            address owner = mndContract.ownerOf(licenseId);
+            mnds[i] = MndDetails({
+                licenseId: licenseId,
+                owner: owner,
+                nodeAddress: lic.nodeAddress,
+                totalAssignedAmount: lic.totalAssignedAmount,
+                totalClaimedAmount: lic.totalClaimedAmount,
+                firstMiningEpoch: lic.firstMiningEpoch,
+                lastClaimEpoch: lic.lastClaimEpoch,
+                assignTimestamp: lic.assignTimestamp,
+                lastClaimOracle: lic.lastClaimOracle,
+                remainingAmount: lic.totalAssignedAmount -
+                    lic.totalClaimedAmount
+            });
+        }
+        return mnds;
     }
 
     function getNodeLicenseDetailsByNode(

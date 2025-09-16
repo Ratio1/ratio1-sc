@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import "./Controller.sol";
 import "./CspEscrow.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 struct NDLicense {
     uint256 licenseId;
@@ -69,6 +70,11 @@ struct JobWithAllDetails {
     address escrowOwner;
 }
 
+struct CspWithOwner {
+    address cspAddress;
+    address cspOwner;
+}
+
 contract PoAIManager is Initializable, OwnableUpgradeable {
     //..######..########..#######..########.....###.....######...########
     //.##....##....##....##.....##.##.....##...##.##...##....##..##......
@@ -110,6 +116,10 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     uint256[] public unvalidatedJobIds;
     // Mapping to track if a job is already in the unvalidated list
     mapping(uint256 => bool) public isJobUnvalidated;
+    // Mapping to track when consensus was last reached for each job (for cooldown period)
+    mapping(uint256 => uint256) public jobConsensusTimestamp;
+    // Cooldown period after consensus (5 minutes)
+    uint256 public constant CONSENSUS_COOLDOWN_PERIOD = 300;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -126,12 +136,33 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         address indexed nodeOwner,
         uint256 totalAmount
     );
-    event NodeUpdateSubmitted(
+    event NodeUpdateSubmittedV2(
         uint256 indexed jobId,
         address indexed oracle,
+        address[] newActiveNodes,
         bytes32 nodesHash
     );
-    event ConsensusReached(uint256 indexed jobId, address[] activeNodes);
+    event ConsensusReachedV2(
+        uint256 indexed jobId,
+        address[] activeNodes,
+        address[] participants
+    );
+    event ConsensusCooldownEnforced(
+        uint256 indexed jobId,
+        address indexed oracle,
+        uint256 remainingCooldownTime
+    );
+    event ConsensusNotEnoughSubmissions(
+        uint256 indexed jobId,
+        uint256 oraclesCount,
+        uint256 proposalsCount
+    );
+    event ConsensusNotReached(
+        uint256 indexed jobId,
+        uint256 oraclesCount,
+        uint256 proposalsCount,
+        uint256 maxAgreementCount
+    );
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -229,6 +260,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     // Claim rewards for a node owner across all CSPs
     function claimRewardsForNode(address nodeAddr) external {
         address nodeOwner = ndContract.getNodeOwner(nodeAddr);
+        require(nodeOwner == msg.sender, "Not the owner of the node");
         address[] memory escrows = nodeToEscrowsWithRewards[nodeAddr];
         uint256 totalClaimed = 0;
 
@@ -240,6 +272,24 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         }
 
         emit RewardsClaimed(nodeAddr, nodeOwner, totalClaimed);
+    }
+
+    function claimRewardsForNodes(address[] memory nodeAddrs) external {
+        for (uint256 i = 0; i < nodeAddrs.length; i++) {
+            address nodeAddr = nodeAddrs[i];
+            address nodeOwner = ndContract.getNodeOwner(nodeAddr);
+            require(nodeOwner == msg.sender, "Not the owner of the node");
+            address[] memory escrows = nodeToEscrowsWithRewards[nodeAddr];
+            uint256 totalClaimed = 0;
+
+            for (uint256 j = 0; j < escrows.length; j++) {
+                address escrowAddress = escrows[j];
+                uint256 claimedAmount = CspEscrow(escrowAddress)
+                    .claimRewardsForNode(nodeAddr, nodeOwner);
+                totalClaimed += claimedAmount;
+            }
+            emit RewardsClaimed(nodeAddr, nodeOwner, totalClaimed);
+        }
     }
 
     // Submit node update for consensus (called by oracles)
@@ -258,13 +308,23 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         for (uint256 i = 0; i < proposals.length; i++) {
             require(proposals[i].proposer != sender, "Already submitted");
         }
-        // Check if the nodes are not the same as the current active nodes
+        // Check if the nodes are the same as the current active nodes
         bytes32 newActiveNodesHash = keccak256(abi.encode(newActiveNodes));
         JobWithAllDetails memory jobDetails = getJobDetails(jobId);
+        //do not open a new consensus session if the node is reporting the same nodes (probably a late oracle)
+        if (
+            !isJobUnvalidated[jobId] &&
+            keccak256(abi.encode(jobDetails.activeNodes)) == newActiveNodesHash
+        ) {
+            return;
+        }
+        // Check if we're in the cooldown period after consensus
         require(
-            keccak256(abi.encode(jobDetails.activeNodes)) != newActiveNodesHash,
-            "New proposed nodes are the same as current"
+            block.timestamp - jobConsensusTimestamp[jobId] >=
+                CONSENSUS_COOLDOWN_PERIOD,
+            "Consensus cooldown not expired"
         );
+
         proposals.push(
             NodesTransitionProposal({
                 proposer: sender,
@@ -279,12 +339,23 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             isJobUnvalidated[jobId] = true;
         }
 
-        emit NodeUpdateSubmitted(jobId, sender, newActiveNodesHash);
+        emit NodeUpdateSubmittedV2(
+            jobId,
+            sender,
+            newActiveNodes,
+            newActiveNodesHash
+        );
 
         // Check if we have enough submissions to attempt consensus
         uint256 requiredSubmissions = (oracles.length / 2) + 1; // 50% + 1
         if (proposals.length >= requiredSubmissions) {
             _attemptConsensus(jobId, oracles.length, proposals);
+        } else {
+            emit ConsensusNotEnoughSubmissions(
+                jobId,
+                oracles.length,
+                proposals.length
+            );
         }
     }
 
@@ -318,17 +389,49 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         // Check if we have enough consensus (33% + 1)
         uint256 requiredConsensus = (oraclesCount / 3) + 1;
         if (maxCount >= requiredConsensus) {
-            address escrowAddress = jobIdToEscrow[jobId];
-            CspEscrow(escrowAddress).updateActiveNodes(
-                jobId,
-                mostCommonNewActiveNodes
+            JobWithAllDetails memory jobDetails = getJobDetails(jobId);
+            bytes32 newActiveNodesHash = keccak256(
+                abi.encode(mostCommonNewActiveNodes)
             );
-            emit ConsensusReached(jobId, mostCommonNewActiveNodes);
+            // Get participants
+            address[] memory participants = new address[](maxCount);
+            uint256 addedParticipants = 0;
+            for (uint256 i = 0; i < proposals.length; i++) {
+                if (proposals[i].newActiveNodesHash == newActiveNodesHash) {
+                    participants[addedParticipants] = proposals[i].proposer;
+                    addedParticipants++;
+                }
+            }
+            emit ConsensusReachedV2(
+                jobId,
+                mostCommonNewActiveNodes,
+                participants
+            );
             uint256 currentEpoch = getCurrentEpoch();
             delete nodesTransactionProposals[jobId][currentEpoch];
+            // Set consensus timestamp for cooldown period
+            jobConsensusTimestamp[jobId] = block.timestamp;
 
             // Remove job from unvalidated list
             _removeJobFromUnvalidatedList(jobId);
+            // Update active nodes on the escrow if they are different
+            if (
+                keccak256(abi.encode(jobDetails.activeNodes)) !=
+                newActiveNodesHash
+            ) {
+                address escrowAddress = jobIdToEscrow[jobId];
+                CspEscrow(escrowAddress).updateActiveNodes(
+                    jobId,
+                    mostCommonNewActiveNodes
+                );
+            }
+        } else {
+            emit ConsensusNotReached(
+                jobId,
+                oraclesCount,
+                proposals.length,
+                maxCount
+            );
         }
     }
 
@@ -447,6 +550,22 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         return allEscrows;
     }
 
+    function getAllCspsWithOwner()
+        external
+        view
+        returns (CspWithOwner[] memory)
+    {
+        uint256 escrowCount = allEscrows.length;
+        CspWithOwner[] memory cspsWithOwner = new CspWithOwner[](escrowCount);
+        for (uint256 i = 0; i < escrowCount; i++) {
+            cspsWithOwner[i] = CspWithOwner({
+                cspAddress: allEscrows[i],
+                cspOwner: escrowToOwner[allEscrows[i]]
+            });
+        }
+        return cspsWithOwner;
+    }
+
     // Get escrows with rewards for a specific node
     function getEscrowsWithRewardsForNode(
         address nodeAddress
@@ -502,6 +621,62 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
 
     function getIsLastEpochAllocated() external view returns (bool) {
         return lastAllocatedEpoch >= getCurrentEpoch() - 1;
+    }
+
+    // Get remaining cooldown time for a specific job after consensus
+    function getRemainingCooldownTime(
+        uint256 jobId
+    ) external view returns (uint256) {
+        uint256 lastConsensusTime = jobConsensusTimestamp[jobId];
+        if (lastConsensusTime == 0) {
+            return 0; // No consensus reached yet
+        }
+        uint256 timeSinceConsensus = block.timestamp - lastConsensusTime;
+        if (timeSinceConsensus >= CONSENSUS_COOLDOWN_PERIOD) {
+            return 0; // Cooldown period has expired
+        }
+        return CONSENSUS_COOLDOWN_PERIOD - timeSinceConsensus;
+    }
+
+    // Get PoAI rewards for a specific node
+    function getNodePoAIRewards(
+        address nodeAddress
+    ) external view returns (uint256 usdcRewards, uint256 r1Rewards) {
+        usdcRewards = 0;
+        r1Rewards = 0;
+
+        if (nodeAddress != address(0)) {
+            // Get all escrows with rewards for this node
+            address[] memory escrowsWithRewards = nodeToEscrowsWithRewards[
+                nodeAddress
+            ];
+
+            // Sum up virtual wallet balances from all escrows
+            for (uint256 i = 0; i < escrowsWithRewards.length; i++) {
+                address escrowAddress = escrowsWithRewards[i];
+                usdcRewards += CspEscrow(escrowAddress).virtualWalletBalance(
+                    nodeAddress
+                );
+            }
+
+            // Calculate R1 rewards from USDC rewards using Uniswap
+            if (usdcRewards > 0) {
+                address[] memory path = new address[](2);
+                path[0] = usdcToken;
+                path[1] = r1Token;
+
+                try
+                    IUniswapV2Router02(uniswapV2Router).getAmountsOut(
+                        usdcRewards,
+                        path
+                    )
+                returns (uint256[] memory amounts) {
+                    r1Rewards = amounts[1];
+                } catch {
+                    r1Rewards = 0; // If swap calculation fails, set to 0
+                }
+            }
+        }
     }
 
     modifier onlyOracle() {

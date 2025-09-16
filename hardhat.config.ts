@@ -9,11 +9,9 @@ import "solidity-coverage";
 import { config as dotEnvConfig } from "dotenv";
 dotEnvConfig();
 
-const BE_SIGNER_PRIVATE_KEY = process.env.BE_SIGNER_PRIVATE_KEY || "";
-const ETHERSCAN_API_KEY =
-  process.env.ETHERSCAN_API_KEY || "YF24C96CAMZQIQ1TZV5Q21J1XQWDWDRT93";
-const COINMARKETCAP_API_KEY =
-  process.env.COINMARKETCAP_API_KEY || "fe216009-c5aa-4629-874e-f43901af5108";
+const SIGNER_PRIVATE_KEY = process.env.SIGNER_PRIVATE_KEY || "";
+const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || "";
+const accounts = SIGNER_PRIVATE_KEY ? [SIGNER_PRIVATE_KEY] : undefined;
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -32,6 +30,16 @@ const config: HardhatUserConfig = {
     hardhat: {
       chainId: 1337,
       initialDate: "2025-02-02T15:00:00Z",
+    },
+    baseSepolia: {
+      chainId: 84532,
+      url: "https://base-sepolia-rpc.publicnode.com",
+      accounts,
+    },
+    base: {
+      chainId: 8453,
+      url: "https://mainnet.base.org",
+      accounts,
     },
   },
   gasReporter: {
