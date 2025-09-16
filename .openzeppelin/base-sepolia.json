@@ -11257,7 +11257,7 @@
             "label": "_R1Token",
             "offset": 1,
             "slot": "2",
-            "type": "t_contract(R1)27504",
+            "type": "t_contract(R1)27496",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:108"
           },
@@ -11455,7 +11455,7 @@
             "label": "contract IUniswapV2Router02",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)27504": {
+          "t_contract(R1)27496": {
             "label": "contract R1",
             "numberOfBytes": "20"
           },
@@ -12654,7 +12654,7 @@
             "label": "ndContract",
             "offset": 0,
             "slot": "0",
-            "type": "t_contract(IND)27657",
+            "type": "t_contract(IND)27649",
             "contract": "Reader",
             "src": "contracts/Reader.sol:110"
           },
@@ -12662,7 +12662,7 @@
             "label": "mndContract",
             "offset": 0,
             "slot": "1",
-            "type": "t_contract(IMND)27668",
+            "type": "t_contract(IMND)27660",
             "contract": "Reader",
             "src": "contracts/Reader.sol:111"
           },
@@ -12678,7 +12678,7 @@
             "label": "r1Contract",
             "offset": 0,
             "slot": "3",
-            "type": "t_contract(R1)27504",
+            "type": "t_contract(R1)27496",
             "contract": "Reader",
             "src": "contracts/Reader.sol:113"
           },
@@ -12686,7 +12686,7 @@
             "label": "poaiManager",
             "offset": 0,
             "slot": "4",
-            "type": "t_contract(IPoAIManager)27678",
+            "type": "t_contract(IPoAIManager)27670",
             "contract": "Reader",
             "src": "contracts/Reader.sol:114"
           }
@@ -12696,19 +12696,19 @@
             "label": "contract Controller",
             "numberOfBytes": "20"
           },
-          "t_contract(IMND)27668": {
+          "t_contract(IMND)27660": {
             "label": "contract IMND",
             "numberOfBytes": "20"
           },
-          "t_contract(IND)27657": {
+          "t_contract(IND)27649": {
             "label": "contract IND",
             "numberOfBytes": "20"
           },
-          "t_contract(IPoAIManager)27678": {
+          "t_contract(IPoAIManager)27670": {
             "label": "contract IPoAIManager",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)27504": {
+          "t_contract(R1)27496": {
             "label": "contract R1",
             "numberOfBytes": "20"
           },
@@ -12787,7 +12787,7 @@
             "label": "_R1Token",
             "offset": 0,
             "slot": "5",
-            "type": "t_contract(R1)27504",
+            "type": "t_contract(R1)27496",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:96"
           },
@@ -12913,7 +12913,7 @@
             "label": "contract IND",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)27504": {
+          "t_contract(R1)27496": {
             "label": "contract R1",
             "numberOfBytes": "20"
           },
