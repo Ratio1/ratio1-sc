@@ -152,11 +152,6 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         address indexed oracle,
         uint256 remainingCooldownTime
     );
-    event ConsensusNotEnoughSubmissions(
-        uint256 indexed jobId,
-        uint256 oraclesCount,
-        uint256 proposalsCount
-    );
     event ConsensusNotReached(
         uint256 indexed jobId,
         uint256 oraclesCount,
@@ -350,12 +345,6 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         uint256 requiredSubmissions = (oracles.length / 2) + 1; // 50% + 1
         if (proposals.length >= requiredSubmissions) {
             _attemptConsensus(jobId, oracles.length, proposals);
-        } else {
-            emit ConsensusNotEnoughSubmissions(
-                jobId,
-                oracles.length,
-                proposals.length
-            );
         }
     }
 
