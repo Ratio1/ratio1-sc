@@ -155,8 +155,8 @@ contract MNDContract is
         _R1Token = R1(tokenAddress);
         _controller = Controller(controllerAddress);
 
-        LOGISTIC_PLATEAU = sd(392_778135785707100000); // 392.77
-        K = sd(3e18); // 3
+        LOGISTIC_PLATEAU = sd(300_505239501691000000); // 392.77
+        K = sd(5e18); // 5
         MID_PRC = sd(7e17); // 0.7
 
         // Mint the first Genesis Node Deed
@@ -642,7 +642,7 @@ contract MNDContract is
                 ? license.lastClaimEpoch
                 : license.firstMiningEpoch;
             uint256 claimableEpochs = (currentEpoch < firstEpochToClaim ||
-                license.nodeAddress != address(0))
+                license.nodeAddress == address(0))
                 ? 0
                 : currentEpoch - firstEpochToClaim;
 

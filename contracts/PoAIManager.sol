@@ -152,6 +152,12 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         address indexed oracle,
         uint256 remainingCooldownTime
     );
+    event ConsensusNotReached(
+        uint256 indexed jobId,
+        uint256 oraclesCount,
+        uint256 proposalsCount,
+        uint256 maxAgreementCount
+    );
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -376,18 +382,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             bytes32 newActiveNodesHash = keccak256(
                 abi.encode(mostCommonNewActiveNodes)
             );
-            if (
-                keccak256(abi.encode(jobDetails.activeNodes)) ==
-                newActiveNodesHash
-            ) {
-                return;
-            }
-
-            address escrowAddress = jobIdToEscrow[jobId];
-            CspEscrow(escrowAddress).updateActiveNodes(
-                jobId,
-                mostCommonNewActiveNodes
-            );
+            // Get participants
             address[] memory participants = new address[](maxCount);
             uint256 addedParticipants = 0;
             for (uint256 i = 0; i < proposals.length; i++) {
@@ -403,11 +398,29 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             );
             uint256 currentEpoch = getCurrentEpoch();
             delete nodesTransactionProposals[jobId][currentEpoch];
-
             // Set consensus timestamp for cooldown period
             jobConsensusTimestamp[jobId] = block.timestamp;
+
             // Remove job from unvalidated list
             _removeJobFromUnvalidatedList(jobId);
+            // Update active nodes on the escrow if they are different
+            if (
+                keccak256(abi.encode(jobDetails.activeNodes)) !=
+                newActiveNodesHash
+            ) {
+                address escrowAddress = jobIdToEscrow[jobId];
+                CspEscrow(escrowAddress).updateActiveNodes(
+                    jobId,
+                    mostCommonNewActiveNodes
+                );
+            }
+        } else {
+            emit ConsensusNotReached(
+                jobId,
+                oraclesCount,
+                proposals.length,
+                maxCount
+            );
         }
     }
 

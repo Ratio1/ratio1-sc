@@ -2,7 +2,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { Contract, Signer } from "ethers";
 
-describe.only("PoAIManager", function () {
+describe("PoAIManager", function () {
   let poaiManager: Contract;
   let ndContract: Contract;
   let mndContract: Contract;
