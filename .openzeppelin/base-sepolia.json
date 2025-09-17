@@ -11257,7 +11257,7 @@
             "label": "_R1Token",
             "offset": 1,
             "slot": "2",
-            "type": "t_contract(R1)27429",
+            "type": "t_contract(R1)27412",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:108"
           },
@@ -11455,7 +11455,7 @@
             "label": "contract IUniswapV2Router02",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)27429": {
+          "t_contract(R1)27412": {
             "label": "contract R1",
             "numberOfBytes": "20"
           },
@@ -12654,7 +12654,7 @@
             "label": "ndContract",
             "offset": 0,
             "slot": "0",
-            "type": "t_contract(IND)27582",
+            "type": "t_contract(IND)27565",
             "contract": "Reader",
             "src": "contracts/Reader.sol:110"
           },
@@ -12662,7 +12662,7 @@
             "label": "mndContract",
             "offset": 0,
             "slot": "1",
-            "type": "t_contract(IMND)27593",
+            "type": "t_contract(IMND)27576",
             "contract": "Reader",
             "src": "contracts/Reader.sol:111"
           },
@@ -12678,7 +12678,7 @@
             "label": "r1Contract",
             "offset": 0,
             "slot": "3",
-            "type": "t_contract(R1)27429",
+            "type": "t_contract(R1)27412",
             "contract": "Reader",
             "src": "contracts/Reader.sol:113"
           },
@@ -12686,7 +12686,7 @@
             "label": "poaiManager",
             "offset": 0,
             "slot": "4",
-            "type": "t_contract(IPoAIManager)27603",
+            "type": "t_contract(IPoAIManager)27586",
             "contract": "Reader",
             "src": "contracts/Reader.sol:114"
           }
@@ -12696,19 +12696,19 @@
             "label": "contract Controller",
             "numberOfBytes": "20"
           },
-          "t_contract(IMND)27593": {
+          "t_contract(IMND)27576": {
             "label": "contract IMND",
             "numberOfBytes": "20"
           },
-          "t_contract(IND)27582": {
+          "t_contract(IND)27565": {
             "label": "contract IND",
             "numberOfBytes": "20"
           },
-          "t_contract(IPoAIManager)27603": {
+          "t_contract(IPoAIManager)27586": {
             "label": "contract IPoAIManager",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)27429": {
+          "t_contract(R1)27412": {
             "label": "contract R1",
             "numberOfBytes": "20"
           },
@@ -13452,7 +13452,7 @@
             "label": "r1Token",
             "offset": 0,
             "slot": "3",
-            "type": "t_contract(R1)27429",
+            "type": "t_contract(R1)27412",
             "contract": "CspEscrow",
             "src": "contracts/CspEscrow.sol:106"
           },
@@ -13538,7 +13538,7 @@
             "label": "contract IUniswapV2Router02",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)27429": {
+          "t_contract(R1)27412": {
             "label": "contract R1",
             "numberOfBytes": "20"
           },
@@ -13711,7 +13711,7 @@
             "label": "_R1Token",
             "offset": 0,
             "slot": "5",
-            "type": "t_contract(R1)27429",
+            "type": "t_contract(R1)27412",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:96"
           },
@@ -13837,7 +13837,7 @@
             "label": "contract IND",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)27429": {
+          "t_contract(R1)27412": {
             "label": "contract R1",
             "numberOfBytes": "20"
           },
@@ -14038,6 +14038,292 @@
               "label": "_operatorApprovals",
               "type": "t_mapping(t_address,t_mapping(t_address,t_bool))",
               "src": "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol:38"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73"
+            }
+          ]
+        }
+      }
+    },
+    "8156477cb726344adc867a38ad72c3e92e2462868bb5d27ba8fc1779a6a104b8": {
+      "address": "0x50EDad587C05C234a5ed5333595985C6f84BFd2E",
+      "txHash": "0x9da66ab503033772561b96c71bde1b3ae3acea4296489882897ba08e89bd3be0",
+      "layout": {
+        "solcVersion": "0.8.22",
+        "storage": [
+          {
+            "label": "cspEscrowBeacon",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(UpgradeableBeacon)3395",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:88"
+          },
+          {
+            "label": "ndContract",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_contract(IND)25345",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:89"
+          },
+          {
+            "label": "mndContract",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_contract(IMND)25355",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:90"
+          },
+          {
+            "label": "controller",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_contract(Controller)19026",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:91"
+          },
+          {
+            "label": "usdcToken",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_address",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:92"
+          },
+          {
+            "label": "r1Token",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_address",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:93"
+          },
+          {
+            "label": "uniswapV2Router",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_address",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:94"
+          },
+          {
+            "label": "uniswapV2Pair",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_address",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:95"
+          },
+          {
+            "label": "nextJobId",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_uint256",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:97"
+          },
+          {
+            "label": "lastAllocatedEpoch",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_uint256",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:98"
+          },
+          {
+            "label": "allEscrows",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_array(t_address)dyn_storage",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:100"
+          },
+          {
+            "label": "ownerToEscrow",
+            "offset": 0,
+            "slot": "11",
+            "type": "t_mapping(t_address,t_address)",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:102"
+          },
+          {
+            "label": "escrowToOwner",
+            "offset": 0,
+            "slot": "12",
+            "type": "t_mapping(t_address,t_address)",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:104"
+          },
+          {
+            "label": "jobIdToEscrow",
+            "offset": 0,
+            "slot": "13",
+            "type": "t_mapping(t_uint256,t_address)",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:106"
+          },
+          {
+            "label": "nodeToEscrowsWithRewards",
+            "offset": 0,
+            "slot": "14",
+            "type": "t_mapping(t_address,t_array(t_address)dyn_storage)",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:108"
+          },
+          {
+            "label": "nodesTransactionProposals",
+            "offset": 0,
+            "slot": "15",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25363_storage)dyn_storage))",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:112"
+          },
+          {
+            "label": "unvalidatedJobIds",
+            "offset": 0,
+            "slot": "16",
+            "type": "t_array(t_uint256)dyn_storage",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:116"
+          },
+          {
+            "label": "isJobUnvalidated",
+            "offset": 0,
+            "slot": "17",
+            "type": "t_mapping(t_uint256,t_bool)",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:118"
+          },
+          {
+            "label": "jobConsensusTimestamp",
+            "offset": 0,
+            "slot": "18",
+            "type": "t_mapping(t_uint256,t_uint256)",
+            "contract": "PoAIManager",
+            "src": "contracts/PoAIManager.sol:120"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_struct(NodesTransitionProposal)25363_storage)dyn_storage": {
+            "label": "struct NodesTransitionProposal[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)dyn_storage": {
+            "label": "uint256[]",
+            "numberOfBytes": "32"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(Controller)19026": {
+            "label": "contract Controller",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IMND)25355": {
+            "label": "contract IMND",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IND)25345": {
+            "label": "contract IND",
+            "numberOfBytes": "20"
+          },
+          "t_contract(UpgradeableBeacon)3395": {
+            "label": "contract UpgradeableBeacon",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_address)": {
+            "label": "mapping(address => address)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_array(t_address)dyn_storage)": {
+            "label": "mapping(address => address[])",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_address)": {
+            "label": "mapping(uint256 => address)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25363_storage)dyn_storage)": {
+            "label": "mapping(uint256 => struct NodesTransitionProposal[])",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_bool)": {
+            "label": "mapping(uint256 => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25363_storage)dyn_storage))": {
+            "label": "mapping(uint256 => mapping(uint256 => struct NodesTransitionProposal[]))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_uint256)": {
+            "label": "mapping(uint256 => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(NodesTransitionProposal)25363_storage": {
+            "label": "struct NodesTransitionProposal",
+            "members": [
+              {
+                "label": "proposer",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "newActiveNodes",
+                "type": "t_array(t_address)dyn_storage",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "newActiveNodesHash",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24"
             }
           ],
           "erc7201:openzeppelin.storage.Initializable": [
