@@ -51,7 +51,7 @@ const EXPECTED_LICENSE_INFO = {
   lastClaimOracle: "0x0000000000000000000000000000000000000000",
 };
 
-describe.only("MNDContract", function () {
+describe("MNDContract", function () {
   /*
     .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
     .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -326,7 +326,7 @@ describe.only("MNDContract", function () {
     expect([]).to.deep.equal(result);
   });
 
-  it.only("Get licenses - genesis license", async function () {
+  it("Get licenses - genesis license", async function () {
     const nodeAddress = "0x0000000000000000000000000000000000000010";
     await mndContract
       .connect(owner)
