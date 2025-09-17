@@ -2,7 +2,6 @@ import "@nomiclabs/hardhat-ethers";
 import "@nomiclabs/hardhat-waffle";
 import "@openzeppelin/hardhat-upgrades";
 import "@typechain/hardhat";
-//import "@nomicfoundation/hardhat-toolbox";
 import "hardhat-gas-reporter";
 import { HardhatUserConfig } from "hardhat/types/config";
 import "solidity-coverage";
@@ -49,12 +48,35 @@ const config: HardhatUserConfig = {
     token: "ETH",
     L2: "base",
     trackGasDeltas: true,
-    //coinmarketcap: COINMARKETCAP_API_KEY,
     etherscan: ETHERSCAN_API_KEY,
   },
   mocha: {
     timeout: 480000,
     parallel: false,
+  },
+  etherscan: {
+    apiKey: {
+      baseSepolia: ETHERSCAN_API_KEY,
+      base: ETHERSCAN_API_KEY,
+    },
+    customChains: [
+      {
+        network: "baseSepolia",
+        chainId: 84532,
+        urls: {
+          apiURL: "https://api-sepolia.basescan.org/api",
+          browserURL: "https://sepolia.basescan.org",
+        },
+      },
+      {
+        network: "base",
+        chainId: 8453,
+        urls: {
+          apiURL: "https://api.basescan.org/api",
+          browserURL: "https://basescan.org",
+        },
+      },
+    ],
   },
 };
 

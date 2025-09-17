@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers, upgrades } from "hardhat";
+import { ethers, network, upgrades } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import {
   R1,
@@ -7,7 +7,9 @@ import {
   Controller,
   Reader,
   MNDContract,
+  PoAIManager,
 } from "../../typechain-types";
+import { Contract } from "ethers";
 const BigNumber = ethers.BigNumber;
 
 /*
@@ -45,10 +47,13 @@ describe("Reader contract", function () {
   let snapshotId: string;
   let ndContract: NDContract;
   let mndContract: MNDContract;
+  let poaiManager: Contract;
   let firstUser: SignerWithAddress;
   let oracle_assignation_timestamp: number;
 
   before(async function () {
+    await network.provider.request({ method: "hardhat_reset", params: [] });
+
     const [deployer, user1, backendSigner] = await ethers.getSigners();
     owner = deployer;
     firstUser = user1;
@@ -125,13 +130,37 @@ describe("Reader contract", function () {
       BigNumber.from(500).mul(10).pow(18)
     );
 
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const cspEscrowImplementation = await CspEscrow.deploy();
+    await cspEscrowImplementation.deployed();
+
+    const PoAIManager = await ethers.getContractFactory("PoAIManager");
+    poaiManager = await upgrades.deployProxy(
+      PoAIManager,
+      [
+        cspEscrowImplementation.address,
+        ndContract.address,
+        mndContract.address,
+        controllerContract.address,
+        usdcContract.address,
+        r1Contract.address,
+        uniswapMockRouterContract.address,
+        uniswapMockPairContract.address,
+        await owner.getAddress(),
+      ],
+      { initializer: "initialize" }
+    );
+    await poaiManager.deployed();
+
     const ReaderContract = await ethers.getContractFactory("Reader");
     reader = await ReaderContract.deploy();
+
     await reader.initialize(
       ndContract.address,
       mndContract.address,
-      NULL_ADDRESS,
-      NULL_ADDRESS
+      controllerContract.address,
+      r1Contract.address,
+      poaiManager.address
     );
 
     snapshotId = await ethers.provider.send("evm_snapshot", []);
@@ -285,28 +314,6 @@ describe("Reader contract", function () {
     ....##....##.......##....##....##....##....##
     ....##....########..######.....##.....######.
     */
-  it("Set controller - should work", async function () {
-    await expect(reader.setController(controllerContract.address)).to.not.be
-      .reverted;
-  });
-
-  it("Set controller - Controller already set", async function () {
-    await reader.setController(controllerContract.address);
-    await expect(
-      reader.setController(controllerContract.address)
-    ).to.be.revertedWith("Controller already set");
-  });
-
-  it("Set R1Contract - should work", async function () {
-    await expect(reader.setR1Contract(r1Contract.address)).to.not.be.reverted;
-  });
-
-  it("Set R1Contract - R1 Contract already set", async function () {
-    await reader.setR1Contract(r1Contract.address);
-    await expect(reader.setR1Contract(r1Contract.address)).to.be.revertedWith(
-      "R1 contract already set"
-    );
-  });
 
   it("Get Nd license - should work", async function () {
     await buyLicenseWithMintAndAllowance(
@@ -646,8 +653,6 @@ describe("Reader contract", function () {
   });
 
   it("Get Oracles details", async function () {
-    await reader.setR1Contract(r1Contract.address);
-    await reader.setController(controllerContract.address);
     let result = await reader.getOraclesDetails();
     const mapped = result.map((oracle) => ({
       oracleAddress: oracle[0],
@@ -665,7 +670,6 @@ describe("Reader contract", function () {
   });
 
   it("Get addresses balances", async function () {
-    await reader.setR1Contract(r1Contract.address);
     let amount = BigNumber.from("10000");
     let decimals = BigNumber.from(10).pow(18);
     await r1Contract.connect(owner).mint(firstUser.address, amount);

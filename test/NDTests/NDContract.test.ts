@@ -1,4 +1,4 @@
-import { expect, use } from "chai";
+import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { R1, NDContract, Controller } from "../../typechain-types";
@@ -148,7 +148,6 @@ describe("NDContract", function () {
 
     const USDCContract = await ethers.getContractFactory("ERC20Mock");
     let usdcContract = await USDCContract.deploy();
-    let decimals = await usdcContract.decimals();
 
     const ControllerContract = await ethers.getContractFactory("Controller");
     controllerContract = await ControllerContract.deploy(
@@ -207,6 +206,29 @@ describe("NDContract", function () {
 
     await r1Contract.setNdContract(ndContract.address);
     await r1Contract.setMndContract(owner.address);
+
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const cspEscrowImplementation = await CspEscrow.deploy();
+    await cspEscrowImplementation.deployed();
+
+    const PoAIManager = await ethers.getContractFactory("PoAIManager");
+    const poaiManager = await upgrades.deployProxy(
+      PoAIManager,
+      [
+        cspEscrowImplementation.address,
+        ndContract.address,
+        mndContract.address,
+        controllerContract.address,
+        usdcContract.address,
+        r1Contract.address,
+        uniswapMockRouterContract.address,
+        uniswapMockPairContract.address,
+        await owner.getAddress(),
+      ],
+      { initializer: "initialize" }
+    );
+    await poaiManager.deployed();
+    await ndContract.setPoAIManager(poaiManager.address);
 
     snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
@@ -601,7 +623,6 @@ describe("NDContract", function () {
       await signAddress(backend, firstUser, invoiceUuid, 10000)
     );
     expect(firstUser.address).to.equal(await ndContract.ownerOf(1));
-    //let newCompanyWalletAmount = await r1Contract.balanceOf(newCompanyWallet);
     let newLpWalletAmount = await r1Contract.balanceOf(newLpWallet);
     expect("100").to.deep.equal(newLpWalletAmount);
   });
@@ -1045,7 +1066,7 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
-    let UserPreviusBalance = await r1Contract.balanceOf(firstUser.address);
+    let userPreviousBalance = await r1Contract.balanceOf(firstUser.address);
     await ndContract
       .connect(firstUser)
       .claimRewards(
@@ -1053,7 +1074,7 @@ describe("NDContract", function () {
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      REWARDS_AMOUNT.add(UserPreviusBalance)
+      REWARDS_AMOUNT.add(userPreviousBalance)
     );
   });
 
@@ -1085,7 +1106,7 @@ describe("NDContract", function () {
       (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
     ]);
     await ethers.provider.send("evm_mine", []);
-    let UserPreviusBalance = await r1Contract.balanceOf(firstUser.address);
+    let userPreviousBalance = await r1Contract.balanceOf(firstUser.address);
     await ndContract.connect(firstUser).claimRewards(
       [
         {
@@ -1102,7 +1123,7 @@ describe("NDContract", function () {
       ]
     );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      BigNumber.from("0").add(UserPreviusBalance)
+      BigNumber.from("0").add(userPreviousBalance)
     );
   });
 
@@ -1253,7 +1274,7 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
-    let UserPreviusBalance = await r1Contract.balanceOf(firstUser.address);
+    let userPreviousBalance = await r1Contract.balanceOf(firstUser.address);
     await ndContract
       .connect(firstUser)
       .claimRewards(
@@ -1266,7 +1287,7 @@ describe("NDContract", function () {
         ]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      REWARDS_AMOUNT.add(UserPreviusBalance)
+      REWARDS_AMOUNT.add(userPreviousBalance)
     );
   });
 
@@ -1381,8 +1402,7 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
-
-    let UserPreviusBalance = await r1Contract.balanceOf(firstUser.address);
+    let userPreviousBalance = await r1Contract.balanceOf(firstUser.address);
     await ndContract
       .connect(firstUser)
       .claimRewards(
@@ -1390,7 +1410,7 @@ describe("NDContract", function () {
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      REWARDS_AMOUNT.add(UserPreviusBalance)
+      REWARDS_AMOUNT.add(userPreviousBalance)
     );
     //should not modify amount
     await ndContract
@@ -1400,7 +1420,7 @@ describe("NDContract", function () {
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      REWARDS_AMOUNT.add(UserPreviusBalance)
+      REWARDS_AMOUNT.add(userPreviousBalance)
     );
   });
 
@@ -1431,7 +1451,7 @@ describe("NDContract", function () {
 
     let expected_result = BigNumber.from("1575188843457943925233");
     //DO TEST
-    let UserPreviusBalance = await r1Contract.balanceOf(firstUser.address);
+    let userPreviousBalance = await r1Contract.balanceOf(firstUser.address);
     await ndContract
       .connect(firstUser)
       .claimRewards(
@@ -1439,7 +1459,7 @@ describe("NDContract", function () {
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      expected_result.add(UserPreviusBalance)
+      expected_result.add(userPreviousBalance)
     );
 
     COMPUTE_PARAMS.epochs = [1830];
@@ -1456,7 +1476,7 @@ describe("NDContract", function () {
         [[Buffer.from(await signComputeParams(backend), "hex")]]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      expected_result.add(UserPreviusBalance) //should not be changed
+      expected_result.add(userPreviousBalance) //should not be changed
     );
   });
 
@@ -1493,7 +1513,7 @@ describe("NDContract", function () {
 
     let expected_result = BigNumber.from("1575188843457943924200");
     //DO TEST
-    let UserPreviusBalance = await r1Contract.balanceOf(firstUser.address);
+    let userPreviousBalance = await r1Contract.balanceOf(firstUser.address);
     await ndContract
       .connect(firstUser)
       .claimRewards(
@@ -1509,7 +1529,7 @@ describe("NDContract", function () {
         ]
       );
     expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      expected_result.add(UserPreviusBalance)
+      expected_result.add(userPreviousBalance)
     );
   });
 
@@ -1719,7 +1739,6 @@ describe("NDContract", function () {
         );
 
         if (units > maxUnits) {
-          console.log("my fault ", signature);
           await buyLicenseWithMintAndAllowance(
             r1Contract,
             ndContract,
@@ -1735,7 +1754,6 @@ describe("NDContract", function () {
           );
           units -= maxUnits;
         } else {
-          console.log("my fault 2 ", signature);
           await buyLicenseWithMintAndAllowance(
             r1Contract,
             ndContract,

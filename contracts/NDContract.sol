@@ -293,9 +293,9 @@ contract NDContract is
         priceTier.soldUnits += mintedTokens.length;
         if (priceTier.soldUnits == priceTier.totalUnits) {
             currentPriceTier++;
-        } /*else if (priceTier.soldUnits > priceTier.totalUnits) {
+        } else if (priceTier.soldUnits > priceTier.totalUnits) {
             revert("Price tier sold more than available units");
-        }*/
+        }
 
         emit LicensesCreated(
             msg.sender,
@@ -634,22 +634,6 @@ contract NDContract is
         );
         return amounts[1];
     }
-
-    /*function swapUsdcForR1(uint256 amount) private returns (uint256) { //TODO never used
-        address[] memory path = new address[](2);
-        path[0] = _usdcAddr;
-        path[1] = address(_R1Token);
-
-        IERC20(_usdcAddr).approve(address(_uniswapV2Router), amount);
-        uint256[] memory amounts = _uniswapV2Router.swapExactTokensForTokens(
-            amount, // Amount of tokens to swap
-            0, // Minimum amount of tokens to receive
-            path, // Path of tokens to swap
-            address(this), // Address to receive the swapped tokens
-            block.timestamp // Deadline
-        );
-        return amounts[1];
-    }*/
 
     function getTokenPrice() public view returns (uint256 price) {
         IUniswapV2Pair pair = IUniswapV2Pair(_uniswapV2Pair);

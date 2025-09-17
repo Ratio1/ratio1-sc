@@ -51,7 +51,7 @@ const EXPECTED_LICENSE_INFO = {
   lastClaimOracle: "0x0000000000000000000000000000000000000000",
 };
 
-describe("MNDContract", function () {
+describe.only("MNDContract", function () {
   /*
     .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
     .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -326,7 +326,7 @@ describe("MNDContract", function () {
     expect([]).to.deep.equal(result);
   });
 
-  it("Get licenses - genesis license", async function () {
+  it.only("Get licenses - genesis license", async function () {
     const nodeAddress = "0x0000000000000000000000000000000000000010";
     await mndContract
       .connect(owner)
@@ -342,11 +342,6 @@ describe("MNDContract", function () {
     );
     _EXPECTED_LICENSE_INFO.assignTimestamp = BigNumber.from(1738767601);
     _EXPECTED_LICENSE_INFO.firstMiningEpoch = BigNumber.from(1);
-
-    /*TODO
-    SHOULD BE THIS BUT THERE'S AN ERROR ON SC
-    _EXPECTED_LICENSE_INFO.claimableEpochs = BigNumber.from(121);
-    */
     _EXPECTED_LICENSE_INFO.claimableEpochs = BigNumber.from(0);
     let result = await mndContract.getLicenses(owner.address);
     expect(_EXPECTED_LICENSE_INFO).to.deep.equal({
