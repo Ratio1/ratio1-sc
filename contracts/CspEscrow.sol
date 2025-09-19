@@ -142,6 +142,7 @@ contract CspEscrow is Initializable {
         uint256 usdcAmount
     );
     event TokensBurned(uint256 usdcAmount, uint256 r1Amount);
+    event JobBalanceReconciled(uint256 indexed jobId, uint256 burnCorrection);
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -338,6 +339,8 @@ contract CspEscrow is Initializable {
             uint256 amountRewardsPerNode = rewardPerNode - amountToBurnPerNode;
             uint256 totalRewardsToNodes = amountRewardsPerNode *
                 job.activeNodes.length;
+            uint256 jobAmountToBurn = amountToBurnPerNode *
+                job.activeNodes.length;
             INDContract ndContract = INDContract(
                 address(controller.ndContract())
             );
@@ -347,19 +350,19 @@ contract CspEscrow is Initializable {
                 // Register node with rewards in PoAI Manager
                 poaiManager.registerNodeWithRewards(nodeAddress);
                 // Emit event for rewards allocation
-                address nodeOwner = ndContract.getNodeOwner(nodeAddress);
+                //address nodeOwner = ndContract.getNodeOwner(nodeAddress);
                 emit RewardsAllocatedV2(
                     jobId,
                     nodeAddress,
-                    nodeOwner,
+                    address(0),
                     totalRewardsToNodes
                 );
             }
 
             // Add to total burn amount
-            totalAmountToBurn += amountToBurnPerNode * job.activeNodes.length;
+            totalAmountToBurn += jobAmountToBurn;
             // Update job balance and last allocated epoch
-            job.balance -= int256(totalRewardsToNodes);
+            job.balance -= int256(totalRewardsToNodes + jobAmountToBurn);
             job.lastAllocatedEpoch = lastEpoch;
 
             require(job.balance >= 0, "No balance left"); //TODO will change in V2
@@ -371,6 +374,42 @@ contract CspEscrow is Initializable {
             require(r1TokensToBurn > 0, "No R1 tokens to burn");
             r1Token.burn(address(this), r1TokensToBurn);
             emit TokensBurned(totalAmountToBurn, r1TokensToBurn);
+        }
+    }
+
+    function reconcileJobsBalance() public onlyPoAIManager {
+        for (uint256 i = 0; i < allJobs.length; i++) {
+            uint256 jobId = allJobs[i];
+            JobDetails storage job = jobDetails[jobId];
+            require(job.id != 0, "Job does not exist");
+            require(job.balance >= 0, "Negative job balance");
+
+            if (job.startTimestamp == 0) {
+                continue;
+            }
+            uint256 startEpoch = _calculateEpoch(job.startTimestamp);
+            require(
+                job.lastExecutionEpoch >= startEpoch,
+                "Invalid execution epoch"
+            );
+            uint256 numberOfEpochsDistributed = job.lastAllocatedEpoch -
+                startEpoch;
+            if (numberOfEpochsDistributed == 0) {
+                continue;
+            }
+            uint256 distributedRewards = job.pricePerEpoch *
+                job.numberOfNodesRequested *
+                numberOfEpochsDistributed;
+
+            uint256 burnCorrection = (distributedRewards * BURN_PERCENTAGE) /
+                BURN_PERCENTAGE;
+            require(
+                int256(burnCorrection) <= job.balance,
+                "Burn exceeds balance"
+            );
+
+            job.balance -= int256(burnCorrection);
+            emit JobBalanceReconciled(jobId, burnCorrection);
         }
     }
 
