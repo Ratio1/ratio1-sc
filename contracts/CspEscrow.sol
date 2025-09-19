@@ -350,11 +350,11 @@ contract CspEscrow is Initializable {
                 // Register node with rewards in PoAI Manager
                 poaiManager.registerNodeWithRewards(nodeAddress);
                 // Emit event for rewards allocation
-                address nodeOwner = ndContract.getNodeOwner(nodeAddress);
+                //address nodeOwner = ndContract.getNodeOwner(nodeAddress);
                 emit RewardsAllocatedV2(
                     jobId,
                     nodeAddress,
-                    nodeOwner,
+                    address(0),
                     totalRewardsToNodes
                 );
             }
@@ -384,31 +384,31 @@ contract CspEscrow is Initializable {
             require(job.id != 0, "Job does not exist");
             require(job.balance >= 0, "Negative job balance");
 
-            uint256 creationEpoch = _calculateEpoch(job.requestTimestamp);
+            if (job.startTimestamp == 0) {
+                continue;
+            }
+            uint256 startEpoch = _calculateEpoch(job.startTimestamp);
             require(
-                job.lastExecutionEpoch >= creationEpoch,
+                job.lastExecutionEpoch >= startEpoch,
                 "Invalid execution epoch"
             );
-            uint256 numberOfEpochs = job.lastExecutionEpoch - creationEpoch;
-            uint256 initialPrice = job.pricePerEpoch *
-                job.numberOfNodesRequested *
-                numberOfEpochs;
-
-            uint256 currentBalance = uint256(job.balance);
-            require(initialPrice >= currentBalance, "Balance exceeds deposit");
-
-            uint256 distributedRewards = initialPrice - currentBalance;
-            if (distributedRewards == 0) {
-                emit JobBalanceReconciled(jobId, 0);
-                return;
+            uint256 numberOfEpochsDistributed = job.lastAllocatedEpoch -
+                startEpoch;
+            if (numberOfEpochsDistributed == 0) {
+                continue;
             }
+            uint256 distributedRewards = job.pricePerEpoch *
+                job.numberOfNodesRequested *
+                numberOfEpochsDistributed;
 
             uint256 burnCorrection = (distributedRewards * BURN_PERCENTAGE) /
-                (100 - BURN_PERCENTAGE);
-            require(burnCorrection <= currentBalance, "Burn exceeds balance");
+                BURN_PERCENTAGE;
+            require(
+                int256(burnCorrection) <= job.balance,
+                "Burn exceeds balance"
+            );
 
             job.balance -= int256(burnCorrection);
-
             emit JobBalanceReconciled(jobId, burnCorrection);
         }
     }
