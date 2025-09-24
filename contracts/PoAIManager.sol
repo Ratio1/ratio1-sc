@@ -120,6 +120,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     mapping(uint256 => uint256) public jobConsensusTimestamp;
     // Cooldown period after consensus (5 minutes)
     uint256 public constant CONSENSUS_COOLDOWN_PERIOD = 300;
+    bool public hasReconciled;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -453,6 +454,16 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             }
         }
         escrows.push(msg.sender);
+    }
+
+    function reconcileAllJobsBalance() external onlyOwner {
+        require(!hasReconciled, "Already reconciled");
+        uint256 escrowCount = allEscrows.length;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            address escrowAddress = allEscrows[i];
+            CspEscrow(escrowAddress).reconcileJobsBalance();
+        }
+        hasReconciled = true;
     }
 
     // Remove a node from the rewards list when rewards are claimed
