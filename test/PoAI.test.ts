@@ -260,6 +260,59 @@ describe("PoAIManager", function () {
     expect(await mockUsdc.balanceOf(escrowAddress)).to.equal(expectedPrice);
   });
 
+  it("should allow CSP owner to extend job duration", async function () {
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const cspEscrow = CspEscrow.attach(escrowAddress);
+
+    const currentEpoch = await poaiManager.getCurrentEpoch();
+    const jobType = 1;
+    const initialEpochs = 35;
+    const numberOfNodes = 2;
+    const pricePerEpoch = await cspEscrow.getPriceForJobType(jobType);
+    const jobPrice = pricePerEpoch.mul(numberOfNodes).mul(initialEpochs);
+
+    await mockUsdc.mint(await user.getAddress(), jobPrice);
+    await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
+
+    const lastExecutionEpoch = currentEpoch.add(initialEpochs);
+    await cspEscrow.connect(user).createJobs([
+      {
+        jobType,
+        projectHash: ethers.utils.keccak256(
+          ethers.utils.toUtf8Bytes("extend-job-test")
+        ),
+        lastExecutionEpoch,
+        numberOfNodesRequested: numberOfNodes,
+      },
+    ]);
+
+    const jobBefore = await cspEscrow.getJobDetails(1);
+    const additionalEpochs = 10;
+    const newLastExecutionEpoch = jobBefore.lastExecutionEpoch.add(
+      additionalEpochs
+    );
+    const additionalAmount = jobBefore.pricePerEpoch
+      .mul(jobBefore.numberOfNodesRequested)
+      .mul(additionalEpochs);
+
+    await mockUsdc.mint(await user.getAddress(), additionalAmount);
+    await mockUsdc.connect(user).approve(escrowAddress, additionalAmount);
+
+    await expect(
+      cspEscrow.connect(user).extendJobDuration(1, newLastExecutionEpoch)
+    )
+      .to.emit(cspEscrow, "JobDurationExtended")
+      .withArgs(1, newLastExecutionEpoch, additionalAmount);
+
+    const jobAfter = await cspEscrow.getJobDetails(1);
+    expect(jobAfter.lastExecutionEpoch).to.equal(newLastExecutionEpoch);
+    expect(jobAfter.balance).to.equal(jobBefore.balance.add(additionalAmount));
+    expect(await mockUsdc.balanceOf(escrowAddress)).to.equal(
+      jobPrice.add(additionalAmount)
+    );
+  });
+
   it("should revert createJob with invalid parameters", async function () {
     const escrowAddress = await setupUserWithEscrow(user, oracle);
     const CspEscrow = await ethers.getContractFactory("CspEscrow");
