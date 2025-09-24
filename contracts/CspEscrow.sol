@@ -462,6 +462,22 @@ contract CspEscrow is Initializable {
         return jobs;
     }
 
+    function getFirstClosableJobId() external view returns (uint256) {
+        uint256 currentEpoch = getCurrentEpoch();
+        for (uint256 i = 0; i < allJobs.length; i++) {
+            uint256 jobId = allJobs[i];
+            JobDetails storage job = jobDetails[jobId];
+            if (
+                job.id != 0 &&
+                job.activeNodes.length > 0 &&
+                job.lastExecutionEpoch <= currentEpoch
+            ) {
+                return jobId;
+            }
+        }
+        return 0;
+    }
+
     //.####.##....##.########.########.########..##....##....###....##......
     //..##..###...##....##....##.......##.....##.###...##...##.##...##......
     //..##..####..##....##....##.......##.....##.####..##..##...##..##......
