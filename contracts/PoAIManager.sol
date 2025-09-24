@@ -550,6 +550,13 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         return allEscrows;
     }
 
+    // Get total balance across all escrows
+    function getTotalEscrowsBalance() external view returns (int256 totalBalance) {
+        for (uint256 i = 0; i < allEscrows.length; i++) {
+            totalBalance += CspEscrow(allEscrows[i]).getTotalJobsBalance();
+        }
+    }
+
     function getAllCspsWithOwner()
         external
         view

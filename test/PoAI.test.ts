@@ -1472,6 +1472,75 @@ describe("PoAIManager", function () {
       allEscrows = await poaiManager.getAllEscrows();
       expect(allEscrows.length).to.equal(2);
     });
+
+    it("should return total balance across all escrows", async function () {
+      const escrowAddress1 = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow1 = CspEscrow.attach(escrowAddress1);
+
+      const currentEpoch = await poaiManager.getCurrentEpoch();
+
+      const numberOfNodes1 = 2;
+      const epochs1 = 35;
+      const pricePerEpoch1 = await cspEscrow1.getPriceForJobType(1);
+      const jobPrice1 = pricePerEpoch1
+        .mul(numberOfNodes1)
+        .mul(epochs1);
+
+      await mockUsdc.mint(await user.getAddress(), jobPrice1);
+      await mockUsdc.connect(user).approve(escrowAddress1, jobPrice1);
+
+      const lastExecutionEpoch1 = currentEpoch.add(epochs1);
+      await cspEscrow1.connect(user).createJobs([
+        {
+          jobType: 1,
+          projectHash: ethers.utils.keccak256(
+            ethers.utils.toUtf8Bytes("total-balance-job-1")
+          ),
+          lastExecutionEpoch: lastExecutionEpoch1,
+          numberOfNodesRequested: numberOfNodes1,
+        },
+      ]);
+
+      const user2 = other;
+      await controller.addOracle(await oracle2.getAddress());
+      await setupUserWithOracleNode(user2, oracle2);
+      await poaiManager.connect(user2).deployCspEscrow();
+      const escrowAddress2 = await poaiManager.ownerToEscrow(
+        await user2.getAddress()
+      );
+      const cspEscrow2 = CspEscrow.attach(escrowAddress2);
+
+      const numberOfNodes2 = 1;
+      const epochs2 = 40;
+      const pricePerEpoch2 = await cspEscrow2.getPriceForJobType(2);
+      const jobPrice2 = pricePerEpoch2
+        .mul(numberOfNodes2)
+        .mul(epochs2);
+
+      await mockUsdc.mint(await user2.getAddress(), jobPrice2);
+      await mockUsdc.connect(user2).approve(escrowAddress2, jobPrice2);
+
+      const lastExecutionEpoch2 = currentEpoch.add(epochs2);
+      await cspEscrow2.connect(user2).createJobs([
+        {
+          jobType: 2,
+          projectHash: ethers.utils.keccak256(
+            ethers.utils.toUtf8Bytes("total-balance-job-2")
+          ),
+          lastExecutionEpoch: lastExecutionEpoch2,
+          numberOfNodesRequested: numberOfNodes2,
+        },
+      ]);
+
+      const escrowBalance1 = await cspEscrow1.getTotalJobsBalance();
+      const escrowBalance2 = await cspEscrow2.getTotalJobsBalance();
+      const totalEscrowBalance = await poaiManager.getTotalEscrowsBalance();
+
+      expect(escrowBalance1).to.equal(jobPrice1);
+      expect(escrowBalance2).to.equal(jobPrice2);
+      expect(totalEscrowBalance).to.equal(jobPrice1.add(jobPrice2));
+    });
   });
 
   describe("Edge Cases and Error Handling", function () {

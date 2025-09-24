@@ -440,6 +440,13 @@ contract CspEscrow is Initializable {
     //...##.##....##..##.......##..##..##.##....##
     //....###....####.########..###..###...######.
 
+    // Get total balance across all jobs
+    function getTotalJobsBalance() external view returns (int256 totalBalance) {
+        for (uint256 i = 0; i < allJobs.length; i++) {
+            totalBalance += jobDetails[allJobs[i]].balance;
+        }
+    }
+
     // Get job details by job ID
     function getJobDetails(
         uint256 jobId
