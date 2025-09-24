@@ -454,6 +454,25 @@ describe("PoAIManager", function () {
       expect(await cspEscrow.getFirstClosableJobId()).to.eq(1);
       expect(await poaiManager.getFirstClosableJobId()).to.eq(1);
     });
+
+    it("allows closing a job after it becomes closable", async function () {
+      const { cspEscrow, numberOfEpochs } = await setupJobWithActiveNodes();
+
+      await ethers.provider.send("evm_increaseTime", [
+        numberOfEpochs * ONE_DAY,
+      ]);
+      await ethers.provider.send("evm_mine", []);
+
+      expect(await cspEscrow.getFirstClosableJobId()).to.eq(1);
+
+      await expect(poaiManager.connect(oracle).submitNodeUpdate(1, [])).to.emit(
+        cspEscrow,
+        "JobClosed"
+      );
+
+      expect(await cspEscrow.getFirstClosableJobId()).to.eq(0);
+      expect(await poaiManager.getFirstClosableJobId()).to.eq(0);
+    });
   });
 
   describe("Consensus Mechanism", function () {
