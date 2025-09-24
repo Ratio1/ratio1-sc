@@ -355,7 +355,7 @@ contract CspEscrow is Initializable {
                     jobId,
                     nodeAddress,
                     nodeOwner,
-                    totalRewardsToNodes
+                    amountRewardsPerNode
                 );
             }
 
