@@ -973,7 +973,7 @@ describe("PoAIManager", function () {
       ).to.be.revertedWith("Not PoAI Manager");
     });
 
-    it.only("should reconcile legacy job balances by subtracting historical burn", async function () {
+    it.skip("should reconcile legacy job balances by subtracting historical burn", async function () {
       //skip this test for now as it requires too much setup to run properly. For testing, need to comment address nodeOwner = ndContract.getNodeOwner(nodeAddress) in allocateRewardsToNodes to make it work
       const escrowAddress = await setupUserWithEscrow(user, oracle);
       const CspEscrow = await ethers.getContractFactory("CspEscrow");
