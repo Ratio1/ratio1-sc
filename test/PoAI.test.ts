@@ -1,8 +1,10 @@
 import { expect } from "chai";
-import { ethers, upgrades } from "hardhat";
+import { network, upgrades } from "hardhat";
 import { Contract, Signer } from "ethers";
 
 describe("PoAIManager", function () {
+  let ethers: any; //TODO HardhatEthers;
+
   let poaiManager: Contract;
   let ndContract: Contract;
   let mndContract: Contract;
@@ -25,6 +27,10 @@ describe("PoAIManager", function () {
   const START_EPOCH_TIMESTAMP = 1738767600;
   const ONE_DAY = 86400;
   const BURN_PERCENTAGE = 15;
+
+  before(async function () {
+    ({ ethers } = await network.connect());
+  });
 
   beforeEach(async function () {
     [owner, user, oracle, other, oracle2, oracle3, oracle4, oracle5] =
