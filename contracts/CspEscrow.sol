@@ -350,11 +350,11 @@ contract CspEscrow is Initializable {
                 // Register node with rewards in PoAI Manager
                 poaiManager.registerNodeWithRewards(nodeAddress);
                 // Emit event for rewards allocation
-                //address nodeOwner = ndContract.getNodeOwner(nodeAddress);
+                address nodeOwner = ndContract.getNodeOwner(nodeAddress);
                 emit RewardsAllocatedV2(
                     jobId,
                     nodeAddress,
-                    address(0),
+                    nodeOwner,
                     totalRewardsToNodes
                 );
             }
@@ -378,6 +378,11 @@ contract CspEscrow is Initializable {
     }
 
     function reconcileJobsBalance() public onlyPoAIManager {
+        /*
+        Reconcile job balances in storage with real balances.
+        This function is needed because a previous version of the contract
+        didn't subtract the burn amount from the job balance.
+        */
         for (uint256 i = 0; i < allJobs.length; i++) {
             uint256 jobId = allJobs[i];
             JobDetails storage job = jobDetails[jobId];
@@ -388,12 +393,9 @@ contract CspEscrow is Initializable {
                 continue;
             }
             uint256 startEpoch = _calculateEpoch(job.startTimestamp);
-            require(
-                job.lastExecutionEpoch >= startEpoch,
-                "Invalid execution epoch"
-            );
             uint256 numberOfEpochsDistributed = job.lastAllocatedEpoch -
-                startEpoch;
+                startEpoch +
+                1;
             if (numberOfEpochsDistributed == 0) {
                 continue;
             }
@@ -402,7 +404,7 @@ contract CspEscrow is Initializable {
                 numberOfEpochsDistributed;
 
             uint256 burnCorrection = (distributedRewards * BURN_PERCENTAGE) /
-                BURN_PERCENTAGE;
+                100;
             require(
                 int256(burnCorrection) <= job.balance,
                 "Burn exceeds balance"
