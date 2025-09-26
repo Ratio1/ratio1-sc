@@ -178,6 +178,41 @@ describe("PoAIManager", function () {
     return await poaiManager.ownerToEscrow(await userSigner.getAddress());
   }
 
+  async function setupJobWithActiveNodes() {
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const cspEscrow = CspEscrow.attach(escrowAddress);
+
+    const currentEpoch = await poaiManager.getCurrentEpoch();
+    const lastExecutionEpoch = currentEpoch.add(30);
+    const numberOfEpochs = lastExecutionEpoch.sub(currentEpoch).toNumber();
+    const numberOfNodesRequested = 1;
+    const jobType = 1;
+    const pricePerEpoch = 375000;
+    const expectedPrice = ethers.BigNumber.from(pricePerEpoch)
+      .mul(numberOfNodesRequested)
+      .mul(numberOfEpochs);
+
+    await mockUsdc.mint(await user.getAddress(), expectedPrice);
+    await mockUsdc.connect(user).approve(escrowAddress, expectedPrice);
+
+    const jobCreationRequest = {
+      jobType,
+      projectHash: ethers.utils.keccak256(
+        ethers.utils.toUtf8Bytes("project-id")
+      ),
+      lastExecutionEpoch,
+      numberOfNodesRequested,
+    };
+
+    await cspEscrow.connect(user).createJobs([jobCreationRequest]);
+
+    const activeNodes = [await oracle.getAddress()];
+    await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
+
+    return { cspEscrow, numberOfEpochs };
+  }
+
   it("should revert if user does not own an oracle node", async function () {
     await expect(
       poaiManager.connect(user).deployCspEscrow()
@@ -448,6 +483,49 @@ describe("PoAIManager", function () {
     await expect(
       poaiManager.connect(user).submitNodeUpdate(1, activeNodes)
     ).to.be.revertedWith("Not an oracle");
+  });
+
+  describe("Closable job lookup", function () {
+    it("returns 0 when no job is closable", async function () {
+      const { cspEscrow } = await setupJobWithActiveNodes();
+
+      expect(await cspEscrow.getFirstClosableJobId()).to.eq(0);
+      expect(await poaiManager.getFirstClosableJobId()).to.eq(0);
+    });
+
+    it("returns the job id once a job becomes closable", async function () {
+      const { cspEscrow, numberOfEpochs } = await setupJobWithActiveNodes();
+
+      expect(await cspEscrow.getFirstClosableJobId()).to.eq(0);
+      expect(await poaiManager.getFirstClosableJobId()).to.eq(0);
+
+      await ethers.provider.send("evm_increaseTime", [
+        numberOfEpochs * ONE_DAY,
+      ]);
+      await ethers.provider.send("evm_mine", []);
+
+      expect(await cspEscrow.getFirstClosableJobId()).to.eq(1);
+      expect(await poaiManager.getFirstClosableJobId()).to.eq(1);
+    });
+
+    it("allows closing a job after it becomes closable", async function () {
+      const { cspEscrow, numberOfEpochs } = await setupJobWithActiveNodes();
+
+      await ethers.provider.send("evm_increaseTime", [
+        numberOfEpochs * ONE_DAY,
+      ]);
+      await ethers.provider.send("evm_mine", []);
+
+      expect(await cspEscrow.getFirstClosableJobId()).to.eq(1);
+
+      await expect(poaiManager.connect(oracle).submitNodeUpdate(1, [])).to.emit(
+        cspEscrow,
+        "JobClosed"
+      );
+
+      expect(await cspEscrow.getFirstClosableJobId()).to.eq(0);
+      expect(await poaiManager.getFirstClosableJobId()).to.eq(0);
+    });
   });
 
   describe("Consensus Mechanism", function () {
@@ -1536,9 +1614,7 @@ describe("PoAIManager", function () {
       const numberOfNodes1 = 2;
       const epochs1 = 35;
       const pricePerEpoch1 = await cspEscrow1.getPriceForJobType(1);
-      const jobPrice1 = pricePerEpoch1
-        .mul(numberOfNodes1)
-        .mul(epochs1);
+      const jobPrice1 = pricePerEpoch1.mul(numberOfNodes1).mul(epochs1);
 
       await mockUsdc.mint(await user.getAddress(), jobPrice1);
       await mockUsdc.connect(user).approve(escrowAddress1, jobPrice1);
@@ -1567,9 +1643,7 @@ describe("PoAIManager", function () {
       const numberOfNodes2 = 1;
       const epochs2 = 40;
       const pricePerEpoch2 = await cspEscrow2.getPriceForJobType(2);
-      const jobPrice2 = pricePerEpoch2
-        .mul(numberOfNodes2)
-        .mul(epochs2);
+      const jobPrice2 = pricePerEpoch2.mul(numberOfNodes2).mul(epochs2);
 
       await mockUsdc.mint(await user2.getAddress(), jobPrice2);
       await mockUsdc.connect(user2).approve(escrowAddress2, jobPrice2);

@@ -573,6 +573,17 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         return cspsWithOwner;
     }
 
+    function getFirstClosableJobId() external view returns (uint256) {
+        uint256 escrowCount = allEscrows.length;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            uint256 jobId = CspEscrow(allEscrows[i]).getFirstClosableJobId();
+            if (jobId != 0) {
+                return jobId;
+            }
+        }
+        return 0;
+    }
+
     // Get escrows with rewards for a specific node
     function getEscrowsWithRewardsForNode(
         address nodeAddress

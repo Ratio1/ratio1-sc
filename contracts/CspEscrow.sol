@@ -128,6 +128,7 @@ contract CspEscrow is Initializable {
         uint256 pricePerEpoch
     );
     event JobStarted(uint256 indexed jobId, uint256 startTimestamp);
+    event JobClosed(uint256 indexed jobId, uint256 closeTimestamp);
     event NodesUpdated(uint256 indexed jobId, address[] activeNodes);
     event RewardsClaimedV2(
         address indexed nodeAddr,
@@ -301,11 +302,13 @@ contract CspEscrow is Initializable {
         require(jobDetails[jobId].id != 0, "Job does not exist");
         jobDetails[jobId].activeNodes = newActiveNodes;
         jobDetails[jobId].lastNodesChangeTimestamp = block.timestamp;
-        //TODO add a new mapping with the list of oracles that participated in this update consensus
         if (jobDetails[jobId].startTimestamp == 0) {
             jobDetails[jobId].startTimestamp = block.timestamp;
             jobDetails[jobId].lastAllocatedEpoch = getCurrentEpoch() - 1;
             emit JobStarted(jobId, block.timestamp);
+        }
+        if (newActiveNodes.length == 0) {
+            emit JobClosed(jobId, block.timestamp);
         }
 
         emit NodesUpdated(jobId, newActiveNodes);
@@ -505,6 +508,22 @@ contract CspEscrow is Initializable {
             jobs[i] = jobDetails[allJobs[i]];
         }
         return jobs;
+    }
+
+    function getFirstClosableJobId() external view returns (uint256) {
+        uint256 currentEpoch = getCurrentEpoch();
+        for (uint256 i = 0; i < allJobs.length; i++) {
+            uint256 jobId = allJobs[i];
+            JobDetails storage job = jobDetails[jobId];
+            if (
+                job.id != 0 &&
+                job.activeNodes.length > 0 &&
+                job.lastExecutionEpoch <= currentEpoch
+            ) {
+                return jobId;
+            }
+        }
+        return 0;
     }
 
     //.####.##....##.########.########.########..##....##....###....##......
