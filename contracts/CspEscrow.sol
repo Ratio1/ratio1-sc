@@ -143,6 +143,11 @@ contract CspEscrow is Initializable {
     );
     event TokensBurned(uint256 usdcAmount, uint256 r1Amount);
     event JobBalanceReconciled(uint256 indexed jobId, uint256 burnCorrection);
+    event JobDurationExtended(
+        uint256 indexed jobId,
+        uint256 newLastExecutionEpoch,
+        uint256 additionalAmount
+    );
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -246,6 +251,46 @@ contract CspEscrow is Initializable {
             );
         }
         return jobIds;
+    }
+
+    function extendJobDuration(
+        uint256 jobId,
+        uint256 newLastExecutionEpoch
+    ) external onlyCspOwner {
+        JobDetails storage job = jobDetails[jobId];
+        require(job.id != 0, "Job does not exist");
+        require(
+            newLastExecutionEpoch > job.lastExecutionEpoch,
+            "New epoch must be greater"
+        );
+
+        uint256 currentEpoch = getCurrentEpoch();
+        require(
+            newLastExecutionEpoch > currentEpoch,
+            "New epoch must be in future"
+        );
+
+        uint256 additionalEpochs = newLastExecutionEpoch - job.lastExecutionEpoch;
+        require(additionalEpochs > 0, "No additional epochs");
+
+        uint256 additionalAmount = job.pricePerEpoch *
+            job.numberOfNodesRequested *
+            additionalEpochs;
+
+        require(additionalAmount > 0, "No additional amount");
+        require(
+            IERC20(usdcToken).transferFrom(
+                msg.sender,
+                address(this),
+                additionalAmount
+            ),
+            "USDC transfer failed"
+        );
+
+        job.balance += int256(additionalAmount);
+        job.lastExecutionEpoch = newLastExecutionEpoch;
+
+        emit JobDurationExtended(jobId, newLastExecutionEpoch, additionalAmount);
     }
 
     // Receive consensus-based updates from PoAI Manager
