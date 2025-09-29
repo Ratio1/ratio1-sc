@@ -111,7 +111,8 @@ contract CspEscrow is Initializable {
     mapping(uint256 => JobDetails) public jobDetails;
     mapping(address => uint256) public virtualWalletBalance;
 
-    uint256[] public allJobs;
+    uint256[] public activeJobs;
+    uint256[] public closedJobs;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -128,6 +129,7 @@ contract CspEscrow is Initializable {
         uint256 pricePerEpoch
     );
     event JobStarted(uint256 indexed jobId, uint256 startTimestamp);
+    event JobClosed(uint256 indexed jobId, uint256 closeTimestamp);
     event NodesUpdated(uint256 indexed jobId, address[] activeNodes);
     event RewardsClaimedV2(
         address indexed nodeAddr,
@@ -142,6 +144,12 @@ contract CspEscrow is Initializable {
         uint256 usdcAmount
     );
     event TokensBurned(uint256 usdcAmount, uint256 r1Amount);
+    event JobBalanceReconciled(uint256 indexed jobId, uint256 burnCorrection);
+    event JobDurationExtended(
+        uint256 indexed jobId,
+        uint256 newLastExecutionEpoch,
+        uint256 additionalAmount
+    );
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -235,7 +243,7 @@ contract CspEscrow is Initializable {
                 lastAllocatedEpoch: 0,
                 activeNodes: new address[](0)
             });
-            allJobs.push(jobId);
+            activeJobs.push(jobId);
             jobIds[i] = jobId;
             emit JobCreated(
                 jobId,
@@ -247,6 +255,46 @@ contract CspEscrow is Initializable {
         return jobIds;
     }
 
+    function extendJobDuration(
+        uint256 jobId,
+        uint256 newLastExecutionEpoch
+    ) external onlyCspOwner {
+        JobDetails storage job = jobDetails[jobId];
+        require(job.id != 0, "Job does not exist");
+        require(
+            newLastExecutionEpoch > job.lastExecutionEpoch,
+            "New epoch must be greater"
+        );
+
+        uint256 currentEpoch = getCurrentEpoch();
+        require(
+            newLastExecutionEpoch > currentEpoch,
+            "New epoch must be in future"
+        );
+
+        uint256 additionalEpochs = newLastExecutionEpoch - job.lastExecutionEpoch;
+        require(additionalEpochs > 0, "No additional epochs");
+
+        uint256 additionalAmount = job.pricePerEpoch *
+            job.numberOfNodesRequested *
+            additionalEpochs;
+
+        require(additionalAmount > 0, "No additional amount");
+        require(
+            IERC20(usdcToken).transferFrom(
+                msg.sender,
+                address(this),
+                additionalAmount
+            ),
+            "USDC transfer failed"
+        );
+
+        job.balance += int256(additionalAmount);
+        job.lastExecutionEpoch = newLastExecutionEpoch;
+
+        emit JobDurationExtended(jobId, newLastExecutionEpoch, additionalAmount);
+    }
+
     // Receive consensus-based updates from PoAI Manager
     function updateActiveNodes(
         uint256 jobId,
@@ -255,11 +303,15 @@ contract CspEscrow is Initializable {
         require(jobDetails[jobId].id != 0, "Job does not exist");
         jobDetails[jobId].activeNodes = newActiveNodes;
         jobDetails[jobId].lastNodesChangeTimestamp = block.timestamp;
-        //TODO add a new mapping with the list of oracles that participated in this update consensus
         if (jobDetails[jobId].startTimestamp == 0) {
             jobDetails[jobId].startTimestamp = block.timestamp;
             jobDetails[jobId].lastAllocatedEpoch = getCurrentEpoch() - 1;
             emit JobStarted(jobId, block.timestamp);
+        }
+        if (newActiveNodes.length == 0) {
+            emit JobClosed(jobId, block.timestamp);
+            swapRemoveActiveJob(jobId);
+            closedJobs.push(jobId);
         }
 
         emit NodesUpdated(jobId, newActiveNodes);
@@ -297,8 +349,8 @@ contract CspEscrow is Initializable {
         uint256 totalAmountToBurn = 0;
 
         // Iterate through all jobs
-        for (uint256 i = 0; i < allJobs.length; i++) {
-            uint256 jobId = allJobs[i];
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            uint256 jobId = activeJobs[i];
             JobDetails storage job = jobDetails[jobId];
             uint256 lastAllocatedEpoch = job.lastAllocatedEpoch;
             // Finish the loop if job ID is not set (no more jobs)
@@ -338,6 +390,8 @@ contract CspEscrow is Initializable {
             uint256 amountRewardsPerNode = rewardPerNode - amountToBurnPerNode;
             uint256 totalRewardsToNodes = amountRewardsPerNode *
                 job.activeNodes.length;
+            uint256 jobAmountToBurn = amountToBurnPerNode *
+                job.activeNodes.length;
             INDContract ndContract = INDContract(
                 address(controller.ndContract())
             );
@@ -352,14 +406,14 @@ contract CspEscrow is Initializable {
                     jobId,
                     nodeAddress,
                     nodeOwner,
-                    totalRewardsToNodes
+                    amountRewardsPerNode
                 );
             }
 
             // Add to total burn amount
-            totalAmountToBurn += amountToBurnPerNode * job.activeNodes.length;
+            totalAmountToBurn += jobAmountToBurn;
             // Update job balance and last allocated epoch
-            job.balance -= int256(totalRewardsToNodes);
+            job.balance -= int256(totalRewardsToNodes + jobAmountToBurn);
             job.lastAllocatedEpoch = lastEpoch;
 
             require(job.balance >= 0, "No balance left"); //TODO will change in V2
@@ -371,6 +425,44 @@ contract CspEscrow is Initializable {
             require(r1TokensToBurn > 0, "No R1 tokens to burn");
             r1Token.burn(address(this), r1TokensToBurn);
             emit TokensBurned(totalAmountToBurn, r1TokensToBurn);
+        }
+    }
+
+    function reconcileJobsBalance() public onlyPoAIManager {
+        /*
+        Reconcile job balances in storage with real balances.
+        This function is needed because a previous version of the contract
+        didn't subtract the burn amount from the job balance.
+        */
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            uint256 jobId = activeJobs[i];
+            JobDetails storage job = jobDetails[jobId];
+            require(job.id != 0, "Job does not exist");
+            require(job.balance >= 0, "Negative job balance");
+
+            if (job.startTimestamp == 0) {
+                continue;
+            }
+            uint256 startEpoch = _calculateEpoch(job.startTimestamp);
+            uint256 numberOfEpochsDistributed = job.lastAllocatedEpoch -
+                startEpoch +
+                1;
+            if (numberOfEpochsDistributed == 0) {
+                continue;
+            }
+            uint256 distributedRewards = job.pricePerEpoch *
+                job.numberOfNodesRequested *
+                numberOfEpochsDistributed;
+
+            uint256 burnCorrection = (distributedRewards * BURN_PERCENTAGE) /
+                100;
+            require(
+                int256(burnCorrection) <= job.balance,
+                "Burn exceeds balance"
+            );
+
+            job.balance -= int256(burnCorrection);
+            emit JobBalanceReconciled(jobId, burnCorrection);
         }
     }
 
@@ -399,6 +491,13 @@ contract CspEscrow is Initializable {
     //...##.##....##..##.......##..##..##.##....##
     //....###....####.########..###..###...######.
 
+    // Get total balance across all jobs
+    function getTotalJobsBalance() external view returns (int256 totalBalance) {
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            totalBalance += jobDetails[activeJobs[i]].balance;
+        }
+    }
+
     // Get job details by job ID
     function getJobDetails(
         uint256 jobId
@@ -406,12 +505,36 @@ contract CspEscrow is Initializable {
         return jobDetails[jobId];
     }
 
-    function getAllJobs() external view returns (JobDetails[] memory) {
-        JobDetails[] memory jobs = new JobDetails[](allJobs.length);
-        for (uint256 i = 0; i < allJobs.length; i++) {
-            jobs[i] = jobDetails[allJobs[i]];
+    function getActiveJobs() external view returns (JobDetails[] memory) {
+        JobDetails[] memory jobs = new JobDetails[](activeJobs.length);
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            jobs[i] = jobDetails[activeJobs[i]];
         }
         return jobs;
+    }
+
+    function getClosedJobs() external view returns (JobDetails[] memory) {
+        JobDetails[] memory jobs = new JobDetails[](closedJobs.length);
+        for (uint256 i = 0; i < closedJobs.length; i++) {
+            jobs[i] = jobDetails[closedJobs[i]];
+        }
+        return jobs;
+    }
+
+    function getFirstClosableJobId() external view returns (uint256) {
+        uint256 currentEpoch = getCurrentEpoch();
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            uint256 jobId = activeJobs[i];
+            JobDetails storage job = jobDetails[jobId];
+            if (
+                job.id != 0 &&
+                job.activeNodes.length > 0 &&
+                job.lastExecutionEpoch <= currentEpoch
+            ) {
+                return jobId;
+            }
+        }
+        return 0;
     }
 
     //.####.##....##.########.########.########..##....##....###....##......
@@ -464,6 +587,17 @@ contract CspEscrow is Initializable {
             }
         }
         return false;
+    }
+
+    function swapRemoveActiveJob(uint256 jobId) internal {
+        // Remove jobId from activeJobs array
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            if (activeJobs[i] == jobId) {
+                activeJobs[i] = activeJobs[activeJobs.length - 1];
+                activeJobs.pop();
+                break;
+            }
+        }
     }
 
     // Get price for job type (pure function, no storage) - prices in USDC (6 decimals)

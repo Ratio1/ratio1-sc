@@ -120,6 +120,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     mapping(uint256 => uint256) public jobConsensusTimestamp;
     // Cooldown period after consensus (5 minutes)
     uint256 public constant CONSENSUS_COOLDOWN_PERIOD = 300;
+    bool public hasReconciled;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -455,6 +456,16 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         escrows.push(msg.sender);
     }
 
+    function reconcileAllJobsBalance() external onlyOwner {
+        require(!hasReconciled, "Already reconciled");
+        uint256 escrowCount = allEscrows.length;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            address escrowAddress = allEscrows[i];
+            CspEscrow(escrowAddress).reconcileJobsBalance();
+        }
+        hasReconciled = true;
+    }
+
     // Remove a node from the rewards list when rewards are claimed
     function removeNodeFromRewardsList(
         address nodeAddress
@@ -539,6 +550,13 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         return allEscrows;
     }
 
+    // Get total balance across all escrows
+    function getTotalEscrowsBalance() external view returns (int256 totalBalance) {
+        for (uint256 i = 0; i < allEscrows.length; i++) {
+            totalBalance += CspEscrow(allEscrows[i]).getTotalJobsBalance();
+        }
+    }
+
     function getAllCspsWithOwner()
         external
         view
@@ -553,6 +571,17 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             });
         }
         return cspsWithOwner;
+    }
+
+    function getFirstClosableJobId() external view returns (uint256) {
+        uint256 escrowCount = allEscrows.length;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            uint256 jobId = CspEscrow(allEscrows[i]).getFirstClosableJobId();
+            if (jobId != 0) {
+                return jobId;
+            }
+        }
+        return 0;
     }
 
     // Get escrows with rewards for a specific node

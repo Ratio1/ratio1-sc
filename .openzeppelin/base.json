@@ -5048,7 +5048,7 @@
             "src": "contracts/CspEscrow.sol:112"
           },
           {
-            "label": "allJobs",
+            "label": "activeJobs",
             "offset": 0,
             "slot": "9",
             "type": "t_array(t_uint256)dyn_storage",
