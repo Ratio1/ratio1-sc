@@ -111,7 +111,8 @@ contract CspEscrow is Initializable {
     mapping(uint256 => JobDetails) public jobDetails;
     mapping(address => uint256) public virtualWalletBalance;
 
-    uint256[] public allJobs;
+    uint256[] public activeJobs;
+    uint256[] public closedJobs;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -237,7 +238,7 @@ contract CspEscrow is Initializable {
                 lastAllocatedEpoch: 0,
                 activeNodes: new address[](0)
             });
-            allJobs.push(jobId);
+            activeJobs.push(jobId);
             jobIds[i] = jobId;
             emit JobCreated(
                 jobId,
@@ -264,6 +265,8 @@ contract CspEscrow is Initializable {
         }
         if (newActiveNodes.length == 0) {
             emit JobClosed(jobId, block.timestamp);
+            swapRemoveActiveJob(jobId);
+            closedJobs.push(jobId);
         }
 
         emit NodesUpdated(jobId, newActiveNodes);
@@ -301,8 +304,8 @@ contract CspEscrow is Initializable {
         uint256 totalAmountToBurn = 0;
 
         // Iterate through all jobs
-        for (uint256 i = 0; i < allJobs.length; i++) {
-            uint256 jobId = allJobs[i];
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            uint256 jobId = activeJobs[i];
             JobDetails storage job = jobDetails[jobId];
             uint256 lastAllocatedEpoch = job.lastAllocatedEpoch;
             // Finish the loop if job ID is not set (no more jobs)
@@ -386,8 +389,8 @@ contract CspEscrow is Initializable {
         This function is needed because a previous version of the contract
         didn't subtract the burn amount from the job balance.
         */
-        for (uint256 i = 0; i < allJobs.length; i++) {
-            uint256 jobId = allJobs[i];
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            uint256 jobId = activeJobs[i];
             JobDetails storage job = jobDetails[jobId];
             require(job.id != 0, "Job does not exist");
             require(job.balance >= 0, "Negative job balance");
@@ -445,8 +448,8 @@ contract CspEscrow is Initializable {
 
     // Get total balance across all jobs
     function getTotalJobsBalance() external view returns (int256 totalBalance) {
-        for (uint256 i = 0; i < allJobs.length; i++) {
-            totalBalance += jobDetails[allJobs[i]].balance;
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            totalBalance += jobDetails[activeJobs[i]].balance;
         }
     }
 
@@ -457,18 +460,26 @@ contract CspEscrow is Initializable {
         return jobDetails[jobId];
     }
 
-    function getAllJobs() external view returns (JobDetails[] memory) {
-        JobDetails[] memory jobs = new JobDetails[](allJobs.length);
-        for (uint256 i = 0; i < allJobs.length; i++) {
-            jobs[i] = jobDetails[allJobs[i]];
+    function getActiveJobs() external view returns (JobDetails[] memory) {
+        JobDetails[] memory jobs = new JobDetails[](activeJobs.length);
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            jobs[i] = jobDetails[activeJobs[i]];
+        }
+        return jobs;
+    }
+
+    function getClosedJobs() external view returns (JobDetails[] memory) {
+        JobDetails[] memory jobs = new JobDetails[](closedJobs.length);
+        for (uint256 i = 0; i < closedJobs.length; i++) {
+            jobs[i] = jobDetails[closedJobs[i]];
         }
         return jobs;
     }
 
     function getFirstClosableJobId() external view returns (uint256) {
         uint256 currentEpoch = getCurrentEpoch();
-        for (uint256 i = 0; i < allJobs.length; i++) {
-            uint256 jobId = allJobs[i];
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            uint256 jobId = activeJobs[i];
             JobDetails storage job = jobDetails[jobId];
             if (
                 job.id != 0 &&
@@ -531,6 +542,17 @@ contract CspEscrow is Initializable {
             }
         }
         return false;
+    }
+
+    function swapRemoveActiveJob(uint256 jobId) internal {
+        // Remove jobId from activeJobs array
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            if (activeJobs[i] == jobId) {
+                activeJobs[i] = activeJobs[activeJobs.length - 1];
+                activeJobs.pop();
+                break;
+            }
+        }
     }
 
     // Get price for job type (pure function, no storage) - prices in USDC (6 decimals)
