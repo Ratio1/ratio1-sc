@@ -121,11 +121,10 @@ async function main() {
 
     if (target.kind === "proxy") {
       if (!proxyAdminContract) {
-        upgrades.erc1967.getAdminAddress(targetAddress);
         proxyAdminContract = await upgrades.erc1967.getAdminAddress(
           targetAddress
         );
-        proxyAdminAddress = ethers.getAddress(proxyAdminContract);
+        proxyAdminAddress = proxyAdminContract;
       }
 
       previousImplementation = await upgrades.erc1967.getImplementationAddress(
@@ -151,7 +150,7 @@ async function main() {
         `✅ New implementation deployed at: ${newImplementationAddress}`
       );
 
-      const proxyAdmin = new ethers.Contract(proxyAdminContract, [
+      const proxyAdmin = new ethers.Contract(proxyAdminAddress, [
         "function upgrade(address proxy, address implementation)",
         "function owner() view returns (address)",
       ]);
