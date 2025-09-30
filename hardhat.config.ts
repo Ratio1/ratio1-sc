@@ -1,5 +1,7 @@
-import "@nomiclabs/hardhat-ethers";
-import "@nomiclabs/hardhat-waffle";
+import "@nomicfoundation/hardhat-ethers";
+import "@openzeppelin/hardhat-upgrades";
+import "@nomicfoundation/hardhat-verify";
+import "@typechain/hardhat";
 import "@openzeppelin/hardhat-upgrades";
 import "@typechain/hardhat";
 import "hardhat-gas-reporter";
@@ -55,10 +57,7 @@ const config: HardhatUserConfig = {
     parallel: false,
   },
   etherscan: {
-    apiKey: {
-      baseSepolia: ETHERSCAN_API_KEY,
-      base: ETHERSCAN_API_KEY,
-    },
+    apiKey: ETHERSCAN_API_KEY,
     customChains: [
       {
         network: "baseSepolia",
@@ -77,6 +76,9 @@ const config: HardhatUserConfig = {
         },
       },
     ],
+  },
+  sourcify: {
+    enabled: true,
   },
 };
 
