@@ -59,12 +59,12 @@ describe("Faucet contract", function () {
     */
 
   it("Claim - should work", async function () {
-    await r1Contract.connect(owner).mint(faucet.getAddress(), 10n ** 18n);
+    await r1Contract.connect(owner).mint(await faucet.getAddress(), 10n ** 18n);
     await faucet.connect(firstUser).claim();
   });
 
   it("Claim - cool down not passed", async function () {
-    await r1Contract.connect(owner).mint(faucet.getAddress(), 20n ** 18n);
+    await r1Contract.connect(owner).mint(await faucet.getAddress(), 20n ** 18n);
     await faucet.connect(firstUser).claim();
     await expect(faucet.connect(firstUser).claim()).to.be.revertedWith(
       "Faucet: You must wait for the cooldown period to claim again"
@@ -72,7 +72,7 @@ describe("Faucet contract", function () {
   });
 
   it("Claim - not enough token", async function () {
-    await r1Contract.connect(owner).mint(faucet.getAddress(), 1n ** 18n);
+    await r1Contract.connect(owner).mint(await faucet.getAddress(), 1n ** 18n);
     await expect(
       faucet.connect(firstUser).claim()
     ).to.be.revertedWithCustomError(r1Contract, "ERC20InsufficientBalance");

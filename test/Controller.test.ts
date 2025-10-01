@@ -194,10 +194,16 @@ describe("Controller contract", function () {
     )) as unknown as MNDContract;
 
     await expect(
-      controllerContract.setContracts(NULL_ADDRESS, mndContract.getAddress())
+      controllerContract.setContracts(
+        NULL_ADDRESS,
+        await mndContract.getAddress()
+      )
     ).to.be.reverted;
     await expect(
-      controllerContract.setContracts(ndContract.getAddress(), NULL_ADDRESS)
+      controllerContract.setContracts(
+        await ndContract.getAddress(),
+        NULL_ADDRESS
+      )
     ).to.be.reverted;
   });
 
