@@ -4,6 +4,7 @@ import "@nomicfoundation/hardhat-verify";
 import "@typechain/hardhat";
 import "@typechain/hardhat";
 import "hardhat-gas-reporter";
+import "@nomicfoundation/hardhat-chai-matchers";
 import { HardhatUserConfig } from "hardhat/types/config";
 import "solidity-coverage";
 import { config as dotEnvConfig } from "dotenv";
@@ -11,6 +12,7 @@ dotEnvConfig();
 
 const SIGNER_PRIVATE_KEY = process.env.SIGNER_PRIVATE_KEY || "";
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || "";
+const GAS_REPORT_ENABLED = process.env.GAS_REPORT === "true" || false;
 const accounts = SIGNER_PRIVATE_KEY ? [SIGNER_PRIVATE_KEY] : undefined;
 
 const config: HardhatUserConfig = {
@@ -44,7 +46,7 @@ const config: HardhatUserConfig = {
   },
   gasReporter: {
     offline: true,
-    enabled: true,
+    enabled: GAS_REPORT_ENABLED,
     currency: "EUR",
     token: "ETH",
     L2: "base",

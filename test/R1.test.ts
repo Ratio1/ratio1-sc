@@ -1,8 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
-import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { R1, NDContract, Controller } from "../../typechain-types";
-const BigNumber = ethers.BigNumber;
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import { R1, NDContract, Controller } from "../typechain-types";
 
 /*
 ..######...#######..##....##..######..########....###....##....##.########..######.
@@ -15,7 +14,7 @@ const BigNumber = ethers.BigNumber;
 */
 
 const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
-const ONE_TOKEN = BigNumber.from(10).pow(18);
+const ONE_TOKEN = 10n ** 18n;
 const START_EPOCH_TIMESTAMP = 1738767600;
 
 describe("R1 contract", function () {
@@ -32,10 +31,10 @@ describe("R1 contract", function () {
   let ndContract: NDContract;
   let r1Contract: R1;
   let controllerContract: Controller;
-  let owner: SignerWithAddress;
-  let firstUser: SignerWithAddress;
-  let secondUser: SignerWithAddress;
-  let backend: SignerWithAddress;
+  let owner: HardhatEthersSigner;
+  let firstUser: HardhatEthersSigner;
+  let secondUser: HardhatEthersSigner;
+  let backend: HardhatEthersSigner;
   let snapshotId: string;
 
   before(async function () {
@@ -46,24 +45,28 @@ describe("R1 contract", function () {
     backend = backendSigner;
 
     const R1Contract = await ethers.getContractFactory("R1");
-    r1Contract = await R1Contract.deploy(owner.address);
+    r1Contract = await R1Contract.deploy(owner.getAddress());
 
     const ControllerContract = await ethers.getContractFactory("Controller");
     controllerContract = await ControllerContract.deploy(
       START_EPOCH_TIMESTAMP,
       86400,
-      owner.address
+      owner.getAddress()
     );
-    await controllerContract.addOracle(backend.address);
+    await controllerContract.addOracle(backend.getAddress());
 
     const NDContractFactory = await ethers.getContractFactory("NDContract");
     ndContract = (await upgrades.deployProxy(
       NDContractFactory,
-      [r1Contract.address, controllerContract.address, owner.address],
+      [
+        await r1Contract.getAddress(),
+        await controllerContract.getAddress(),
+        await owner.getAddress(),
+      ],
       { initializer: "initialize" }
     )) as NDContract;
 
-    //await ndContract.setUniswapRouter(uniswapContract.address);
+    //await ndContract.setUniswapRouter(uniswapContract.getAddress());
     snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
   afterEach(async function () {
@@ -82,13 +85,13 @@ describe("R1 contract", function () {
 	*/
 
   it("Set NDcontract- should work", async function () {
-    await r1Contract.setNdContract(ndContract.address);
+    await r1Contract.setNdContract(ndContract.getAddress());
   });
 
   it("Set NDcontract- already set", async function () {
-    await r1Contract.setNdContract(ndContract.address);
+    await r1Contract.setNdContract(ndContract.getAddress());
     await expect(
-      r1Contract.setNdContract(ndContract.address)
+      r1Contract.setNdContract(ndContract.getAddress())
     ).to.be.revertedWith("Node Deed address already set");
   });
 
@@ -101,17 +104,17 @@ describe("R1 contract", function () {
   it("Set NDcontract- not the owner", async function () {
     await expect(
       r1Contract.connect(firstUser).setNdContract(NULL_ADDRESS)
-    ).to.be.revertedWith("OwnableUnauthorizedAccount");
+    ).to.be.revertedWithCustomError(r1Contract, "OwnableUnauthorizedAccount");
   });
 
   it("Set MNDcontract- should work", async function () {
-    await r1Contract.setMndContract(ndContract.address);
+    await r1Contract.setMndContract(ndContract.getAddress());
   });
 
   it("Set MNDcontract- already set", async function () {
-    await r1Contract.setMndContract(ndContract.address);
+    await r1Contract.setMndContract(ndContract.getAddress());
     await expect(
-      r1Contract.setMndContract(ndContract.address)
+      r1Contract.setMndContract(ndContract.getAddress())
     ).to.be.revertedWith("Master Node Deed address already set");
   });
 
@@ -124,40 +127,46 @@ describe("R1 contract", function () {
   it("Set MNDcontract- not the owner", async function () {
     await expect(
       r1Contract.connect(firstUser).setMndContract(NULL_ADDRESS)
-    ).to.be.revertedWith("OwnableUnauthorizedAccount");
+    ).to.be.revertedWithCustomError(r1Contract, "OwnableUnauthorizedAccount");
   });
 
   it("Mint- should work", async function () {
-    await r1Contract.setNdContract(owner.address);
-    await r1Contract.connect(owner).mint(firstUser.address, ONE_TOKEN.mul(100));
-    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      ONE_TOKEN.mul(100)
+    await r1Contract.setNdContract(owner.getAddress());
+    await r1Contract
+      .connect(owner)
+      .mint(firstUser.getAddress(), ONE_TOKEN * 100n);
+    expect(await r1Contract.balanceOf(firstUser.getAddress())).to.equal(
+      ONE_TOKEN * 100n
     );
   });
 
   it("Mint- not allowed minter", async function () {
     await expect(
-      r1Contract.connect(owner).mint(firstUser.address, ONE_TOKEN.mul(100))
+      r1Contract.connect(owner).mint(firstUser.getAddress(), ONE_TOKEN * 100n)
     ).to.be.revertedWith("Only allowed contracts can mint");
   });
 
   it("Burn- should work", async function () {
-    await r1Contract.setNdContract(owner.address);
-    await r1Contract.connect(owner).mint(firstUser.address, ONE_TOKEN.mul(100));
-    await r1Contract.connect(owner).burn(firstUser.address, ONE_TOKEN.mul(50));
-    expect(await r1Contract.balanceOf(firstUser.address)).to.equal(
-      ONE_TOKEN.mul(50)
+    await r1Contract.setNdContract(owner.getAddress());
+    await r1Contract
+      .connect(owner)
+      .mint(firstUser.getAddress(), ONE_TOKEN * 100n);
+    await r1Contract
+      .connect(owner)
+      .burn(firstUser.getAddress(), ONE_TOKEN * 50n);
+    expect(await r1Contract.balanceOf(firstUser.getAddress())).to.equal(
+      ONE_TOKEN * 50n
     );
   });
 
   it("burn- not allowed burner", async function () {
     await expect(
-      r1Contract.connect(owner).burn(firstUser.address, ONE_TOKEN.mul(100))
+      r1Contract.connect(owner).burn(firstUser.getAddress(), ONE_TOKEN * 100n)
     ).to.be.revertedWith("Only allowed contracts can burn");
   });
 
   it("Add burner- should work", async function () {
-    await expect(r1Contract.addBurner(owner.address)).not.to.be.reverted;
+    await expect(r1Contract.addBurner(owner.getAddress())).not.to.be.reverted;
   });
 
   it("Add burner- invalid burner address", async function () {
@@ -168,25 +177,26 @@ describe("R1 contract", function () {
 
   it("Add burner- not the owner", async function () {
     await expect(
-      r1Contract.connect(firstUser).addBurner(owner.address)
-    ).to.be.revertedWith("OwnableUnauthorizedAccount");
+      r1Contract.connect(firstUser).addBurner(owner.getAddress())
+    ).to.be.revertedWithCustomError(r1Contract, "OwnableUnauthorizedAccount");
   });
 
   it("Remove burner- should work", async function () {
-    await expect(r1Contract.addBurner(owner.address)).not.to.be.reverted;
-    await expect(r1Contract.removeBurner(owner.address)).not.to.be.reverted;
+    await expect(r1Contract.addBurner(owner.getAddress())).not.to.be.reverted;
+    await expect(r1Contract.removeBurner(owner.getAddress())).not.to.be
+      .reverted;
   });
 
   it("Remove burner- Address is not a burner", async function () {
-    await expect(r1Contract.addBurner(owner.address)).not.to.be.reverted;
-    await expect(r1Contract.removeBurner(firstUser.address)).to.be.revertedWith(
-      "Address is not a burner"
-    );
+    await expect(r1Contract.addBurner(owner.getAddress())).not.to.be.reverted;
+    await expect(
+      r1Contract.removeBurner(firstUser.getAddress())
+    ).to.be.revertedWith("Address is not a burner");
   });
 
   it("Remove burner- not the owner", async function () {
     await expect(
-      r1Contract.connect(firstUser).removeBurner(owner.address)
-    ).to.be.revertedWith("OwnableUnauthorizedAccount");
+      r1Contract.connect(firstUser).removeBurner(owner.getAddress())
+    ).to.be.revertedWithCustomError(r1Contract, "OwnableUnauthorizedAccount");
   });
 });

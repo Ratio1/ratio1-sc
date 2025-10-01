@@ -100,9 +100,6 @@ async function main() {
 
   const safeTransactions: SafeTransaction[] = [];
 
-  let proxyAdminContract:
-    | Awaited<ReturnType<typeof upgrades.erc1967.getAdminAddress>>
-    | undefined;
   let proxyAdminAddress: string | undefined;
 
   for (const target of targets) {
@@ -120,11 +117,10 @@ async function main() {
     let safeTx: SafeTransaction;
 
     if (target.kind === "proxy") {
-      if (!proxyAdminContract) {
-        proxyAdminContract = await upgrades.erc1967.getAdminAddress(
+      if (!proxyAdminAddress) {
+        proxyAdminAddress = await upgrades.erc1967.getAdminAddress(
           targetAddress
         );
-        proxyAdminAddress = proxyAdminContract;
       }
 
       previousImplementation = await upgrades.erc1967.getImplementationAddress(
