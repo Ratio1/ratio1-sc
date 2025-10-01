@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { ethers, network, upgrades } from "hardhat";
-import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import {
   R1,
   NDContract,
@@ -8,9 +8,8 @@ import {
   Reader,
   MNDContract,
   PoAIManager,
-} from "../../typechain-types";
+} from "../typechain-types";
 import { Contract } from "ethers";
-const BigNumber = ethers.BigNumber;
 
 /*
 ..######...#######..##....##..######..########....###....##....##.########..######.
@@ -42,13 +41,13 @@ describe("Reader contract", function () {
   let reader: Reader;
   let r1Contract: R1;
   let controllerContract: Controller;
-  let owner: SignerWithAddress;
-  let backend: SignerWithAddress;
+  let owner: HardhatEthersSigner;
+  let backend: HardhatEthersSigner;
   let snapshotId: string;
   let ndContract: NDContract;
   let mndContract: MNDContract;
-  let poaiManager: Contract;
-  let firstUser: SignerWithAddress;
+  let poaiManager: PoAIManager;
+  let firstUser: HardhatEthersSigner;
   let oracle_assignation_timestamp: number;
 
   before(async function () {
@@ -60,44 +59,52 @@ describe("Reader contract", function () {
     backend = backendSigner;
 
     const R1Contract = await ethers.getContractFactory("R1");
-    r1Contract = await R1Contract.deploy(owner.address);
+    r1Contract = await R1Contract.deploy(await owner.getAddress());
 
     const ControllerContract = await ethers.getContractFactory("Controller");
     controllerContract = await ControllerContract.deploy(
       START_EPOCH_TIMESTAMP,
       86400,
-      owner.address
+      await owner.getAddress()
     );
     const blockNum = await ethers.provider.getBlockNumber();
     const block = await ethers.provider.getBlock(blockNum);
-    oracle_assignation_timestamp = block.timestamp;
-    await controllerContract.addOracle(backend.address);
+    oracle_assignation_timestamp = block?.timestamp || 0;
+    await controllerContract.addOracle(await backend.getAddress());
 
     const NDContractFactory = await ethers.getContractFactory("NDContract");
     ndContract = (await upgrades.deployProxy(
       NDContractFactory,
-      [r1Contract.address, controllerContract.address, owner.address],
+      [
+        await r1Contract.getAddress(),
+        await controllerContract.getAddress(),
+        await owner.getAddress(),
+      ],
       { initializer: "initialize" }
     )) as NDContract;
 
     const MNDContractFactory = await ethers.getContractFactory("MNDContract");
     mndContract = (await upgrades.deployProxy(
       MNDContractFactory,
-      [r1Contract.address, controllerContract.address, owner.address],
+      [
+        await r1Contract.getAddress(),
+        await controllerContract.getAddress(),
+        await owner.getAddress(),
+      ],
       { initializer: "initialize" }
     )) as unknown as MNDContract;
 
     await controllerContract.setContracts(
-      ndContract.address,
-      mndContract.address
+      await ndContract.getAddress(),
+      await mndContract.getAddress()
     );
 
-    await mndContract.setNDContract(ndContract.address);
-    await ndContract.setMNDContract(mndContract.address);
-    await r1Contract.setNdContract(ndContract.address);
-    await r1Contract.setMndContract(owner.address); // to mint r1 tokens
+    await mndContract.setNDContract(await ndContract.getAddress());
+    await ndContract.setMNDContract(await mndContract.getAddress());
+    await r1Contract.setNdContract(await ndContract.getAddress());
+    await r1Contract.setMndContract(await owner.getAddress()); // to mint r1 tokens
 
-    let LpPercentage = BigNumber.from(50_00);
+    let LpPercentage = 50_00n;
     await ndContract.connect(owner).setDirectAddLpPercentage(LpPercentage);
 
     const USDCContract = await ethers.getContractFactory("ERC20Mock");
@@ -111,56 +118,56 @@ describe("Reader contract", function () {
       "UniswapMockPair"
     );
     const uniswapMockPairContract = await UniswapMockPairContract.deploy(
-      usdcContract.address,
-      r1Contract.address
+      await usdcContract.getAddress(),
+      await r1Contract.getAddress()
     );
 
     await ndContract.setUniswapParams(
-      uniswapMockRouterContract.address,
-      uniswapMockPairContract.address,
-      usdcContract.address
+      await uniswapMockRouterContract.getAddress(),
+      await uniswapMockPairContract.getAddress(),
+      await usdcContract.getAddress()
     );
     await ndContract.setCompanyWallets(
-      newCompanyWallet,
-      newLpWallet,
-      newVatWallet
+      await newCompanyWallet,
+      await newLpWallet,
+      await newVatWallet
     );
     await usdcContract.mint(
-      uniswapMockRouterContract.address,
-      BigNumber.from(500).mul(10).pow(18)
+      await uniswapMockRouterContract.getAddress(),
+      500n * 10n ** 18n
     );
 
     const CspEscrow = await ethers.getContractFactory("CspEscrow");
     const cspEscrowImplementation = await CspEscrow.deploy();
-    await cspEscrowImplementation.deployed();
+    await cspEscrowImplementation.waitForDeployment();
 
     const PoAIManager = await ethers.getContractFactory("PoAIManager");
     poaiManager = await upgrades.deployProxy(
       PoAIManager,
       [
-        cspEscrowImplementation.address,
-        ndContract.address,
-        mndContract.address,
-        controllerContract.address,
-        usdcContract.address,
-        r1Contract.address,
-        uniswapMockRouterContract.address,
-        uniswapMockPairContract.address,
+        await cspEscrowImplementation.getAddress(),
+        await ndContract.getAddress(),
+        await mndContract.getAddress(),
+        await controllerContract.getAddress(),
+        await usdcContract.getAddress(),
+        await r1Contract.getAddress(),
+        await uniswapMockRouterContract.getAddress(),
+        await uniswapMockPairContract.getAddress(),
         await owner.getAddress(),
       ],
       { initializer: "initialize" }
     );
-    await poaiManager.deployed();
+    await poaiManager.waitForDeployment();
 
     const ReaderContract = await ethers.getContractFactory("Reader");
     reader = await ReaderContract.deploy();
 
     await reader.initialize(
-      ndContract.address,
-      mndContract.address,
-      controllerContract.address,
-      r1Contract.address,
-      poaiManager.address
+      await ndContract.getAddress(),
+      await mndContract.getAddress(),
+      await controllerContract.getAddress(),
+      await r1Contract.getAddress(),
+      await poaiManager.getAddress()
     );
 
     snapshotId = await ethers.provider.send("evm_snapshot", []);
@@ -191,8 +198,8 @@ describe("Reader contract", function () {
   async function buyLicenseWithMintAndAllowance(
     r1Contract: R1,
     ndContract: NDContract,
-    owner: SignerWithAddress,
-    user: SignerWithAddress,
+    owner: HardhatEthersSigner,
+    user: HardhatEthersSigner,
     numTokens: bigint,
     numLicenses: number,
     priceTier: number,
@@ -202,16 +209,14 @@ describe("Reader contract", function () {
   ) {
     let _NUM_TOKENS =
       numTokens + (numTokens * BigInt(vatPercent)) / BigInt(100);
-    let _MAX_ACCEPTED_NUM_TOKENS = BigNumber.from(_NUM_TOKENS).add(
-      BigNumber.from(_NUM_TOKENS).div(10)
-    );
-    _MAX_ACCEPTED_NUM_TOKENS = _MAX_ACCEPTED_NUM_TOKENS.mul(numLicenses);
+    let _MAX_ACCEPTED_NUM_TOKENS = _NUM_TOKENS + _NUM_TOKENS / 10n;
+    _MAX_ACCEPTED_NUM_TOKENS = _MAX_ACCEPTED_NUM_TOKENS * BigInt(numLicenses);
     await r1Contract
       .connect(owner)
-      .mint(user.address, _MAX_ACCEPTED_NUM_TOKENS);
+      .mint(await user.getAddress(), _MAX_ACCEPTED_NUM_TOKENS);
     await r1Contract
       .connect(user)
-      .approve(ndContract.address, _MAX_ACCEPTED_NUM_TOKENS);
+      .approve(await ndContract.getAddress(), _MAX_ACCEPTED_NUM_TOKENS);
     await ndContract
       .connect(user)
       .buyLicense(
@@ -226,35 +231,30 @@ describe("Reader contract", function () {
   }
 
   async function signAddress(
-    signer: SignerWithAddress,
-    user: SignerWithAddress,
+    signer: HardhatEthersSigner,
+    user: HardhatEthersSigner,
     invoiceUuid: Buffer,
     usdMintLimit: number,
     vatPercent: number = 20
   ) {
-    const addressBytes = Buffer.from(user.address.slice(2), "hex");
+    const addressBytes = Buffer.from((await user.getAddress()).slice(2), "hex");
 
     let messageBytes = Buffer.concat([addressBytes, invoiceUuid]);
-    const buffer = ethers.utils.hexZeroPad(
-      ethers.utils.hexlify(usdMintLimit),
-      32
-    );
+    const buffer = ethers.zeroPadValue(ethers.toBeHex(usdMintLimit), 32);
     messageBytes = Buffer.concat([
       messageBytes,
       Buffer.from(buffer.slice(2), "hex"),
     ]);
-    const bufferVatPercentage = ethers.utils.hexZeroPad(
-      ethers.utils.hexlify(vatPercent),
+    const bufferVatPercentage = ethers.zeroPadValue(
+      ethers.toBeHex(vatPercent),
       32
     );
     messageBytes = Buffer.concat([
       messageBytes,
       Buffer.from(bufferVatPercentage.slice(2), "hex"),
     ]);
-    const messageHash = ethers.utils.keccak256(messageBytes);
-    const signature = await signer.signMessage(
-      ethers.utils.arrayify(messageHash)
-    );
+    const messageHash = ethers.keccak256(messageBytes);
+    const signature = await signer.signMessage(ethers.getBytes(messageHash));
 
     let signatureBytes = Buffer.from(signature.slice(2), "hex");
     if (signatureBytes[64] < 27) {
@@ -265,20 +265,20 @@ describe("Reader contract", function () {
   }
 
   async function signLinkNode(
-    signer: SignerWithAddress,
-    user: SignerWithAddress,
+    signer: HardhatEthersSigner,
+    user: HardhatEthersSigner,
     nodeAddress: string
   ) {
-    const messageHash = ethers.utils.solidityKeccak256(
+    const messageHash = ethers.solidityPackedKeccak256(
       ["address", "address"],
-      [user.address, nodeAddress]
+      [await user.getAddress(), nodeAddress]
     );
-    return signer.signMessage(ethers.utils.arrayify(messageHash));
+    return signer.signMessage(ethers.getBytes(messageHash));
   }
 
   async function linkNode(
     ndContract: NDContract,
-    user: SignerWithAddress,
+    user: HardhatEthersSigner,
     licenseId: number,
     nodeAddress: string = NODE_ADDRESS
   ) {
@@ -287,13 +287,13 @@ describe("Reader contract", function () {
       .linkNode(
         licenseId,
         nodeAddress,
-        signLinkNode(backend, user, nodeAddress)
+        await signLinkNode(backend, user, nodeAddress)
       );
   }
 
   async function MNDlinkNode(
     mndContract: MNDContract,
-    user: SignerWithAddress,
+    user: HardhatEthersSigner,
     licenseId: number
   ) {
     await mndContract
@@ -301,7 +301,7 @@ describe("Reader contract", function () {
       .linkNode(
         licenseId,
         NODE_ADDRESS,
-        signLinkNode(backend, user, NODE_ADDRESS)
+        await signLinkNode(backend, user, NODE_ADDRESS)
       );
   }
 
@@ -321,7 +321,7 @@ describe("Reader contract", function () {
       ndContract,
       owner,
       firstUser,
-      (await ndContract.getLicenseTokenPrice()).toBigInt(),
+      await ndContract.getLicenseTokenPrice(),
       1,
       1,
       10000,
@@ -332,7 +332,10 @@ describe("Reader contract", function () {
   });
 
   it("Get Nd license - non existent license", async function () {
-    await expect(reader.getNdLicenseDetails(1)).to.be.revertedWith("");
+    await expect(reader.getNdLicenseDetails(1)).to.be.revertedWithCustomError(
+      ndContract,
+      "ERC721NonexistentToken"
+    );
   });
 
   it("Get MNd license - should work", async function () {
@@ -340,20 +343,23 @@ describe("Reader contract", function () {
   });
 
   it("Get MNd license - non existent license", async function () {
-    await expect(reader.getMndLicenseDetails(2)).to.be.revertedWith("");
+    await expect(reader.getMndLicenseDetails(2)).to.be.revertedWithCustomError(
+      mndContract,
+      "ERC721NonexistentToken"
+    );
   });
 
   it("Get Node license - no license", async function () {
     let result = await reader.getNodeLicenseDetails(NODE_ADDRESS);
     const mapped = {
       licenseType: result[0],
-      licenseId: result[1].toBigInt(),
+      licenseId: result[1],
       owner: result[2],
       nodeAddress: result[3],
-      totalAssignedAmount: result[4].toBigInt(),
-      totalClaimedAmount: result[5].toBigInt(),
-      lastClaimEpoch: result[6].toBigInt(),
-      assignTimestamp: result[7].toBigInt(),
+      totalAssignedAmount: result[4],
+      totalClaimedAmount: result[5],
+      lastClaimEpoch: result[6],
+      assignTimestamp: result[7],
       lastClaimOracle: result[8],
       isBanned: result[9],
     };
@@ -379,7 +385,7 @@ describe("Reader contract", function () {
       ndContract,
       owner,
       firstUser,
-      (await ndContract.getLicenseTokenPrice()).toBigInt(),
+      await ndContract.getLicenseTokenPrice(),
       1,
       1,
       10000,
@@ -391,13 +397,13 @@ describe("Reader contract", function () {
     let result = await reader.getNodeLicenseDetails(NODE_ADDRESS);
     const mapped = {
       licenseType: result[0],
-      licenseId: result[1].toBigInt(),
+      licenseId: result[1],
       owner: result[2],
       nodeAddress: result[3],
-      totalAssignedAmount: result[4].toBigInt(),
-      totalClaimedAmount: result[5].toBigInt(),
-      lastClaimEpoch: result[6].toBigInt(),
-      assignTimestamp: result[7].toBigInt(),
+      totalAssignedAmount: result[4],
+      totalClaimedAmount: result[5],
+      lastClaimEpoch: result[6],
+      assignTimestamp: result[7],
       lastClaimOracle: result[8],
       isBanned: result[9],
     };
@@ -405,7 +411,7 @@ describe("Reader contract", function () {
       {
         licenseType: 1,
         licenseId: 1n,
-        owner: firstUser.address,
+        owner: await firstUser.getAddress(),
         nodeAddress: NODE_ADDRESS,
         totalAssignedAmount: 1575188843457943924200n,
         totalClaimedAmount: 0n,
@@ -422,13 +428,13 @@ describe("Reader contract", function () {
     let result = await reader.getNodeLicenseDetails(NODE_ADDRESS);
     const mapped = {
       licenseType: result[0],
-      licenseId: result[1].toBigInt(),
+      licenseId: result[1],
       owner: result[2],
       nodeAddress: result[3],
-      totalAssignedAmount: result[4].toBigInt(),
-      totalClaimedAmount: result[5].toBigInt(),
-      lastClaimEpoch: result[6].toBigInt(),
-      assignTimestamp: result[7].toBigInt(),
+      totalAssignedAmount: result[4],
+      totalClaimedAmount: result[5],
+      lastClaimEpoch: result[6],
+      assignTimestamp: result[7],
       lastClaimOracle: result[8],
       isBanned: result[9],
     };
@@ -436,7 +442,7 @@ describe("Reader contract", function () {
       {
         licenseType: 3,
         licenseId: 1n,
-        owner: owner.address,
+        owner: await owner.getAddress(),
         nodeAddress: NODE_ADDRESS,
         totalAssignedAmount: 46761182022000000000000000n,
         totalClaimedAmount: 0n,
@@ -454,7 +460,7 @@ describe("Reader contract", function () {
       ndContract,
       owner,
       firstUser,
-      (await ndContract.getLicenseTokenPrice()).toBigInt(),
+      await ndContract.getLicenseTokenPrice(),
       1,
       1,
       10000,
@@ -463,17 +469,17 @@ describe("Reader contract", function () {
     );
     await linkNode(ndContract, firstUser, 1);
 
-    let arrayRes = await reader.getUserLicenses(firstUser.address);
+    let arrayRes = await reader.getUserLicenses(await firstUser.getAddress());
     let result = arrayRes[0];
     const mapped = {
       licenseType: result[0],
-      licenseId: result[1].toBigInt(),
+      licenseId: result[1],
       owner: result[2],
       nodeAddress: result[3],
-      totalAssignedAmount: result[4].toBigInt(),
-      totalClaimedAmount: result[5].toBigInt(),
-      lastClaimEpoch: result[6].toBigInt(),
-      assignTimestamp: result[7].toBigInt(),
+      totalAssignedAmount: result[4],
+      totalClaimedAmount: result[5],
+      lastClaimEpoch: result[6],
+      assignTimestamp: result[7],
       lastClaimOracle: result[8],
       isBanned: result[9],
     };
@@ -481,7 +487,7 @@ describe("Reader contract", function () {
       {
         licenseType: 1,
         licenseId: 1n,
-        owner: firstUser.address,
+        owner: await firstUser.getAddress(),
         nodeAddress: NODE_ADDRESS,
         totalAssignedAmount: 1575188843457943924200n,
         totalClaimedAmount: 0n,
@@ -496,17 +502,17 @@ describe("Reader contract", function () {
   it("Get user license - mnd license", async function () {
     await MNDlinkNode(mndContract, owner, 1);
 
-    let arrayRes = await reader.getUserLicenses(owner.address);
+    let arrayRes = await reader.getUserLicenses(await owner.getAddress());
     let result = arrayRes[0];
     const mapped = {
       licenseType: result[0],
-      licenseId: result[1].toBigInt(),
+      licenseId: result[1],
       owner: result[2],
       nodeAddress: result[3],
-      totalAssignedAmount: result[4].toBigInt(),
-      totalClaimedAmount: result[5].toBigInt(),
-      lastClaimEpoch: result[6].toBigInt(),
-      assignTimestamp: result[7].toBigInt(),
+      totalAssignedAmount: result[4],
+      totalClaimedAmount: result[5],
+      lastClaimEpoch: result[6],
+      assignTimestamp: result[7],
       lastClaimOracle: result[8],
       isBanned: result[9],
     };
@@ -514,7 +520,7 @@ describe("Reader contract", function () {
       {
         licenseType: 3,
         licenseId: 1n,
-        owner: owner.address,
+        owner: await owner.getAddress(),
         nodeAddress: NODE_ADDRESS,
         totalAssignedAmount: 46761182022000000000000000n,
         totalClaimedAmount: 0n,
@@ -527,7 +533,7 @@ describe("Reader contract", function () {
   });
 
   it("Get user license - no license", async function () {
-    let arrayRes = await reader.getUserLicenses(firstUser.address);
+    let arrayRes = await reader.getUserLicenses(await firstUser.getAddress());
     expect(arrayRes).to.deep.equal([]);
   });
 
@@ -537,7 +543,7 @@ describe("Reader contract", function () {
       ndContract,
       owner,
       owner,
-      (await ndContract.getLicenseTokenPrice()).toBigInt(),
+      await ndContract.getLicenseTokenPrice(),
       1,
       1,
       10000,
@@ -552,19 +558,19 @@ describe("Reader contract", function () {
     );
     await MNDlinkNode(mndContract, owner, 1);
 
-    let arrayRes = await reader.getUserLicenses(owner.address);
+    let arrayRes = await reader.getUserLicenses(await owner.getAddress());
     let mapped_results = [];
     for (let i = 0; i < arrayRes.length; i++) {
       let result = arrayRes[i];
       const mapped = {
         licenseType: result[0],
-        licenseId: result[1].toBigInt(),
+        licenseId: result[1],
         owner: result[2],
         nodeAddress: result[3],
-        totalAssignedAmount: result[4].toBigInt(),
-        totalClaimedAmount: result[5].toBigInt(),
-        lastClaimEpoch: result[6].toBigInt(),
-        assignTimestamp: result[7].toBigInt(),
+        totalAssignedAmount: result[4],
+        totalClaimedAmount: result[5],
+        lastClaimEpoch: result[6],
+        assignTimestamp: result[7],
         lastClaimOracle: result[8],
         isBanned: result[9],
       };
@@ -574,7 +580,7 @@ describe("Reader contract", function () {
       {
         licenseType: 3,
         licenseId: 1n,
-        owner: owner.address,
+        owner: await owner.getAddress(),
         nodeAddress: NODE_ADDRESS,
         totalAssignedAmount: 46761182022000000000000000n,
         totalClaimedAmount: 0n,
@@ -586,7 +592,7 @@ describe("Reader contract", function () {
       {
         licenseType: 1,
         licenseId: 1n,
-        owner: owner.address,
+        owner: await owner.getAddress(),
         nodeAddress: "0xbAAD8E10951D09937Aa8C9D2805608ac4754215a",
         totalAssignedAmount: 1575188843457943924200n,
         totalClaimedAmount: 0n,
@@ -601,8 +607,8 @@ describe("Reader contract", function () {
   it("Get license total supply", async function () {
     let result = await reader.getLicensesTotalSupply();
     const mapped = {
-      mndSupply: result[0].toBigInt(),
-      ndSupply: result[1].toBigInt(),
+      mndSupply: result[0],
+      ndSupply: result[1],
     };
     expect(mapped).to.deep.equal({
       mndSupply: 1n,
@@ -614,13 +620,13 @@ describe("Reader contract", function () {
     await MNDlinkNode(mndContract, owner, 1);
     let result = await reader.getNodeLicenseDetailsByNode(NODE_ADDRESS);
     const mapped = {
-      licenseId: result[0].toBigInt(),
+      licenseId: result[0],
       owner: result[1],
-      assignTimestamp: result[2].toBigInt(),
+      assignTimestamp: result[2],
     };
     expect(mapped).to.deep.equal({
       licenseId: 1n,
-      owner: owner.address,
+      owner: await owner.getAddress(),
       assignTimestamp: 1738767601n,
     });
   });
@@ -631,7 +637,7 @@ describe("Reader contract", function () {
       ndContract,
       owner,
       owner,
-      (await ndContract.getLicenseTokenPrice()).toBigInt(),
+      await ndContract.getLicenseTokenPrice(),
       1,
       1,
       10000,
@@ -645,7 +651,7 @@ describe("Reader contract", function () {
       "0xbAAD8E10951D09937Aa8C9D2805608ac4754215a"
     );
     await MNDlinkNode(mndContract, owner, 1);
-    let result = await reader.getWalletNodes(owner.address);
+    let result = await reader.getWalletNodes(await owner.getAddress());
     expect(result).to.deep.equal([
       NODE_ADDRESS,
       "0xbAAD8E10951D09937Aa8C9D2805608ac4754215a",
@@ -656,13 +662,13 @@ describe("Reader contract", function () {
     let result = await reader.getOraclesDetails();
     const mapped = result.map((oracle) => ({
       oracleAddress: oracle[0],
-      signaturesCount: oracle[1].toBigInt(),
-      additionTimestamp: oracle[2].toNumber(),
+      signaturesCount: oracle[1],
+      additionTimestamp: oracle[2],
     }));
     oracle_assignation_timestamp += 1; // Increment to simulate the addition timestamp
     expect(mapped).to.deep.equal([
       {
-        oracleAddress: backend.address,
+        oracleAddress: await backend.getAddress(),
         signaturesCount: 0n,
         additionTimestamp: oracle_assignation_timestamp,
       },
@@ -670,18 +676,20 @@ describe("Reader contract", function () {
   });
 
   it("Get addresses balances", async function () {
-    let amount = BigNumber.from("10000");
-    let decimals = BigNumber.from(10).pow(18);
-    await r1Contract.connect(owner).mint(firstUser.address, amount);
-    let result = await reader.getAddressesBalances([firstUser.address]);
+    let amount = 10000n;
+    let decimals = 10n ** 18n;
+    await r1Contract.connect(owner).mint(await firstUser.getAddress(), amount);
+    let result = await reader.getAddressesBalances([
+      await firstUser.getAddress(),
+    ]);
     const mapped = result.map((balance) => ({
       address: balance[0],
-      balance: balance[1].toBigInt(),
+      balance: balance[1],
     }));
     expect(mapped).to.deep.equal([
       {
-        address: firstUser.address,
-        balance: amount.mul(decimals).toBigInt(),
+        address: await firstUser.getAddress(),
+        balance: amount * decimals,
       },
     ]);
   });

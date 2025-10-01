@@ -1,8 +1,7 @@
 import { ethers, upgrades } from "hardhat";
-import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { NDContract, Controller, MNDContract } from "../../typechain-types";
+import { NDContract, Controller, MNDContract } from "../typechain-types";
 import { expect } from "chai";
-const BigNumber = ethers.BigNumber;
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 
 /*
 ..######...#######..##....##..######..########....###....##....##.########..######.
@@ -30,10 +29,10 @@ describe("Controller contract", function () {
     */
 
   let controllerContract: Controller;
-  let owner: SignerWithAddress;
-  let firstUser: SignerWithAddress;
-  let secondUser: SignerWithAddress;
-  let backend: SignerWithAddress;
+  let owner: HardhatEthersSigner;
+  let firstUser: HardhatEthersSigner;
+  let secondUser: HardhatEthersSigner;
+  let backend: HardhatEthersSigner;
   let snapshotId: string;
 
   before(async function () {
@@ -59,20 +58,28 @@ describe("Controller contract", function () {
     const NDContractFactory = await ethers.getContractFactory("NDContract");
     let ndContract = (await upgrades.deployProxy(
       NDContractFactory,
-      [r1Contract.address, controllerContract.address, owner.address],
+      [
+        await r1Contract.getAddress(),
+        await controllerContract.getAddress(),
+        owner.address,
+      ],
       { initializer: "initialize" }
     )) as NDContract;
 
     const MNDContractFactory = await ethers.getContractFactory("MNDContract");
     let mndContract = (await upgrades.deployProxy(
       MNDContractFactory,
-      [r1Contract.address, controllerContract.address, owner.address],
+      [
+        await r1Contract.getAddress(),
+        await controllerContract.getAddress(),
+        owner.address,
+      ],
       { initializer: "initialize" }
     )) as unknown as MNDContract;
 
     await controllerContract.setContracts(
-      ndContract.address,
-      mndContract.address
+      await ndContract.getAddress(),
+      await mndContract.getAddress()
     );
   }
 
@@ -106,7 +113,10 @@ describe("Controller contract", function () {
   it("Set minimum required signature - not the owner", async function () {
     await expect(
       controllerContract.connect(backend).setMinimumRequiredSignatures(1)
-    ).to.be.revertedWith("OwnableUnauthorizedAccount");
+    ).to.be.revertedWithCustomError(
+      controllerContract,
+      "OwnableUnauthorizedAccount"
+    );
   });
 
   it("Empty signatures array should fail", async function () {
@@ -129,21 +139,32 @@ describe("Controller contract", function () {
     const NDContractFactory = await ethers.getContractFactory("NDContract");
     let ndContract = (await upgrades.deployProxy(
       NDContractFactory,
-      [r1Contract.address, controllerContract.address, owner.address],
+      [
+        await r1Contract.getAddress(),
+        await controllerContract.getAddress(),
+        owner.address,
+      ],
       { initializer: "initialize" }
     )) as NDContract;
 
     const MNDContractFactory = await ethers.getContractFactory("MNDContract");
     let mndContract = (await upgrades.deployProxy(
       MNDContractFactory,
-      [r1Contract.address, controllerContract.address, owner.address],
+      [
+        await r1Contract.getAddress(),
+        await controllerContract.getAddress(),
+        owner.address,
+      ],
       { initializer: "initialize" }
     )) as unknown as MNDContract;
 
     await expect(
       controllerContract
         .connect(backend)
-        .setContracts(ndContract.address, mndContract.address)
+        .setContracts(
+          await ndContract.getAddress(),
+          await mndContract.getAddress()
+        )
     ).to.be.reverted;
   });
 
@@ -153,22 +174,36 @@ describe("Controller contract", function () {
     const NDContractFactory = await ethers.getContractFactory("NDContract");
     let ndContract = (await upgrades.deployProxy(
       NDContractFactory,
-      [r1Contract.address, controllerContract.address, owner.address],
+      [
+        await r1Contract.getAddress(),
+        await controllerContract.getAddress(),
+        owner.address,
+      ],
       { initializer: "initialize" }
     )) as NDContract;
 
     const MNDContractFactory = await ethers.getContractFactory("MNDContract");
     let mndContract = (await upgrades.deployProxy(
       MNDContractFactory,
-      [r1Contract.address, controllerContract.address, owner.address],
+      [
+        await r1Contract.getAddress(),
+        await controllerContract.getAddress(),
+        owner.address,
+      ],
       { initializer: "initialize" }
     )) as unknown as MNDContract;
 
     await expect(
-      controllerContract.setContracts(NULL_ADDRESS, mndContract.address)
+      controllerContract.setContracts(
+        NULL_ADDRESS,
+        await mndContract.getAddress()
+      )
     ).to.be.reverted;
     await expect(
-      controllerContract.setContracts(ndContract.address, NULL_ADDRESS)
+      controllerContract.setContracts(
+        await ndContract.getAddress(),
+        NULL_ADDRESS
+      )
     ).to.be.reverted;
   });
 
@@ -196,7 +231,10 @@ describe("Controller contract", function () {
   it("add oracle - not the owner", async function () {
     await expect(
       controllerContract.connect(backend).addOracle(NULL_ADDRESS)
-    ).to.be.revertedWith("OwnableUnauthorizedAccount");
+    ).to.be.revertedWithCustomError(
+      controllerContract,
+      "OwnableUnauthorizedAccount"
+    );
   });
 
   it("remove oracle - should work", async function () {
@@ -213,7 +251,10 @@ describe("Controller contract", function () {
   it("remove oracle - not the owner", async function () {
     await expect(
       controllerContract.connect(backend).removeOracle(NODE_ADDRESS)
-    ).to.be.revertedWith("OwnableUnauthorizedAccount");
+    ).to.be.revertedWithCustomError(
+      controllerContract,
+      "OwnableUnauthorizedAccount"
+    );
   });
 
   it("get oracles - should work", async function () {

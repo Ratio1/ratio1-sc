@@ -47,7 +47,7 @@ function parseTargets(rawTargets: string | undefined): UpgradeTarget[] {
         `Invalid upgrade kind "${kindRaw}" in entry "${trimmed}". Supported kinds: proxy, beacon.`
       );
     }
-    if (!ethers.utils.isAddress(target)) {
+    if (!ethers.isAddress(target)) {
       throw new Error(`Invalid address "${target}" in entry "${trimmed}"`);
     }
     targets.push({ contract, target, kind });
@@ -64,11 +64,11 @@ async function resolveImplementationAddress(
   result: DeployImplementationResponse
 ): Promise<string> {
   if (typeof result === "string") {
-    return ethers.utils.getAddress(result);
+    return ethers.getAddress(result);
   }
 
   const receipt = await result.wait();
-  const address = receipt.contractAddress ?? result.to;
+  const address = receipt?.contractAddress ?? result.to;
 
   if (!address) {
     throw new Error(
@@ -76,7 +76,7 @@ async function resolveImplementationAddress(
     );
   }
 
-  return ethers.utils.getAddress(address);
+  return ethers.getAddress(address);
 }
 
 async function main() {
@@ -88,7 +88,7 @@ async function main() {
     throw new Error("SAFE_ADDRESS environment variable must be provided");
   }
 
-  const safeAddress = ethers.utils.getAddress(safeAddressEnv);
+  const safeAddress = ethers.getAddress(safeAddressEnv);
   const targets = parseTargets(process.env.UPGRADE_TARGETS);
   const providerNetwork = await ethers.provider.getNetwork();
   const chainId = providerNetwork.chainId;
@@ -100,13 +100,10 @@ async function main() {
 
   const safeTransactions: SafeTransaction[] = [];
 
-  let proxyAdminContract:
-    | Awaited<ReturnType<typeof upgrades.admin.getInstance>>
-    | undefined;
   let proxyAdminAddress: string | undefined;
 
   for (const target of targets) {
-    const targetAddress = ethers.utils.getAddress(target.target);
+    const targetAddress = ethers.getAddress(target.target);
     console.log(`----------------------------------------------------`);
     console.log(
       `Preparing ${target.kind} upgrade for ${target.contract} at ${targetAddress}`
@@ -120,9 +117,10 @@ async function main() {
     let safeTx: SafeTransaction;
 
     if (target.kind === "proxy") {
-      if (!proxyAdminContract) {
-        proxyAdminContract = await upgrades.admin.getInstance();
-        proxyAdminAddress = ethers.utils.getAddress(proxyAdminContract.address);
+      if (!proxyAdminAddress) {
+        proxyAdminAddress = await upgrades.erc1967.getAdminAddress(
+          targetAddress
+        );
       }
 
       previousImplementation = await upgrades.erc1967.getImplementationAddress(
@@ -136,8 +134,7 @@ async function main() {
       );
 
       if (
-        ethers.utils.getAddress(previousImplementation) ===
-        newImplementationAddress
+        ethers.getAddress(previousImplementation) === newImplementationAddress
       ) {
         console.log(
           `🔄 New implementation is the same as the previous one for ${target.contract} at ${targetAddress}. Skipping...`
@@ -149,7 +146,11 @@ async function main() {
         `✅ New implementation deployed at: ${newImplementationAddress}`
       );
 
-      const data = proxyAdminContract!.interface.encodeFunctionData("upgrade", [
+      const proxyAdmin = new ethers.Contract(proxyAdminAddress, [
+        "function upgrade(address proxy, address implementation)",
+        "function owner() view returns (address)",
+      ]);
+      const data = proxyAdmin.interface.encodeFunctionData("upgrade", [
         targetAddress,
         newImplementationAddress,
       ]);
@@ -191,8 +192,7 @@ async function main() {
       );
 
       if (
-        ethers.utils.getAddress(previousImplementation) ===
-        newImplementationAddress
+        ethers.getAddress(previousImplementation) === newImplementationAddress
       ) {
         console.log(
           `🔄 New implementation is the same as the previous one for ${target.contract} at ${targetAddress}. Skipping...`
