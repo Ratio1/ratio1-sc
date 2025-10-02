@@ -214,6 +214,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         BeaconProxy proxy = new BeaconProxy(address(cspEscrowBeacon), data);
         address escrowAddr = address(proxy);
         R1 r1 = R1(r1Token);
+        require(r1.owner() == address(this), "PoAIManager must be R1 owner");
         r1.addBurner(escrowAddr);
         allEscrows.push(escrowAddr);
         ownerToEscrow[sender] = escrowAddr;
@@ -224,12 +225,14 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     function addR1Burner(address account) external onlyOwner {
         require(account != address(0), "Invalid burner address");
         R1 r1 = R1(r1Token);
+        require(r1.owner() == address(this), "PoAIManager must be R1 owner");
         r1.addBurner(account);
     }
 
     function removeR1Burner(address account) external onlyOwner {
         require(account != address(0), "Invalid burner address");
         R1 r1 = R1(r1Token);
+        require(r1.owner() == address(this), "PoAIManager must be R1 owner");
         r1.removeBurner(account);
     }
 
