@@ -199,7 +199,7 @@ describe("PoAIManager", function () {
     const escrowAddress = await poaiManager.ownerToEscrow(
       await userSigner.getAddress()
     );
-    r1.addBurner(escrowAddress);
+    await r1.addBurner(escrowAddress);
     return escrowAddress;
   }
 
