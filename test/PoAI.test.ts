@@ -94,7 +94,7 @@ describe("PoAIManager", function () {
       await mndContract.getAddress()
     );
 
-    // Deploy mock USDC and R1 tokens
+    // Deploy mock USDC token
     const MockERC20 = await ethers.getContractFactory("ERC20Mock");
     mockUsdc = await MockERC20.deploy();
 
@@ -152,6 +152,9 @@ describe("PoAIManager", function () {
     await poaiManager.waitForDeployment();
     await ndContract.setPoAIManager(await poaiManager.getAddress());
 
+    // Transfer R1 ownership to PoAI Manager so it can manage burners
+    await r1.transferOwnership(await poaiManager.getAddress());
+
     // Set timestamp to start epoch + 1 day to avoid epoch 0 underflow issues
     const block = await ethers.provider.getBlock("latest");
     const nextTimestamp = Math.max(
@@ -199,7 +202,6 @@ describe("PoAIManager", function () {
     const escrowAddress = await poaiManager.ownerToEscrow(
       await userSigner.getAddress()
     );
-    await r1.addBurner(escrowAddress);
     return escrowAddress;
   }
 
@@ -249,9 +251,40 @@ describe("PoAIManager", function () {
   it("should deploy a new CSP Escrow for a user with an oracle node (MND path)", async function () {
     await setupUserWithOracleNode(user, oracle);
 
-    // Now user has a node that is an oracle, should succeed
-    expect(await poaiManager.connect(user).deployCspEscrow()).not.to.be
-      .reverted;
+    // Now user has a node that is an oracle, should succeed and register escrow as burner
+    await poaiManager.connect(user).deployCspEscrow();
+    const escrowAddress = await poaiManager.ownerToEscrow(
+      await user.getAddress()
+    );
+    await expect(poaiManager.connect(owner).removeR1Burner(escrowAddress)).to
+      .not.be.reverted;
+    // Restore burner status for subsequent tests relying on the setup
+    await poaiManager.connect(owner).addR1Burner(escrowAddress);
+  });
+
+  it("should allow the PoAI Manager owner to manage R1 burners", async function () {
+    const burnerCandidate = await other.getAddress();
+
+    await poaiManager.connect(owner).addR1Burner(burnerCandidate);
+
+    await poaiManager.connect(owner).removeR1Burner(burnerCandidate);
+    await expect(
+      poaiManager.connect(owner).removeR1Burner(burnerCandidate)
+    ).to.be.revertedWith("Address is not a burner");
+  });
+
+  it("should restrict R1 burner management helpers to the owner", async function () {
+    const burnerCandidate = await other.getAddress();
+
+    await expect(
+      poaiManager.connect(other).addR1Burner(burnerCandidate)
+    ).to.be.revertedWithCustomError(poaiManager, "OwnableUnauthorizedAccount");
+
+    await poaiManager.connect(owner).addR1Burner(burnerCandidate);
+
+    await expect(
+      poaiManager.connect(other).removeR1Burner(burnerCandidate)
+    ).to.be.revertedWithCustomError(poaiManager, "OwnableUnauthorizedAccount");
   });
 
   it("should not allow double escrow deploy for the same user", async function () {
@@ -318,6 +351,93 @@ describe("PoAIManager", function () {
 
     // Verify USDC was transferred to escrow
     expect(await mockUsdc.balanceOf(escrowAddress)).to.equal(expectedPrice);
+  });
+
+  it("should return the active job count for a single escrow", async function () {
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+    const currentEpoch = await poaiManager.getCurrentEpoch();
+    const epochs = 35n;
+    const numberOfNodesRequested = 1n;
+    const lastExecutionEpoch = currentEpoch + epochs;
+    const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
+    const totalCost = pricePerEpoch * numberOfNodesRequested * epochs;
+
+    await mockUsdc.mint(await user.getAddress(), totalCost);
+    await mockUsdc.connect(user).approve(escrowAddress, totalCost);
+
+    await cspEscrow.connect(user).createJobs([
+      {
+        jobType: 1,
+        projectHash: ethers.keccak256(ethers.toUtf8Bytes("single-escrow-job")),
+        lastExecutionEpoch,
+        numberOfNodesRequested,
+      },
+    ]);
+
+    expect(await poaiManager.getActiveJobsCount()).to.equal(1);
+  });
+
+  it("should aggregate active job counts across multiple escrows", async function () {
+    const firstEscrowAddress = await setupUserWithEscrow(user, oracle);
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const firstEscrow: CspEscrow = CspEscrow.attach(
+      firstEscrowAddress
+    ) as CspEscrow;
+
+    const initialEpoch = await poaiManager.getCurrentEpoch();
+    const epochs = 32n;
+    const numberOfNodesRequested = 1n;
+    const firstLastExecutionEpoch = initialEpoch + epochs;
+    const pricePerEpoch = await firstEscrow.getPriceForJobType(1);
+    const firstCost = pricePerEpoch * numberOfNodesRequested * epochs;
+
+    await mockUsdc.mint(await user.getAddress(), firstCost);
+    await mockUsdc.connect(user).approve(firstEscrowAddress, firstCost);
+
+    await firstEscrow.connect(user).createJobs([
+      {
+        jobType: 1,
+        projectHash: ethers.keccak256(ethers.toUtf8Bytes("first-escrow-job")),
+        lastExecutionEpoch: firstLastExecutionEpoch,
+        numberOfNodesRequested,
+      },
+    ]);
+
+    await controller.addOracle(await oracle2.getAddress());
+    const secondEscrowAddress = await setupUserWithEscrow(other, oracle2);
+    const secondEscrow: CspEscrow = CspEscrow.attach(
+      secondEscrowAddress
+    ) as CspEscrow;
+
+    const updatedEpoch = await poaiManager.getCurrentEpoch();
+    const secondEpochs = 40n;
+    const secondLastExecutionEpoch = updatedEpoch + secondEpochs;
+    const secondPricePerEpoch = await secondEscrow.getPriceForJobType(1);
+    const secondCost =
+      secondPricePerEpoch * numberOfNodesRequested * secondEpochs;
+
+    await mockUsdc.mint(await other.getAddress(), secondCost * 2n);
+    await mockUsdc.connect(other).approve(secondEscrowAddress, secondCost * 2n);
+
+    await secondEscrow.connect(other).createJobs([
+      {
+        jobType: 1,
+        projectHash: ethers.keccak256(ethers.toUtf8Bytes("second-escrow-job")),
+        lastExecutionEpoch: secondLastExecutionEpoch,
+        numberOfNodesRequested,
+      },
+      {
+        jobType: 1,
+        projectHash: ethers.keccak256(ethers.toUtf8Bytes("second-escrow-job")),
+        lastExecutionEpoch: secondLastExecutionEpoch,
+        numberOfNodesRequested,
+      },
+    ]);
+
+    expect(await poaiManager.getActiveJobsCount()).to.equal(3);
   });
 
   it("should allow CSP owner to extend job duration", async function () {
