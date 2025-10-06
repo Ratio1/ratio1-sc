@@ -557,6 +557,13 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         }
     }
 
+    function getActiveJobsCount() external view returns (uint256 totalActiveJobs) {
+        uint256 escrowCount = allEscrows.length;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            totalActiveJobs += CspEscrow(allEscrows[i]).getActiveJobsCount();
+        }
+    }
+
     function getAllCspsWithOwner()
         external
         view
