@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { AbiCoder, Signer } from "ethers";
+import { buyLicenseAndLinkNode } from "./helpers";
 import {
   R1,
   NDContract,
@@ -67,6 +68,8 @@ describe("PoAIManager", function () {
       { initializer: "initialize" }
     );
     await ndContract.waitForDeployment();
+    await r1.setNdContract(await ndContract.getAddress());
+    await ndContract.setDirectAddLpPercentage(50n);
 
     // Deploy MNDContract
     const MNDContract = await ethers.getContractFactory("MNDContract");
@@ -84,10 +87,7 @@ describe("PoAIManager", function () {
     // Set ND <-> MND relationship
     await ndContract.setMNDContract(await mndContract.getAddress());
     await mndContract.setNDContract(await ndContract.getAddress());
-
-    await r1.setNdContract(await ndContract.getAddress());
-    // Allow the owner signer to mint R1 during tests
-    await r1.setMndContract(await owner.getAddress());
+    await r1.setMndContract(await owner.getAddress()); // Needed for tests to mint R1, not an issue since MNDContract is not used in PoAI Tests
 
     await controller.setContracts(
       await ndContract.getAddress(),
@@ -111,6 +111,21 @@ describe("PoAIManager", function () {
       await r1.getAddress()
     );
     await mockUniswapPair.waitForDeployment();
+    await ndContract.setUniswapParams(
+      await mockUniswapRouter.getAddress(),
+      await mockUniswapPair.getAddress(),
+      await mockUsdc.getAddress()
+    );
+    const ownerAddress = await owner.getAddress();
+    await ndContract.setCompanyWallets(
+      ownerAddress,
+      ownerAddress,
+      ownerAddress
+    );
+    await mockUsdc.mint(
+      await mockUniswapRouter.getAddress(),
+      50000000000000000000000n
+    );
 
     // Deploy CSP Escrow implementation
     const CspEscrow = await ethers.getContractFactory("CspEscrow");
@@ -135,6 +150,7 @@ describe("PoAIManager", function () {
       { initializer: "initialize" }
     );
     await poaiManager.waitForDeployment();
+    await ndContract.setPoAIManager(await poaiManager.getAddress());
 
     // Transfer R1 ownership to PoAI Manager so it can manage burners
     await r1.transferOwnership(await poaiManager.getAddress());
@@ -157,52 +173,36 @@ describe("PoAIManager", function () {
     snapshotId = await ethers.provider.send("evm_snapshot", []);
   });
 
-  // Helper for linkNode signature (matches MND test)
-  async function signLinkNode(
-    signer: Signer,
-    user: Signer,
-    nodeAddress: string
-  ) {
-    const messageHash = ethers.solidityPackedKeccak256(
-      ["address", "address"],
-      [await user.getAddress(), nodeAddress]
-    );
-    return signer.signMessage(ethers.getBytes(messageHash));
-  }
-
   // Helper function to setup user with MND license and linked oracle node
   async function setupUserWithOracleNode(
     userSigner: Signer,
     oracleSigner: Signer
   ) {
-    // Add MND license to user
+    const nodeAddress = await oracleSigner.getAddress();
+
+    await buyLicenseAndLinkNode({
+      r1,
+      nd: ndContract,
+      mintAuthority: owner,
+      buyer: userSigner,
+      oracleSigner,
+      nodeAddress,
+    });
+
     const newTotalAssignedAmount = ethers.parseEther("1000");
     await mndContract
       .connect(owner)
       .addLicense(await userSigner.getAddress(), newTotalAssignedAmount);
-
-    // Get the user's licenses to find the correct license ID
-    const licenses = await mndContract.getLicenses(
-      await userSigner.getAddress()
-    );
-    const licenseId = licenses[licenses.length - 1].licenseId; // Get the latest license
-
-    const nodeAddress = await oracleSigner.getAddress();
-    const linkSignature = await signLinkNode(
-      oracleSigner,
-      userSigner,
-      nodeAddress
-    );
-    await mndContract
-      .connect(userSigner)
-      .linkNode(licenseId, nodeAddress, linkSignature);
   }
 
   // Helper function to setup user with escrow deployed
   async function setupUserWithEscrow(userSigner: Signer, oracleSigner: Signer) {
     await setupUserWithOracleNode(userSigner, oracleSigner);
     await poaiManager.connect(userSigner).deployCspEscrow();
-    return await poaiManager.ownerToEscrow(await userSigner.getAddress());
+    const escrowAddress = await poaiManager.ownerToEscrow(
+      await userSigner.getAddress()
+    );
+    return escrowAddress;
   }
 
   async function setupJobWithActiveNodes() {
@@ -235,6 +235,11 @@ describe("PoAIManager", function () {
     await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
 
     return { cspEscrow, numberOfEpochs };
+  }
+
+  async function advanceEpochs(count: number = 1) {
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY * count]);
+    await ethers.provider.send("evm_mine", []);
   }
 
   it("should revert if user does not own an oracle node", async function () {
@@ -1009,96 +1014,32 @@ describe("PoAIManager", function () {
   });
 
   describe("Rewards Allocation and Burning", function () {
-    // TODO: Fix this test
-    it.skip("should allocate rewards to active nodes and burn 15%", async function () {
+    it("should allocate rewards to active nodes and burn 15%", async function () {
+      await controller.addOracle(await oracle2.getAddress());
+      await controller.addOracle(await oracle3.getAddress());
+
       const escrowAddress = await setupUserWithEscrow(user, oracle);
       const CspEscrow = await ethers.getContractFactory("CspEscrow");
       const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
 
-      // Create job with sufficient balance
-      const jobPrice = 1000000000; // 1000 USDC (6 decimals)
-      await mockUsdc.mint(await user.getAddress(), jobPrice);
-      await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
+      await buyLicenseAndLinkNode({
+        r1,
+        nd: ndContract,
+        mintAuthority: owner,
+        buyer: user,
+        oracleSigner: oracle2,
+        nodeAddress: await oracle2.getAddress(),
+      });
+      await buyLicenseAndLinkNode({
+        r1,
+        nd: ndContract,
+        mintAuthority: owner,
+        buyer: user,
+        oracleSigner: oracle3,
+        nodeAddress: await oracle3.getAddress(),
+      });
 
-      const currentEpoch = await poaiManager.getCurrentEpoch();
-      const lastExecutionEpoch = currentEpoch + 35n; // Multiple epochs
-      await cspEscrow.connect(user).createJobs([
-        {
-          jobType: 1,
-          projectHash: ethers.keccak256(ethers.toUtf8Bytes("test-project")),
-          lastExecutionEpoch: lastExecutionEpoch,
-          numberOfNodesRequested: 3,
-        },
-      ]);
-
-      // Set active nodes via consensus
-      const activeNodes = [
-        await oracle.getAddress(),
-        await oracle2.getAddress(),
-        await oracle3.getAddress(),
-      ];
-      await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
-
-      // Advance time to next epoch
-      const block1 = await ethers.provider.getBlock("latest");
-      const nextEpochTimestamp = Math.max(
-        (block1?.timestamp || 0) + 1,
-        START_EPOCH_TIMESTAMP + ONE_DAY
-      );
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        nextEpochTimestamp,
-      ]);
-      await ethers.provider.send("evm_mine", []);
-
-      // Mock R1 tokens for burning - mint to router so it can transfer them during swap
-      await r1.mint(mockUniswapRouter.getAddress(), ethers.parseEther("1000"));
-
-      // Advance time to epoch 2 before allocating rewards (so we can allocate for epoch 1)
-      const block = await ethers.provider.getBlock("latest");
-      const allocationEpochTimestamp = Math.max(
-        (block?.timestamp || 0) + 1,
-        START_EPOCH_TIMESTAMP + 2 * ONE_DAY
-      );
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        allocationEpochTimestamp,
-      ]);
-      await ethers.provider.send("evm_mine", []);
-
-      // Allocate rewards via PoAI Manager
-      await expect(poaiManager.allocateRewardsAcrossAllEscrows())
-        .to.emit(cspEscrow, "RewardsAllocatedV2")
-        .withArgs(1, activeNodes, 956250); // 3 nodes * 318750 (pricePerEpoch - 15% burn)
-
-      // Verify virtual wallet balances
-      const rewardPerNode = 318750; // pricePerEpoch = 375000, minus 15% burn = 318750
-      expect(
-        await cspEscrow.virtualWalletBalance(await oracle.getAddress())
-      ).to.equal(rewardPerNode);
-      expect(
-        await cspEscrow.virtualWalletBalance(await oracle2.getAddress())
-      ).to.equal(rewardPerNode);
-      expect(
-        await cspEscrow.virtualWalletBalance(await oracle3.getAddress())
-      ).to.equal(rewardPerNode);
-
-      // Verify job balance was reduced
-      const jobDetails = await cspEscrow.getJobDetails(1);
-      // Job balance: 3 nodes * 35 epochs * 375000 = 39375000
-      // After 1 allocation: 39375000 - (956250 + 168750 burn) = 38250000
-      expect(jobDetails.balance).to.equal(38250000);
-      expect(jobDetails.lastAllocatedEpoch).to.equal(
-        await poaiManager.getCurrentEpoch()
-      );
-    });
-
-    // TODO: Fix this test
-    it.skip("should burn 15% of rewards by swapping USDC for R1", async function () {
-      const escrowAddress = await setupUserWithEscrow(user, oracle);
-      const CspEscrow = await ethers.getContractFactory("CspEscrow");
-      const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
-
-      // Create job
-      const jobPrice = 1000000000; // 1000 USDC (6 decimals)
+      const jobPrice = 1_000_000_000n; // 1000 USDC (6 decimals)
       await mockUsdc.mint(await user.getAddress(), jobPrice);
       await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
 
@@ -1108,36 +1049,164 @@ describe("PoAIManager", function () {
         {
           jobType: 1,
           projectHash: ethers.keccak256(ethers.toUtf8Bytes("test-project")),
-          lastExecutionEpoch: lastExecutionEpoch,
+          lastExecutionEpoch,
+          numberOfNodesRequested: 3,
+        },
+      ]);
+
+      const jobDetailsBefore = await cspEscrow.getJobDetails(1);
+      const activeNodes = [
+        await oracle.getAddress(),
+        await oracle2.getAddress(),
+        await oracle3.getAddress(),
+      ];
+
+      await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
+      await poaiManager.connect(oracle2).submitNodeUpdate(1, activeNodes);
+      await poaiManager.connect(oracle3).submitNodeUpdate(1, activeNodes);
+
+      await r1.mint(
+        await mockUniswapRouter.getAddress(),
+        ethers.parseEther("1000")
+      );
+      await advanceEpochs(1);
+
+      const tx = await poaiManager.allocateRewardsAcrossAllEscrows();
+      const receipt = await tx.wait();
+
+      const parsedEvents = receipt?.logs
+        .filter((log) => log.address === escrowAddress)
+        .map((log) => {
+          try {
+            return cspEscrow.interface.parseLog(log);
+          } catch {
+            return null;
+          }
+        })
+        .filter(
+          (event): event is ReturnType<typeof cspEscrow.interface.parseLog> =>
+            !!event
+        );
+
+      const rewardEvents = (parsedEvents ?? []).filter(
+        (event) => event?.name === "RewardsAllocatedV2"
+      );
+      expect(rewardEvents.length).to.equal(activeNodes.length);
+
+      const userAddress = await user.getAddress();
+      const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
+      const burnPerNode = (pricePerEpoch * BURN_PERCENTAGE) / 100n;
+      const rewardPerNode = pricePerEpoch - burnPerNode;
+      const totalBurn = burnPerNode * BigInt(activeNodes.length);
+
+      for (const event of rewardEvents) {
+        expect(event?.args[0]).to.equal(1n);
+        expect(event?.args[1]).to.be.oneOf(activeNodes);
+        expect(event?.args[2]).to.equal(userAddress);
+        expect(event?.args[3]).to.equal(rewardPerNode);
+      }
+
+      const burnEvents = (parsedEvents ?? []).filter(
+        (event) => event?.name === "TokensBurned"
+      );
+      expect(burnEvents.length).to.equal(1);
+      expect(burnEvents[0]?.args[0]).to.equal(totalBurn);
+
+      for (const node of activeNodes) {
+        expect(await cspEscrow.virtualWalletBalance(node)).to.equal(
+          rewardPerNode
+        );
+      }
+
+      const jobDetails = await cspEscrow.getJobDetails(1);
+      const expectedBalance =
+        jobDetailsBefore.balance - pricePerEpoch * BigInt(activeNodes.length);
+      expect(jobDetails.balance).to.equal(expectedBalance);
+      expect(jobDetails.lastAllocatedEpoch).to.equal(
+        (await poaiManager.getCurrentEpoch()) - 1n
+      );
+    });
+
+    it("should burn 15% of rewards by swapping USDC for R1", async function () {
+      await controller.addOracle(await oracle2.getAddress());
+
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+      await buyLicenseAndLinkNode({
+        r1,
+        nd: ndContract,
+        mintAuthority: owner,
+        buyer: user,
+        oracleSigner: oracle2,
+        nodeAddress: await oracle2.getAddress(),
+      });
+
+      const jobPrice = 1_000_000_000n; // 1000 USDC (6 decimals)
+      await mockUsdc.mint(await user.getAddress(), jobPrice);
+      await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
+
+      const currentEpoch = await poaiManager.getCurrentEpoch();
+      const lastExecutionEpoch = currentEpoch + 35n;
+      await cspEscrow.connect(user).createJobs([
+        {
+          jobType: 1,
+          projectHash: ethers.keccak256(ethers.toUtf8Bytes("test-project")),
+          lastExecutionEpoch,
           numberOfNodesRequested: 2,
         },
       ]);
 
-      // Set active nodes
       const activeNodes = [
         await oracle.getAddress(),
         await oracle2.getAddress(),
       ];
+
       await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
+      await poaiManager.connect(oracle2).submitNodeUpdate(1, activeNodes);
 
-      // Advance time
-      const block = await ethers.provider.getBlock("latest");
-      const burnEpochTimestamp = Math.max(
-        (block?.timestamp || 0) + 1,
-        START_EPOCH_TIMESTAMP + 2 * ONE_DAY
+      await r1.mint(
+        await mockUniswapRouter.getAddress(),
+        ethers.parseEther("1000")
       );
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        burnEpochTimestamp,
-      ]);
-      await ethers.provider.send("evm_mine", []);
+      await advanceEpochs(1);
 
-      // Mock R1 tokens for burning - mint to router so it can transfer them during swap
-      await r1.mint(mockUniswapRouter.getAddress(), ethers.parseEther("1000"));
+      const tx = await poaiManager.allocateRewardsAcrossAllEscrows();
+      const receipt = await tx.wait();
 
-      // Allocate rewards and expect burning
-      await expect(poaiManager.allocateRewardsAcrossAllEscrows())
-        .to.emit(cspEscrow, "RewardsAllocatedV2")
-        .withArgs(1, activeNodes, 637500); // 2 nodes * 318750 (pricePerEpoch - 15% burn)
+      const parsedEvents = receipt?.logs
+        .filter((log) => log.address === escrowAddress)
+        .map((log) => {
+          try {
+            return cspEscrow.interface.parseLog(log);
+          } catch {
+            return null;
+          }
+        })
+        .filter(
+          (event): event is ReturnType<typeof cspEscrow.interface.parseLog> =>
+            !!event
+        );
+
+      const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
+      const burnPerNode = (pricePerEpoch * BURN_PERCENTAGE) / 100n;
+      const rewardPerNode = pricePerEpoch - burnPerNode;
+      const totalBurn = burnPerNode * BigInt(activeNodes.length);
+
+      const rewardEvents = (parsedEvents ?? []).filter(
+        (event) => event?.name === "RewardsAllocatedV2"
+      );
+      expect(rewardEvents.length).to.equal(activeNodes.length);
+      for (const event of rewardEvents) {
+        expect(event?.args[3]).to.equal(rewardPerNode);
+      }
+
+      const burnEvents = (parsedEvents ?? []).filter(
+        (event) => event?.name === "TokensBurned"
+      );
+      expect(burnEvents.length).to.equal(1);
+      expect(burnEvents[0]?.args[0]).to.equal(totalBurn);
     });
 
     it("should not allocate rewards for jobs without active nodes", async function () {
@@ -1206,8 +1275,7 @@ describe("PoAIManager", function () {
       ).to.be.revertedWith("Not PoAI Manager");
     });
 
-    it.skip("should reconcile legacy job balances by subtracting historical burn", async function () {
-      //skip this test for now as it requires too much setup to run properly. For testing, need to comment address nodeOwner = ndContract.getNodeOwner(nodeAddress) in allocateRewardsToNodes to make it work
+    it("should reconcile legacy job balances by subtracting historical burn", async function () {
       const escrowAddress = await setupUserWithEscrow(user, oracle);
       const CspEscrow = await ethers.getContractFactory("CspEscrow");
       const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
@@ -1228,33 +1296,10 @@ describe("PoAIManager", function () {
       ]);
 
       const nodeAddress = await oracle.getAddress();
-      await controller.setContracts(
-        mndContract.getAddress(),
-        mndContract.getAddress()
-      ); // Use MND as dummy ND to avoid all setup
       await poaiManager.connect(oracle).submitNodeUpdate(1, [nodeAddress]);
 
       await r1.mint(mockUniswapRouter.getAddress(), ethers.parseEther("1000"));
-
-      const block1 = await ethers.provider.getBlock("latest");
-      const nextEpochTimestamp = Math.max(
-        (block1?.timestamp || 0) + 1,
-        START_EPOCH_TIMESTAMP + ONE_DAY
-      );
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        nextEpochTimestamp,
-      ]);
-      await ethers.provider.send("evm_mine", []);
-
-      const block2 = await ethers.provider.getBlock("latest");
-      const allocationEpochTimestamp = Math.max(
-        (block2?.timestamp || 0) + 1,
-        START_EPOCH_TIMESTAMP + 2 * ONE_DAY
-      );
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        allocationEpochTimestamp,
-      ]);
-      await ethers.provider.send("evm_mine", []);
+      await advanceEpochs(2);
 
       await poaiManager.allocateRewardsAcrossAllEscrows();
 
@@ -1277,8 +1322,8 @@ describe("PoAIManager", function () {
       const balanceSlot = BigInt(baseSlot) + 9n;
       await ethers.provider.send("hardhat_setStorageAt", [
         escrowAddress,
-        ethers.zeroPadValue(balanceSlot.toString(16), 32),
-        ethers.zeroPadValue(legacyBalance.toString(16), 32),
+        ethers.zeroPadValue(ethers.toBeHex(balanceSlot), 32),
+        ethers.zeroPadValue(ethers.toBeHex(legacyBalance), 32),
       ]);
 
       const mutatedJobDetails = await cspEscrow.getJobDetails(1);
@@ -1330,93 +1375,62 @@ describe("PoAIManager", function () {
       );
     });
 
-    // TODO: Fix this test
-    it.skip("should handle multiple epochs of reward allocation", async function () {
+    it("should handle multiple epochs of reward allocation", async function () {
+      await controller.addOracle(await oracle2.getAddress());
+
       const escrowAddress = await setupUserWithEscrow(user, oracle);
       const CspEscrow = await ethers.getContractFactory("CspEscrow");
       const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
 
-      // Create job with multiple epochs
-      const jobPrice = 1000000000; // 1000 USDC (6 decimals)
+      await buyLicenseAndLinkNode({
+        r1,
+        nd: ndContract,
+        mintAuthority: owner,
+        buyer: user,
+        oracleSigner: oracle2,
+        nodeAddress: await oracle2.getAddress(),
+      });
+
+      const jobPrice = 1_000_000_000n; // 1000 USDC (6 decimals)
       await mockUsdc.mint(await user.getAddress(), jobPrice);
       await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
 
       const currentEpoch = await poaiManager.getCurrentEpoch();
-      const lastExecutionEpoch = currentEpoch + 35n; // Must be more than 30 epochs
+      const lastExecutionEpoch = currentEpoch + 35n;
       await cspEscrow.connect(user).createJobs([
         {
           jobType: 1,
           projectHash: ethers.keccak256(ethers.toUtf8Bytes("test-project")),
-          lastExecutionEpoch: lastExecutionEpoch,
+          lastExecutionEpoch,
           numberOfNodesRequested: 2,
         },
       ]);
 
-      // Set active nodes
       const activeNodes = [
         await oracle.getAddress(),
         await oracle2.getAddress(),
       ];
+
       await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
+      await poaiManager.connect(oracle2).submitNodeUpdate(1, activeNodes);
 
-      // Mock R1 tokens for burning - mint to router so it can transfer them during swap
-      await r1.mint(mockUniswapRouter.getAddress(), ethers.parseEther("1000"));
-
-      // Advance time to next epoch before allocating rewards
-      const nextEpochTimestamp = START_EPOCH_TIMESTAMP + 2 * ONE_DAY;
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        nextEpochTimestamp,
-      ]);
-      await ethers.provider.send("evm_mine", []);
-
-      // Allocate rewards for epoch 1
-      await poaiManager.allocateRewardsAcrossAllEscrows();
-      const balance = await cspEscrow.virtualWalletBalance(
-        await oracle.getAddress()
+      await r1.mint(
+        await mockUniswapRouter.getAddress(),
+        ethers.parseEther("1000")
       );
-      console.log(
-        "Virtual wallet balance after allocation:",
-        balance.toString()
-      );
-      expect(balance).to.equal(318750); // Should be 318750 after first allocation
 
-      // Advance to epoch 2
-      const block2 = await ethers.provider.getBlock("latest");
-      const epoch2Timestamp = Math.max(
-        (block2?.timestamp || 0) + 1,
-        START_EPOCH_TIMESTAMP + 2 * ONE_DAY
-      );
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        epoch2Timestamp,
-      ]);
-      await ethers.provider.send("evm_mine", []);
+      const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
+      const burnPerNode = (pricePerEpoch * BURN_PERCENTAGE) / 100n;
+      const rewardPerNode = pricePerEpoch - burnPerNode;
 
-      // Allocate rewards for epoch 2
-      await poaiManager.allocateRewardsAcrossAllEscrows();
-      const balance2 = await cspEscrow.virtualWalletBalance(
-        await oracle.getAddress()
-      );
-      console.log("Virtual wallet balance after epoch 2:", balance2.toString());
-      expect(balance2).to.equal(637500); // Should be 637500 after second allocation
-
-      // Advance to epoch 3
-      const block3 = await ethers.provider.getBlock("latest");
-      const epoch3Timestamp = Math.max(
-        (block3?.timestamp || 0) + 1,
-        START_EPOCH_TIMESTAMP + 3 * ONE_DAY
-      );
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        epoch3Timestamp,
-      ]);
-      await ethers.provider.send("evm_mine", []);
-
-      // Allocate rewards for epoch 3
-      await poaiManager.allocateRewardsAcrossAllEscrows();
-      const balance3 = await cspEscrow.virtualWalletBalance(
-        await oracle.getAddress()
-      );
-      console.log("Virtual wallet balance after epoch 3:", balance3.toString());
-      expect(balance3).to.equal(956250); // Should be 956250 after third allocation
+      for (let epoch = 1; epoch <= 3; epoch++) {
+        await advanceEpochs(1);
+        await poaiManager.allocateRewardsAcrossAllEscrows();
+        const balance = await cspEscrow.virtualWalletBalance(
+          await oracle.getAddress()
+        );
+        expect(balance).to.equal(rewardPerNode * BigInt(epoch));
+      }
     });
   });
 
@@ -1807,14 +1821,13 @@ describe("PoAIManager", function () {
         .to.not.be.reverted;
     });
 
-    // TODO: Fix this test
-    it.skip("should handle job with zero balance after allocation", async function () {
+    it("should handle job with zero balance after allocation", async function () {
       const escrowAddress = await setupUserWithEscrow(user, oracle);
       const CspEscrow = await ethers.getContractFactory("CspEscrow");
       const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
 
       // Create job with minimal balance
-      const jobPrice = 11625000; // 1 node * 31 epochs * 375000 = 11625000
+      const jobPrice = 11_625_000n; // 1 node * 31 epochs * 375000 = 11625000
       await mockUsdc.mint(await user.getAddress(), jobPrice);
       await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
 
@@ -1829,43 +1842,28 @@ describe("PoAIManager", function () {
         },
       ]);
 
+      const jobDetailsBefore = await cspEscrow.getJobDetails(1);
+
       // Set active nodes
       const activeNodes = [await oracle.getAddress()];
       await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
 
       // Mock R1 tokens for burning - mint to router so it can transfer them during swap
-      await r1.mint(mockUniswapRouter.getAddress(), ethers.parseEther("1000"));
-
-      // Advance time
-      const block = await ethers.provider.getBlock("latest");
-      const nextEpochTimestamp = Math.max(
-        (block?.timestamp || 0) + 1,
-        START_EPOCH_TIMESTAMP + 2 * ONE_DAY
+      await r1.mint(
+        await mockUniswapRouter.getAddress(),
+        ethers.parseEther("1000")
       );
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        nextEpochTimestamp,
-      ]);
-      await ethers.provider.send("evm_mine", []);
 
-      // First allocation should succeed
+      await advanceEpochs(1);
       await poaiManager.allocateRewardsAcrossAllEscrows();
 
-      // Advance time to next epoch
-      const block2 = await ethers.provider.getBlock("latest");
-      const epoch2Timestamp = Math.max(
-        (block2?.timestamp || 0) + 1,
-        START_EPOCH_TIMESTAMP + 2 * ONE_DAY
-      );
-      await ethers.provider.send("evm_setNextBlockTimestamp", [
-        epoch2Timestamp,
-      ]);
-      await ethers.provider.send("evm_mine", []);
-
-      // Second allocation should succeed since job has enough balance for 31 epochs
+      await advanceEpochs(1);
       await poaiManager.allocateRewardsAcrossAllEscrows();
-      // Check that the job balance was reduced
+
+      const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
       const jobDetails = await cspEscrow.getJobDetails(1);
-      expect(jobDetails.balance).to.be.lt(11625000); // Should be less than initial balance
+      const expectedBalance = jobDetailsBefore.balance - pricePerEpoch * 2n;
+      expect(jobDetails.balance).to.equal(expectedBalance);
     });
 
     it("should handle multiple oracles submitting same proposal", async function () {
