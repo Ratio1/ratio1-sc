@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import "./Controller.sol";
 import "./CspEscrow.sol";
+import "./R1.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 struct NDLicense {
@@ -212,10 +213,27 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         );
         BeaconProxy proxy = new BeaconProxy(address(cspEscrowBeacon), data);
         address escrowAddr = address(proxy);
+        R1 r1 = R1(r1Token);
+        require(r1.owner() == address(this), "PoAIManager must be R1 owner");
+        r1.addBurner(escrowAddr);
         allEscrows.push(escrowAddr);
         ownerToEscrow[sender] = escrowAddr;
         escrowToOwner[escrowAddr] = sender;
         emit EscrowDeployed(sender, escrowAddr);
+    }
+
+    function addR1Burner(address account) external onlyOwner {
+        require(account != address(0), "Invalid burner address");
+        R1 r1 = R1(r1Token);
+        require(r1.owner() == address(this), "PoAIManager must be R1 owner");
+        r1.addBurner(account);
+    }
+
+    function removeR1Burner(address account) external onlyOwner {
+        require(account != address(0), "Invalid burner address");
+        R1 r1 = R1(r1Token);
+        require(r1.owner() == address(this), "PoAIManager must be R1 owner");
+        r1.removeBurner(account);
     }
 
     // Internal function to check if user owns at least one ND or MND with a linked node address that is an oracle
@@ -551,7 +569,11 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     }
 
     // Get total balance across all escrows
-    function getTotalEscrowsBalance() external view returns (int256 totalBalance) {
+    function getTotalEscrowsBalance()
+        external
+        view
+        returns (int256 totalBalance)
+    {
         for (uint256 i = 0; i < allEscrows.length; i++) {
             totalBalance += CspEscrow(allEscrows[i]).getTotalJobsBalance();
         }

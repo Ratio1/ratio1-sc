@@ -29,7 +29,6 @@ describe("PoAIManager", function () {
   let oracle5: Signer;
   let snapshotId: string;
   let mockUsdc: ERC20Mock;
-  let mockR1: ERC20Mock;
   let mockUniswapRouter: UniswapMockRouter;
   let mockUniswapPair: UniswapMockPair;
 
@@ -86,15 +85,18 @@ describe("PoAIManager", function () {
     await ndContract.setMNDContract(await mndContract.getAddress());
     await mndContract.setNDContract(await ndContract.getAddress());
 
+    await r1.setNdContract(await ndContract.getAddress());
+    // Allow the owner signer to mint R1 during tests
+    await r1.setMndContract(await owner.getAddress());
+
     await controller.setContracts(
       await ndContract.getAddress(),
       await mndContract.getAddress()
     );
 
-    // Deploy mock USDC and R1 tokens
+    // Deploy mock USDC token
     const MockERC20 = await ethers.getContractFactory("ERC20Mock");
     mockUsdc = await MockERC20.deploy();
-    mockR1 = await MockERC20.deploy();
 
     // Deploy mock Uniswap router and pair
     const UniswapMockRouter = await ethers.getContractFactory(
@@ -106,7 +108,7 @@ describe("PoAIManager", function () {
     const UniswapMockPair = await ethers.getContractFactory("UniswapMockPair");
     mockUniswapPair = await UniswapMockPair.deploy(
       await mockUsdc.getAddress(),
-      await mockR1.getAddress()
+      await r1.getAddress()
     );
     await mockUniswapPair.waitForDeployment();
 
@@ -125,7 +127,7 @@ describe("PoAIManager", function () {
         await mndContract.getAddress(),
         await controller.getAddress(),
         await mockUsdc.getAddress(),
-        await mockR1.getAddress(),
+        await r1.getAddress(),
         await mockUniswapRouter.getAddress(),
         await mockUniswapPair.getAddress(),
         await owner.getAddress(),
@@ -133,6 +135,9 @@ describe("PoAIManager", function () {
       { initializer: "initialize" }
     );
     await poaiManager.waitForDeployment();
+
+    // Transfer R1 ownership to PoAI Manager so it can manage burners
+    await r1.transferOwnership(await poaiManager.getAddress());
 
     // Set timestamp to start epoch + 1 day to avoid epoch 0 underflow issues
     const block = await ethers.provider.getBlock("latest");
@@ -241,9 +246,40 @@ describe("PoAIManager", function () {
   it("should deploy a new CSP Escrow for a user with an oracle node (MND path)", async function () {
     await setupUserWithOracleNode(user, oracle);
 
-    // Now user has a node that is an oracle, should succeed
-    expect(await poaiManager.connect(user).deployCspEscrow()).not.to.be
-      .reverted;
+    // Now user has a node that is an oracle, should succeed and register escrow as burner
+    await poaiManager.connect(user).deployCspEscrow();
+    const escrowAddress = await poaiManager.ownerToEscrow(
+      await user.getAddress()
+    );
+    await expect(poaiManager.connect(owner).removeR1Burner(escrowAddress)).to
+      .not.be.reverted;
+    // Restore burner status for subsequent tests relying on the setup
+    await poaiManager.connect(owner).addR1Burner(escrowAddress);
+  });
+
+  it("should allow the PoAI Manager owner to manage R1 burners", async function () {
+    const burnerCandidate = await other.getAddress();
+
+    await poaiManager.connect(owner).addR1Burner(burnerCandidate);
+
+    await poaiManager.connect(owner).removeR1Burner(burnerCandidate);
+    await expect(
+      poaiManager.connect(owner).removeR1Burner(burnerCandidate)
+    ).to.be.revertedWith("Address is not a burner");
+  });
+
+  it("should restrict R1 burner management helpers to the owner", async function () {
+    const burnerCandidate = await other.getAddress();
+
+    await expect(
+      poaiManager.connect(other).addR1Burner(burnerCandidate)
+    ).to.be.revertedWithCustomError(poaiManager, "OwnableUnauthorizedAccount");
+
+    await poaiManager.connect(owner).addR1Burner(burnerCandidate);
+
+    await expect(
+      poaiManager.connect(other).removeR1Burner(burnerCandidate)
+    ).to.be.revertedWithCustomError(poaiManager, "OwnableUnauthorizedAccount");
   });
 
   it("should not allow double escrow deploy for the same user", async function () {
@@ -1015,10 +1051,7 @@ describe("PoAIManager", function () {
       await ethers.provider.send("evm_mine", []);
 
       // Mock R1 tokens for burning - mint to router so it can transfer them during swap
-      await mockR1.mint(
-        mockUniswapRouter.getAddress(),
-        ethers.parseEther("1000")
-      );
+      await r1.mint(mockUniswapRouter.getAddress(), ethers.parseEther("1000"));
 
       // Advance time to epoch 2 before allocating rewards (so we can allocate for epoch 1)
       const block = await ethers.provider.getBlock("latest");
@@ -1099,10 +1132,7 @@ describe("PoAIManager", function () {
       await ethers.provider.send("evm_mine", []);
 
       // Mock R1 tokens for burning - mint to router so it can transfer them during swap
-      await mockR1.mint(
-        mockUniswapRouter.getAddress(),
-        ethers.parseEther("1000")
-      );
+      await r1.mint(mockUniswapRouter.getAddress(), ethers.parseEther("1000"));
 
       // Allocate rewards and expect burning
       await expect(poaiManager.allocateRewardsAcrossAllEscrows())
@@ -1204,10 +1234,7 @@ describe("PoAIManager", function () {
       ); // Use MND as dummy ND to avoid all setup
       await poaiManager.connect(oracle).submitNodeUpdate(1, [nodeAddress]);
 
-      await mockR1.mint(
-        mockUniswapRouter.getAddress(),
-        ethers.parseEther("1000")
-      );
+      await r1.mint(mockUniswapRouter.getAddress(), ethers.parseEther("1000"));
 
       const block1 = await ethers.provider.getBlock("latest");
       const nextEpochTimestamp = Math.max(
@@ -1333,10 +1360,7 @@ describe("PoAIManager", function () {
       await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
 
       // Mock R1 tokens for burning - mint to router so it can transfer them during swap
-      await mockR1.mint(
-        mockUniswapRouter.getAddress(),
-        ethers.parseEther("1000")
-      );
+      await r1.mint(mockUniswapRouter.getAddress(), ethers.parseEther("1000"));
 
       // Advance time to next epoch before allocating rewards
       const nextEpochTimestamp = START_EPOCH_TIMESTAMP + 2 * ONE_DAY;
@@ -1533,10 +1557,7 @@ describe("PoAIManager", function () {
       await poaiManager.connect(oracle2).submitNodeUpdate(2, activeNodes2);
 
       // Mock R1 tokens for burning - mint to router so it can transfer them during swap
-      await mockR1.mint(
-        mockUniswapRouter.getAddress(),
-        ethers.parseEther("1000")
-      );
+      await r1.mint(mockUniswapRouter.getAddress(), ethers.parseEther("1000"));
 
       // Advance time
       const block = await ethers.provider.getBlock("latest");
@@ -1813,10 +1834,7 @@ describe("PoAIManager", function () {
       await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
 
       // Mock R1 tokens for burning - mint to router so it can transfer them during swap
-      await mockR1.mint(
-        mockUniswapRouter.getAddress(),
-        ethers.parseEther("1000")
-      );
+      await r1.mint(mockUniswapRouter.getAddress(), ethers.parseEther("1000"));
 
       // Advance time
       const block = await ethers.provider.getBlock("latest");
@@ -1920,10 +1938,7 @@ describe("PoAIManager", function () {
       await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
 
       // Mock R1 tokens for burning - mint to router so it can transfer them during swap
-      await mockR1.mint(
-        mockUniswapRouter.getAddress(),
-        ethers.parseEther("1000")
-      );
+      await r1.mint(mockUniswapRouter.getAddress(), ethers.parseEther("1000"));
 
       // Allocate rewards at epoch boundary
       await poaiManager.allocateRewardsAcrossAllEscrows();
