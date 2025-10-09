@@ -12654,7 +12654,7 @@
             "label": "ndContract",
             "offset": 0,
             "slot": "0",
-            "type": "t_contract(IND)28299",
+            "type": "t_contract(IND)28413",
             "contract": "Reader",
             "src": "contracts/Reader.sol:110"
           },
@@ -12662,7 +12662,7 @@
             "label": "mndContract",
             "offset": 0,
             "slot": "1",
-            "type": "t_contract(IMND)28310",
+            "type": "t_contract(IMND)28424",
             "contract": "Reader",
             "src": "contracts/Reader.sol:111"
           },
@@ -12678,7 +12678,7 @@
             "label": "r1Contract",
             "offset": 0,
             "slot": "3",
-            "type": "t_contract(R1)28146",
+            "type": "t_contract(R1)28260",
             "contract": "Reader",
             "src": "contracts/Reader.sol:113"
           },
@@ -12686,7 +12686,7 @@
             "label": "poaiManager",
             "offset": 0,
             "slot": "4",
-            "type": "t_contract(IPoAIManager)28320",
+            "type": "t_contract(IPoAIManager)28434",
             "contract": "Reader",
             "src": "contracts/Reader.sol:114"
           }
@@ -12722,19 +12722,19 @@
             "label": "contract Controller",
             "numberOfBytes": "20"
           },
-          "t_contract(IMND)28310": {
+          "t_contract(IMND)28424": {
             "label": "contract IMND",
             "numberOfBytes": "20"
           },
-          "t_contract(IND)28299": {
+          "t_contract(IND)28413": {
             "label": "contract IND",
             "numberOfBytes": "20"
           },
-          "t_contract(IPoAIManager)28320": {
+          "t_contract(IPoAIManager)28434": {
             "label": "contract IPoAIManager",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)28146": {
+          "t_contract(R1)28260": {
             "label": "contract R1",
             "numberOfBytes": "20"
           }
@@ -18393,6 +18393,281 @@
               "slot": "0"
             }
           ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "891e3a046a346b3105c95f6762514346f340ca9b9bf76839546ebc9caf7bf77b": {
+      "address": "0x644466a4BDb1f923D5681594A117DfF9c9b28883",
+      "txHash": "0xb62e5df4f3f526b9dbdb6bddeebaa8d11ffbcae8478ec08cc89d23ba8d2710d3",
+      "layout": {
+        "solcVersion": "0.8.22",
+        "storage": [
+          {
+            "label": "poaiManager",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IPoAIManager)19175",
+            "contract": "CspEscrow",
+            "src": "contracts/CspEscrow.sol:103"
+          },
+          {
+            "label": "cspOwner",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_address",
+            "contract": "CspEscrow",
+            "src": "contracts/CspEscrow.sol:104"
+          },
+          {
+            "label": "usdcToken",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_address",
+            "contract": "CspEscrow",
+            "src": "contracts/CspEscrow.sol:105"
+          },
+          {
+            "label": "r1Token",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_contract(R1)28260",
+            "contract": "CspEscrow",
+            "src": "contracts/CspEscrow.sol:106"
+          },
+          {
+            "label": "controller",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_contract(Controller)19028",
+            "contract": "CspEscrow",
+            "src": "contracts/CspEscrow.sol:107"
+          },
+          {
+            "label": "uniswapV2Router",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_contract(IUniswapV2Router02)18561",
+            "contract": "CspEscrow",
+            "src": "contracts/CspEscrow.sol:108"
+          },
+          {
+            "label": "uniswapV2Pair",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_contract(IUniswapV2Pair)18165",
+            "contract": "CspEscrow",
+            "src": "contracts/CspEscrow.sol:109"
+          },
+          {
+            "label": "jobDetails",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_mapping(t_uint256,t_struct(JobDetails)19209_storage)",
+            "contract": "CspEscrow",
+            "src": "contracts/CspEscrow.sol:111"
+          },
+          {
+            "label": "virtualWalletBalance",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "CspEscrow",
+            "src": "contracts/CspEscrow.sol:112"
+          },
+          {
+            "label": "activeJobs",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_array(t_uint256)dyn_storage",
+            "contract": "CspEscrow",
+            "src": "contracts/CspEscrow.sol:114"
+          },
+          {
+            "label": "closedJobs",
+            "offset": 0,
+            "slot": "10",
+            "type": "t_array(t_uint256)dyn_storage",
+            "contract": "CspEscrow",
+            "src": "contracts/CspEscrow.sol:115"
+          }
+        ],
+        "types": {
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)dyn_storage": {
+            "label": "uint256[]",
+            "numberOfBytes": "32"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(Controller)19028": {
+            "label": "contract Controller",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IPoAIManager)19175": {
+            "label": "contract IPoAIManager",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IUniswapV2Pair)18165": {
+            "label": "contract IUniswapV2Pair",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IUniswapV2Router02)18561": {
+            "label": "contract IUniswapV2Router02",
+            "numberOfBytes": "20"
+          },
+          "t_contract(R1)28260": {
+            "label": "contract R1",
+            "numberOfBytes": "20"
+          },
+          "t_int256": {
+            "label": "int256",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_struct(JobDetails)19209_storage)": {
+            "label": "mapping(uint256 => struct JobDetails)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(JobDetails)19209_storage": {
+            "label": "struct JobDetails",
+            "members": [
+              {
+                "label": "id",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "projectHash",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "requestTimestamp",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "startTimestamp",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "lastNodesChangeTimestamp",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "4"
+              },
+              {
+                "label": "jobType",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "5"
+              },
+              {
+                "label": "pricePerEpoch",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "6"
+              },
+              {
+                "label": "lastExecutionEpoch",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "7"
+              },
+              {
+                "label": "numberOfNodesRequested",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "8"
+              },
+              {
+                "label": "balance",
+                "type": "t_int256",
+                "offset": 0,
+                "slot": "9"
+              },
+              {
+                "label": "lastAllocatedEpoch",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "10"
+              },
+              {
+                "label": "activeNodes",
+                "type": "t_array(t_address)dyn_storage",
+                "offset": 0,
+                "slot": "11"
+              }
+            ],
+            "numberOfBytes": "384"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          }
+        },
+        "namespaces": {
           "erc7201:openzeppelin.storage.Initializable": [
             {
               "contract": "Initializable",
