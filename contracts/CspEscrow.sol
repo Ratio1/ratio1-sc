@@ -318,7 +318,6 @@ contract CspEscrow is Initializable {
 
         uint256 additionalNodes = newNumberOfNodesRequested -
             job.numberOfNodesRequested;
-        require(additionalNodes > 0, "No additional nodes");
 
         uint256 currentEpoch = getCurrentEpoch();
         require(job.lastExecutionEpoch > currentEpoch, "Job has already ended");
@@ -327,8 +326,6 @@ contract CspEscrow is Initializable {
         uint256 additionalAmount = job.pricePerEpoch *
             additionalNodes *
             remainingEpochs;
-
-        require(additionalAmount > 0, "No additional amount");
         require(
             IERC20(usdcToken).transferFrom(
                 msg.sender,
