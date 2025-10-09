@@ -1,7 +1,24 @@
 import { expect } from "chai";
-import { ethers, upgrades } from "hardhat";
+import { ethers } from "hardhat";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import { R1, MNDContract, Controller } from "../typechain-types";
+import {
+  deployController,
+  deployMNDContract,
+  deployNDContract,
+  deployR1,
+  linkNodeWithSignature,
+  NODE_ADDRESS,
+  NULL_ADDRESS,
+  ONE_DAY_IN_SECS,
+  ONE_TOKEN,
+  revertSnapshotAndCapture,
+  setTimestampAndMine,
+  signComputeParams,
+  signLinkNode,
+  START_EPOCH_TIMESTAMP,
+  takeSnapshot,
+} from "./helpers";
+import { Controller, MNDContract, NDContract, R1 } from "../typechain-types";
 
 // npx hardhat test     ---- for gas usage
 // npx hardhat coverage ---- for test coverage
@@ -16,15 +33,11 @@ import { R1, MNDContract, Controller } from "../typechain-types";
 ..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 */
 
-const ONE_TOKEN = 10n ** 18n;
-const NODE_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
 const newLpWallet = "0x0000000000000000000000000000000000000001";
 const newExpensesWallet = "0x0000000000000000000000000000000000000002";
 const newMarketingWallet = "0x0000000000000000000000000000000000000003";
 const newGrantsWallet = "0x0000000000000000000000000000000000000004";
 const newCsrWallet = "0x0000000000000000000000000000000000000005";
-const ONE_DAY_IN_SECS = 24 * 60 * 60;
 const REWARDS_AMOUNT = 106362840848417488913n;
 const LICENSE_POWER = 485410n * ONE_TOKEN;
 const CLIFF_PERIOD = 223n;
@@ -35,7 +48,6 @@ const EXPECTED_COMPUTE_REWARDS_RESULT = {
   rewardsAmount: REWARDS_AMOUNT,
 };
 
-const START_EPOCH_TIMESTAMP = 1738767600;
 
 const EXPECTED_LICENSE_INFO = {
   licenseId: 2n,
@@ -75,6 +87,17 @@ describe("MNDContract", function () {
     availabilies: [250, 130, 178, 12, 0],
   };
   let snapshotId: string;
+  const computeSignatureHex = (signer: HardhatEthersSigner) =>
+    signComputeParams({
+      signer,
+      nodeAddress: COMPUTE_PARAMS.nodeAddress,
+      epochs: COMPUTE_PARAMS.epochs,
+      availabilities: COMPUTE_PARAMS.availabilies,
+    });
+  const computeSignatureBytes = (signer: HardhatEthersSigner) =>
+    computeSignatureHex(signer).then((signature) =>
+      ethers.getBytes(signature)
+    );
 
   before(async function () {
     const [deployer, user1, user2, oracleSigner] = await ethers.getSigners();
@@ -83,51 +106,32 @@ describe("MNDContract", function () {
     secondUser = user2;
     oracle = oracleSigner;
 
-    const ControllerContract = await ethers.getContractFactory("Controller");
-    controllerContract = await ControllerContract.deploy(
-      START_EPOCH_TIMESTAMP,
-      86400,
-      await owner.getAddress()
-    );
-    await controllerContract.addOracle(await oracle.getAddress());
-
-    const R1Contract = await ethers.getContractFactory("R1");
-    r1Contract = await R1Contract.deploy(await owner.getAddress());
-
-    const MNDContractFactory = await ethers.getContractFactory("MNDContract");
-    mndContract = (await upgrades.deployProxy(
-      MNDContractFactory,
-      [
-        await r1Contract.getAddress(),
-        await controllerContract.getAddress(),
-        await owner.getAddress(),
-      ],
-      { initializer: "initialize" }
-    )) as unknown as MNDContract;
-
-    const NDContractFactory = await ethers.getContractFactory("NDContract");
-    const ndContract = await upgrades.deployProxy(
-      NDContractFactory,
-      [
-        await r1Contract.getAddress(),
-        await controllerContract.getAddress(),
-        await owner.getAddress(),
-      ],
-      { initializer: "initialize" }
-    );
+    controllerContract = await deployController({
+      owner,
+      oracleSigners: [oracle],
+    });
+    r1Contract = await deployR1(owner);
+    mndContract = await deployMNDContract({
+      r1: r1Contract,
+      controller: controllerContract,
+      owner,
+    });
+    const ndContract = await deployNDContract({
+      r1: r1Contract,
+      controller: controllerContract,
+      owner,
+    });
 
     await mndContract.setNDContract(await ndContract.getAddress());
 
     await r1Contract.setNdContract(await owner.getAddress());
     await r1Contract.setMndContract(await mndContract.getAddress());
 
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
+    snapshotId = await takeSnapshot();
   });
   beforeEach(async function () {
     //ADD TWO DAYS TO REACH START EPOCH
-    let daysToAdd = START_EPOCH_TIMESTAMP;
-    await ethers.provider.send("evm_setNextBlockTimestamp", [daysToAdd]);
-    await ethers.provider.send("evm_mine", []);
+    await setTimestampAndMine(START_EPOCH_TIMESTAMP);
   });
 
   afterEach(async function () {
@@ -137,8 +141,7 @@ describe("MNDContract", function () {
       epochs: [223, 224, 225, 226, 227],
       availabilies: [250, 130, 178, 12, 0],
     };
-    await ethers.provider.send("evm_revert", [snapshotId]);
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
+    snapshotId = await revertSnapshotAndCapture(snapshotId);
   });
 
   /*
@@ -156,13 +159,13 @@ describe("MNDContract", function () {
     user: HardhatEthersSigner,
     licenseId: number
   ) {
-    await mndContract
-      .connect(user)
-      .linkNode(
-        licenseId,
-        NODE_ADDRESS,
-        await signLinkNode(oracle, user, NODE_ADDRESS)
-      );
+    await linkNodeWithSignature({
+      contract: mndContract,
+      user,
+      licenseId,
+      nodeAddress: NODE_ADDRESS,
+      oracleSigner: oracle,
+    });
   }
 
   async function unlinkNode(
@@ -173,58 +176,11 @@ describe("MNDContract", function () {
     await ndContract.connect(user).unlinkNode(licenseId);
   }
 
-  async function signLinkNode(
-    signer: HardhatEthersSigner,
-    user: HardhatEthersSigner,
-    nodeAddress: string
-  ) {
-    const messageHash = ethers.solidityPackedKeccak256(
-      ["address", "address"],
-      [await user.getAddress(), nodeAddress]
-    );
-    return signer.signMessage(ethers.getBytes(messageHash));
-  }
-
-  async function signComputeParams(signer: HardhatEthersSigner) {
-    let messageBytes = Buffer.from(COMPUTE_PARAMS.nodeAddress.slice(2), "hex");
-
-    for (const epoch of COMPUTE_PARAMS.epochs) {
-      const epochBytes = ethers.zeroPadValue(ethers.toBeHex(epoch), 32);
-      messageBytes = Buffer.concat([
-        messageBytes,
-        Buffer.from(epochBytes.slice(2), "hex"),
-      ]);
-    }
-
-    for (const availability of COMPUTE_PARAMS.availabilies) {
-      const availabilityBytes = ethers.zeroPadValue(
-        ethers.toBeHex(availability),
-        32
-      );
-      messageBytes = Buffer.concat([
-        messageBytes,
-        Buffer.from(availabilityBytes.slice(2), "hex"),
-      ]);
-    }
-
-    const messageHash = ethers.keccak256(messageBytes);
-    let signature = await signer.signMessage(ethers.getBytes(messageHash));
-    let signatureBytes = Buffer.from(signature.slice(2), "hex");
-    if (signatureBytes[64] < 27) {
-      signatureBytes[64] += 27; // Adjust recovery ID
-    }
-
-    return signatureBytes.toString("hex");
-  }
-
   async function updateTimestamp() {
     let cliffEpochPased = 30 * 4 * ONE_DAY_IN_SECS;
     let todayCliffEpochPassed =
       START_EPOCH_TIMESTAMP + cliffEpochPased + ONE_DAY_IN_SECS; //Chain start 2 days before contracts, and we need to be one day afetr cliff epoch
-    await ethers.provider.send("evm_setNextBlockTimestamp", [
-      todayCliffEpochPassed,
-    ]);
-    await ethers.provider.send("evm_mine", []);
+    await setTimestampAndMine(todayCliffEpochPassed);
   }
 
   /*
@@ -761,7 +717,7 @@ describe("MNDContract", function () {
       .connect(firstUser)
       .claimRewards(
         [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(oracle), "hex")]]
+        [[await computeSignatureBytes(oracle)]]
       );
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT
@@ -793,7 +749,7 @@ describe("MNDContract", function () {
       .connect(owner)
       .claimRewards(
         [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(oracle), "hex")]]
+        [[await computeSignatureBytes(oracle)]]
       );
     expect(await r1Contract.balanceOf(newLpWallet)).to.equal(
       76489386831087123287670n
@@ -828,7 +784,7 @@ describe("MNDContract", function () {
       .connect(firstUser)
       .claimRewards(
         [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(oracle), "hex")]]
+        [[await computeSignatureBytes(oracle)]]
       );
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT
@@ -838,7 +794,7 @@ describe("MNDContract", function () {
       .connect(firstUser)
       .claimRewards(
         [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(oracle), "hex")]]
+        [[await computeSignatureBytes(oracle)]]
       );
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT
@@ -859,7 +815,7 @@ describe("MNDContract", function () {
       .connect(firstUser)
       .claimRewards(
         [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(oracle), "hex")]]
+        [[await computeSignatureBytes(oracle)]]
       );
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       0n
@@ -887,7 +843,7 @@ describe("MNDContract", function () {
       .connect(firstUser)
       .claimRewards(
         [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(oracle), "hex")]]
+        [[await computeSignatureBytes(oracle)]]
       );
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       LICENSE_POWER
@@ -902,7 +858,7 @@ describe("MNDContract", function () {
       .connect(firstUser)
       .claimRewards(
         [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(oracle), "hex")]]
+        [[await computeSignatureBytes(oracle)]]
       );
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       LICENSE_POWER //should not be changed
@@ -926,7 +882,7 @@ describe("MNDContract", function () {
         .connect(secondUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(oracle), "hex")]]
+          [[await computeSignatureBytes(oracle)]]
         )
     ).to.be.revertedWith("User does not have the license");
   });
@@ -948,7 +904,7 @@ describe("MNDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(firstUser), "hex")]]
+          [[await computeSignatureBytes(firstUser)]]
         )
     ).to.be.revertedWith("Invalid oracle signature");
   });
@@ -971,7 +927,7 @@ describe("MNDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(oracle), "hex")]]
+          [[await computeSignatureBytes(oracle)]]
         )
     ).to.be.revertedWith("Invalid node address.");
   });
@@ -993,7 +949,7 @@ describe("MNDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(oracle), "hex")]]
+          [[await computeSignatureBytes(oracle)]]
         )
     ).to.be.revertedWith("Incorrect number of params.");
   });
@@ -1028,11 +984,11 @@ describe("MNDContract", function () {
         [COMPUTE_PARAMS],
         [
           [
-            Buffer.from(await signComputeParams(oracle1), "hex"),
-            Buffer.from(await signComputeParams(oracle2), "hex"),
-            Buffer.from(await signComputeParams(oracle3), "hex"),
-            Buffer.from(await signComputeParams(oracle4), "hex"),
-            Buffer.from(await signComputeParams(oracle5), "hex"),
+            await computeSignatureBytes(oracle1),
+            await computeSignatureBytes(oracle2),
+            await computeSignatureBytes(oracle3),
+            await computeSignatureBytes(oracle4),
+            await computeSignatureBytes(oracle5),
           ],
         ]
       );
@@ -1076,7 +1032,7 @@ describe("MNDContract", function () {
       .connect(firstUser)
       .claimRewards(
         [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(oracle), "hex")]]
+        [[await computeSignatureBytes(oracle)]]
       );
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT
@@ -1100,7 +1056,7 @@ describe("MNDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(oracle), "hex")]]
+          [[await computeSignatureBytes(oracle)]]
         )
     ).to.be.revertedWith("Insufficient signatures");
   });

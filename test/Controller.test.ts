@@ -1,7 +1,18 @@
-import { ethers, upgrades } from "hardhat";
-import { NDContract, Controller, MNDContract } from "../typechain-types";
+import { ethers } from "hardhat";
 import { expect } from "chai";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import {
+  deployMNDContract,
+  deployNDContract,
+  deployR1,
+  NODE_ADDRESS,
+  NULL_ADDRESS,
+  setTimestampAndMine,
+  START_EPOCH_TIMESTAMP,
+  takeSnapshot,
+  revertSnapshotAndCapture,
+} from "./helpers";
+import { Controller } from "../typechain-types";
 
 /*
 ..######...#######..##....##..######..########....###....##....##.########..######.
@@ -12,10 +23,6 @@ import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 .##....##.##.....##.##...###.##....##....##....##.....##.##...###....##....##....##
 ..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 */
-
-const START_EPOCH_TIMESTAMP = 1738767600;
-const NODE_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 describe("Controller contract", function () {
   /*
@@ -49,33 +56,21 @@ describe("Controller contract", function () {
       owner.address
     );
     await controllerContract.addOracle(backend.address);
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
+    snapshotId = await takeSnapshot();
   });
 
   async function setContracts() {
-    const R1Contract = await ethers.getContractFactory("R1");
-    let r1Contract = await R1Contract.deploy(owner.address);
-    const NDContractFactory = await ethers.getContractFactory("NDContract");
-    let ndContract = (await upgrades.deployProxy(
-      NDContractFactory,
-      [
-        await r1Contract.getAddress(),
-        await controllerContract.getAddress(),
-        owner.address,
-      ],
-      { initializer: "initialize" }
-    )) as NDContract;
-
-    const MNDContractFactory = await ethers.getContractFactory("MNDContract");
-    let mndContract = (await upgrades.deployProxy(
-      MNDContractFactory,
-      [
-        await r1Contract.getAddress(),
-        await controllerContract.getAddress(),
-        owner.address,
-      ],
-      { initializer: "initialize" }
-    )) as unknown as MNDContract;
+    const r1Contract = await deployR1(owner);
+    const ndContract = await deployNDContract({
+      r1: r1Contract,
+      controller: controllerContract,
+      owner,
+    });
+    const mndContract = await deployMNDContract({
+      r1: r1Contract,
+      controller: controllerContract,
+      owner,
+    });
 
     await controllerContract.setContracts(
       await ndContract.getAddress(),
@@ -85,14 +80,11 @@ describe("Controller contract", function () {
 
   beforeEach(async function () {
     //ADD TWO DAYS TO REACH START EPOCH
-    let daysToAdd = START_EPOCH_TIMESTAMP;
-    await ethers.provider.send("evm_setNextBlockTimestamp", [daysToAdd]);
-    await ethers.provider.send("evm_mine", []);
+    await setTimestampAndMine(START_EPOCH_TIMESTAMP);
   });
 
   afterEach(async function () {
-    await ethers.provider.send("evm_revert", [snapshotId]);
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
+    snapshotId = await revertSnapshotAndCapture(snapshotId);
   });
 
   /*
@@ -134,29 +126,17 @@ describe("Controller contract", function () {
   });
 
   it("Set contracts - not the owner", async function () {
-    const R1Contract = await ethers.getContractFactory("R1");
-    let r1Contract = await R1Contract.deploy(owner.address);
-    const NDContractFactory = await ethers.getContractFactory("NDContract");
-    let ndContract = (await upgrades.deployProxy(
-      NDContractFactory,
-      [
-        await r1Contract.getAddress(),
-        await controllerContract.getAddress(),
-        owner.address,
-      ],
-      { initializer: "initialize" }
-    )) as NDContract;
-
-    const MNDContractFactory = await ethers.getContractFactory("MNDContract");
-    let mndContract = (await upgrades.deployProxy(
-      MNDContractFactory,
-      [
-        await r1Contract.getAddress(),
-        await controllerContract.getAddress(),
-        owner.address,
-      ],
-      { initializer: "initialize" }
-    )) as unknown as MNDContract;
+    const r1Contract = await deployR1(owner);
+    const ndContract = await deployNDContract({
+      r1: r1Contract,
+      controller: controllerContract,
+      owner,
+    });
+    const mndContract = await deployMNDContract({
+      r1: r1Contract,
+      controller: controllerContract,
+      owner,
+    });
 
     await expect(
       controllerContract
@@ -169,29 +149,17 @@ describe("Controller contract", function () {
   });
 
   it("Set contracts - 0 address", async function () {
-    const R1Contract = await ethers.getContractFactory("R1");
-    let r1Contract = await R1Contract.deploy(owner.address);
-    const NDContractFactory = await ethers.getContractFactory("NDContract");
-    let ndContract = (await upgrades.deployProxy(
-      NDContractFactory,
-      [
-        await r1Contract.getAddress(),
-        await controllerContract.getAddress(),
-        owner.address,
-      ],
-      { initializer: "initialize" }
-    )) as NDContract;
-
-    const MNDContractFactory = await ethers.getContractFactory("MNDContract");
-    let mndContract = (await upgrades.deployProxy(
-      MNDContractFactory,
-      [
-        await r1Contract.getAddress(),
-        await controllerContract.getAddress(),
-        owner.address,
-      ],
-      { initializer: "initialize" }
-    )) as unknown as MNDContract;
+    const r1Contract = await deployR1(owner);
+    const ndContract = await deployNDContract({
+      r1: r1Contract,
+      controller: controllerContract,
+      owner,
+    });
+    const mndContract = await deployMNDContract({
+      r1: r1Contract,
+      controller: controllerContract,
+      owner,
+    });
 
     await expect(
       controllerContract.setContracts(
