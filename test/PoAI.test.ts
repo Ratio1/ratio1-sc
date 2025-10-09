@@ -1,7 +1,18 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { AbiCoder, Signer } from "ethers";
-import { buyLicenseAndLinkNode } from "./helpers";
+import {
+  buyLicenseAndLinkNode,
+  deployController,
+  deployMNDContract,
+  deployNDContract,
+  deployR1,
+  deployUniswapMocks,
+  ONE_DAY_IN_SECS,
+  START_EPOCH_TIMESTAMP,
+  takeSnapshot,
+  revertSnapshotAndCapture,
+} from "./helpers";
 import {
   R1,
   NDContract,
@@ -33,84 +44,45 @@ describe("PoAIManager", function () {
   let mockUniswapRouter: UniswapMockRouter;
   let mockUniswapPair: UniswapMockPair;
 
-  const START_EPOCH_TIMESTAMP = 1738767600;
-  const ONE_DAY = 86400;
   const BURN_PERCENTAGE = 15n;
 
   beforeEach(async function () {
     [owner, user, oracle, other, oracle2, oracle3, oracle4, oracle5] =
       await ethers.getSigners();
 
-    // Deploy R1 token
-    const R1 = await ethers.getContractFactory("R1");
-    r1 = await R1.deploy(await owner.getAddress());
-    await r1.waitForDeployment();
+    r1 = await deployR1(owner);
+    controller = await deployController({
+      owner,
+      oracleSigners: [oracle],
+    });
 
-    // Deploy Controller
-    const Controller = await ethers.getContractFactory("Controller");
-    controller = await Controller.deploy(
-      START_EPOCH_TIMESTAMP,
-      ONE_DAY,
-      await owner.getAddress()
-    );
-    await controller.waitForDeployment();
-    await controller.addOracle(await oracle.getAddress());
-
-    // Deploy NDContract
-    const NDContract = await ethers.getContractFactory("NDContract");
-    ndContract = await upgrades.deployProxy(
-      NDContract,
-      [
-        await r1.getAddress(),
-        await controller.getAddress(),
-        await owner.getAddress(),
-      ],
-      { initializer: "initialize" }
-    );
-    await ndContract.waitForDeployment();
+    ndContract = await deployNDContract({
+      r1,
+      controller,
+      owner,
+    });
     await r1.setNdContract(await ndContract.getAddress());
     await ndContract.setDirectAddLpPercentage(50n);
 
-    // Deploy MNDContract
-    const MNDContract = await ethers.getContractFactory("MNDContract");
-    mndContract = await upgrades.deployProxy(
-      MNDContract,
-      [
-        await r1.getAddress(),
-        await controller.getAddress(),
-        await owner.getAddress(),
-      ],
-      { initializer: "initialize" }
-    );
-    await mndContract.waitForDeployment();
-
-    // Set ND <-> MND relationship
+    mndContract = await deployMNDContract({
+      r1,
+      controller,
+      owner,
+    });
     await ndContract.setMNDContract(await mndContract.getAddress());
     await mndContract.setNDContract(await ndContract.getAddress());
-    await r1.setMndContract(await owner.getAddress()); // Needed for tests to mint R1, not an issue since MNDContract is not used in PoAI Tests
+    await r1.setMndContract(await owner.getAddress());
 
     await controller.setContracts(
       await ndContract.getAddress(),
       await mndContract.getAddress()
     );
 
-    // Deploy mock USDC token
-    const MockERC20 = await ethers.getContractFactory("ERC20Mock");
-    mockUsdc = await MockERC20.deploy();
+    const { usdc, router, pair } = await deployUniswapMocks(r1);
+    mockUsdc = usdc;
+    mockUniswapRouter = router;
+    mockUniswapPair = pair;
 
-    // Deploy mock Uniswap router and pair
-    const UniswapMockRouter = await ethers.getContractFactory(
-      "UniswapMockRouter"
-    );
-    mockUniswapRouter = await UniswapMockRouter.deploy();
-    await mockUniswapRouter.waitForDeployment();
-
-    const UniswapMockPair = await ethers.getContractFactory("UniswapMockPair");
-    mockUniswapPair = await UniswapMockPair.deploy(
-      await mockUsdc.getAddress(),
-      await r1.getAddress()
-    );
-    await mockUniswapPair.waitForDeployment();
     await ndContract.setUniswapParams(
       await mockUniswapRouter.getAddress(),
       await mockUniswapPair.getAddress(),
@@ -159,18 +131,16 @@ describe("PoAIManager", function () {
     const block = await ethers.provider.getBlock("latest");
     const nextTimestamp = Math.max(
       (block?.timestamp || 0) + 1,
-      START_EPOCH_TIMESTAMP + ONE_DAY
+      START_EPOCH_TIMESTAMP + ONE_DAY_IN_SECS
     );
     await ethers.provider.send("evm_setNextBlockTimestamp", [nextTimestamp]);
     await ethers.provider.send("evm_mine", []);
 
-    // Take snapshot for test isolation
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
+    snapshotId = await takeSnapshot();
   });
 
   afterEach(async function () {
-    await ethers.provider.send("evm_revert", [snapshotId]);
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
+    snapshotId = await revertSnapshotAndCapture(snapshotId);
   });
 
   // Helper function to setup user with MND license and linked oracle node
@@ -238,7 +208,7 @@ describe("PoAIManager", function () {
   }
 
   async function advanceEpochs(count: number = 1) {
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY * count]);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * count]);
     await ethers.provider.send("evm_mine", []);
   }
 
@@ -825,7 +795,7 @@ describe("PoAIManager", function () {
       expect(await poaiManager.getFirstClosableJobId()).to.eq(0);
 
       await ethers.provider.send("evm_increaseTime", [
-        Number(numberOfEpochs) * ONE_DAY,
+        Number(numberOfEpochs) * ONE_DAY_IN_SECS,
       ]);
       await ethers.provider.send("evm_mine", []);
 
@@ -837,7 +807,7 @@ describe("PoAIManager", function () {
       const { cspEscrow, numberOfEpochs } = await setupJobWithActiveNodes();
 
       await ethers.provider.send("evm_increaseTime", [
-        Number(numberOfEpochs) * ONE_DAY,
+        Number(numberOfEpochs) * ONE_DAY_IN_SECS,
       ]);
       await ethers.provider.send("evm_mine", []);
 
@@ -1424,7 +1394,7 @@ describe("PoAIManager", function () {
       const block = await ethers.provider.getBlock("latest");
       const noActiveNodesEpochTimestamp = Math.max(
         (block?.timestamp || 0) + 1,
-        START_EPOCH_TIMESTAMP + 2 * ONE_DAY
+        START_EPOCH_TIMESTAMP + 2 * ONE_DAY_IN_SECS
       );
       await ethers.provider.send("evm_setNextBlockTimestamp", [
         noActiveNodesEpochTimestamp,
@@ -1767,7 +1737,7 @@ describe("PoAIManager", function () {
       const block = await ethers.provider.getBlock("latest");
       const multipleEscrowsEpochTimestamp = Math.max(
         (block?.timestamp || 0) + 1,
-        START_EPOCH_TIMESTAMP + 2 * ONE_DAY
+        START_EPOCH_TIMESTAMP + 2 * ONE_DAY_IN_SECS
       );
       await ethers.provider.send("evm_setNextBlockTimestamp", [
         multipleEscrowsEpochTimestamp,
@@ -1821,10 +1791,10 @@ describe("PoAIManager", function () {
 
     it("should return correct current epoch", async function () {
       const currentEpoch = await poaiManager.getCurrentEpoch();
-      expect(currentEpoch).to.equal(1); // Should be epoch 1 at start (START_EPOCH_TIMESTAMP + ONE_DAY)
+      expect(currentEpoch).to.equal(1); // Should be epoch 1 at start (START_EPOCH_TIMESTAMP + ONE_DAY_IN_SECS)
 
       // Advance time by one day
-      const nextEpochTimestamp = START_EPOCH_TIMESTAMP + 2 * ONE_DAY;
+      const nextEpochTimestamp = START_EPOCH_TIMESTAMP + 2 * ONE_DAY_IN_SECS;
       await ethers.provider.send("evm_setNextBlockTimestamp", [
         nextEpochTimestamp,
       ]);

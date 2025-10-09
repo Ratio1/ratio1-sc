@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { R1, TestnetFaucet } from "../typechain-types";
+import { ONE_TOKEN, revertSnapshotAndCapture, takeSnapshot } from "./helpers";
 
 describe("Faucet contract", function () {
   /*
@@ -41,11 +42,10 @@ describe("Faucet contract", function () {
       86400
     );
     //await ndContract.setUniswapRouter(uniswapContract.address);
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
+    snapshotId = await takeSnapshot();
   });
   afterEach(async function () {
-    await ethers.provider.send("evm_revert", [snapshotId]);
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
+    snapshotId = await revertSnapshotAndCapture(snapshotId);
   });
 
   /*
@@ -59,7 +59,7 @@ describe("Faucet contract", function () {
     */
 
   it("Claim - should work", async function () {
-    await r1Contract.connect(owner).mint(await faucet.getAddress(), 10n ** 18n);
+    await r1Contract.connect(owner).mint(await faucet.getAddress(), ONE_TOKEN);
     await faucet.connect(firstUser).claim();
   });
 
