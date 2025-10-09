@@ -22,6 +22,7 @@ import {
 } from "./helpers";
 import { Controller, NDContract, R1 } from "../typechain-types";
 import { v4 as uuidv4 } from "uuid";
+import { BigNumberish } from "ethers";
 
 /*
 ..######...#######..##....##..######..########....###....##....##.########..######.
@@ -291,7 +292,7 @@ describe("NDContract", function () {
   async function createLicenseSignature(
     signer: HardhatEthersSigner,
     user: HardhatEthersSigner,
-    usdMintLimit: bigint | number,
+    usdMintLimit: BigNumberish,
     vatPercent: number = 20
   ) {
     return signBuyLicense(
@@ -312,14 +313,46 @@ describe("NDContract", function () {
     });
 
   const computeSignatureBytes = (signer: HardhatEthersSigner) =>
-    computeSignatureHex(signer).then((signature) =>
-      ethers.getBytes(signature)
-    );
+    computeSignatureHex(signer).then((signature) => ethers.getBytes(signature));
 
   async function updateTimestamp() {
     await setTimestampAndMine(
       START_EPOCH_TIMESTAMP + (ONE_DAY_IN_SECS * 2) / EPOCH_IN_A_DAY
     );
+  }
+
+  type LicenseInfoOutput =
+    Awaited<ReturnType<NDContract["getLicenses"]>>[number];
+  type PriceTierOutput =
+    Awaited<ReturnType<NDContract["getPriceTiers"]>>[number];
+  type RewardsResultOutput =
+    Awaited<ReturnType<NDContract["calculateRewards"]>>[number];
+
+  function formatLicenseInfo(license: LicenseInfoOutput) {
+    return {
+      licenseId: license.licenseId,
+      nodeAddress: license.nodeAddress,
+      totalClaimedAmount: license.totalClaimedAmount,
+      remainingAmount: license.remainingAmount,
+      lastClaimEpoch: license.lastClaimEpoch,
+      claimableEpochs: license.claimableEpochs,
+      assignTimestamp: license.assignTimestamp,
+    };
+  }
+
+  function formatPriceTier(tier: PriceTierOutput) {
+    return {
+      usdPrice: tier.usdPrice,
+      totalUnits: tier.totalUnits,
+      soldUnits: tier.soldUnits,
+    };
+  }
+
+  function formatRewardsResult(result: RewardsResultOutput) {
+    return {
+      licenseId: result.licenseId,
+      rewardsAmount: result.rewardsAmount,
+    };
   }
 
   /*
@@ -331,7 +364,6 @@ describe("NDContract", function () {
   .##.....##....##.....##..##.......##....##
   ..#######.....##....####.########..######.
   */
-
 
   /*
   .########.########..######..########..######.
@@ -366,34 +398,14 @@ describe("NDContract", function () {
 
     let result = await ndContract.getLicenses(await firstUser.getAddress());
     expect(EXPECTED_LICENSES_INFO).to.deep.equal(
-      result.map((r) => {
-        return {
-          licenseId: r.licenseId,
-          nodeAddress: r.nodeAddress,
-          totalClaimedAmount: r.totalClaimedAmount,
-          remainingAmount: r.remainingAmount,
-          lastClaimEpoch: r.lastClaimEpoch,
-          claimableEpochs: r.claimableEpochs,
-          assignTimestamp: r.assignTimestamp,
-        };
-      })
+      result.map(formatLicenseInfo)
     );
   });
 
   it("Get licenses - user has no license", async function () {
     let result = await ndContract.getLicenses(await firstUser.getAddress());
     expect([]).to.deep.equal(
-      result.map((r) => {
-        return {
-          licenseId: r.licenseId,
-          nodeAddress: r.nodeAddress,
-          totalClaimedAmount: r.totalClaimedAmount,
-          remainingAmount: r.remainingAmount,
-          lastClaimEpoch: r.lastClaimEpoch,
-          claimableEpochs: r.claimableEpochs,
-          assignTimestamp: r.assignTimestamp,
-        };
-      })
+      result.map(formatLicenseInfo)
     );
   });
 
@@ -507,13 +519,7 @@ describe("NDContract", function () {
   it("Get price tiers", async function () {
     let result = await ndContract.getPriceTiers();
     expect(EXPECTED_PRICE_TIERS).to.deep.equal(
-      result.map((r) => {
-        return {
-          usdPrice: r.usdPrice,
-          totalUnits: r.totalUnits,
-          soldUnits: r.soldUnits,
-        };
-      })
+      result.map(formatPriceTier)
     );
   });
 
@@ -956,10 +962,7 @@ describe("NDContract", function () {
     let result = await ndContract
       .connect(owner)
       .calculateRewards([COMPUTE_PARAMS]);
-    const formattedResults = result.map((result) => ({
-      licenseId: result.licenseId,
-      rewardsAmount: result.rewardsAmount,
-    }));
+    const formattedResults = result.map(formatRewardsResult);
     expect(formattedResults[0]).to.deep.equal(EXPECTED_COMPUTE_REWARDS_RESULT);
   });
 
@@ -989,10 +992,7 @@ describe("NDContract", function () {
     );
     await ndContract
       .connect(firstUser)
-      .claimRewards(
-        [COMPUTE_PARAMS],
-        [[await computeSignatureBytes(backend)]]
-      );
+      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT + userPreviousBalance
     );
@@ -1335,20 +1335,14 @@ describe("NDContract", function () {
     );
     await ndContract
       .connect(firstUser)
-      .claimRewards(
-        [COMPUTE_PARAMS],
-        [[await computeSignatureBytes(backend)]]
-      );
+      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT + userPreviousBalance
     );
     //should not modify amount
     await ndContract
       .connect(firstUser)
-      .claimRewards(
-        [COMPUTE_PARAMS],
-        [[await computeSignatureBytes(backend)]]
-      );
+      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT + userPreviousBalance
     );
@@ -1386,10 +1380,7 @@ describe("NDContract", function () {
     );
     await ndContract
       .connect(firstUser)
-      .claimRewards(
-        [COMPUTE_PARAMS],
-        [[await computeSignatureBytes(backend)]]
-      );
+      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       expected_result + userPreviousBalance
     );
@@ -1403,10 +1394,7 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_mine", []);
     await ndContract
       .connect(firstUser)
-      .claimRewards(
-        [COMPUTE_PARAMS],
-        [[await computeSignatureBytes(backend)]]
-      );
+      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       expected_result + userPreviousBalance //should not be changed
     );
@@ -1637,10 +1625,7 @@ describe("NDContract", function () {
     await ndContract.connect(owner).unbanLicense(1);
     await ndContract
       .connect(firstUser)
-      .claimRewards(
-        [COMPUTE_PARAMS],
-        [[await computeSignatureBytes(backend)]]
-      );
+      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
   });
 
   it("Unban license - not the owner", async function () {

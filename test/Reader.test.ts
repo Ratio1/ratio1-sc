@@ -100,11 +100,13 @@ describe("Reader contract", function () {
     await mndContract.setNDContract(await ndContract.getAddress());
     await ndContract.setMNDContract(await mndContract.getAddress());
     await r1Contract.setNdContract(await ndContract.getAddress());
-    await r1Contract.setMndContract(await owner.getAddress());
+    await r1Contract.setMndContract(await owner.getAddress()); // just for test to be able to mint R1
 
-    const { usdc: usdcContract, router, pair } = await deployUniswapMocks(
-      r1Contract
-    );
+    const {
+      usdc: usdcContract,
+      router,
+      pair,
+    } = await deployUniswapMocks(r1Contract);
 
     await ndContract.setUniswapParams(
       await router.getAddress(),
@@ -243,6 +245,26 @@ describe("Reader contract", function () {
         NODE_ADDRESS,
         await signLinkNode(backend, user, NODE_ADDRESS)
       );
+  }
+
+  type OracleDetailsOutput =
+    Awaited<ReturnType<Reader["getOraclesDetails"]>>[number];
+  type AddressBalanceOutput =
+    Awaited<ReturnType<Reader["getAddressesBalances"]>>[number];
+
+  function formatOracleDetails(oracle: OracleDetailsOutput) {
+    return {
+      oracleAddress: oracle[0],
+      signaturesCount: oracle[1],
+      additionTimestamp: oracle[2],
+    };
+  }
+
+  function formatAddressBalance(balance: AddressBalanceOutput) {
+    return {
+      address: balance[0],
+      balance: balance[1],
+    };
   }
 
   /*
@@ -600,11 +622,7 @@ describe("Reader contract", function () {
 
   it("Get Oracles details", async function () {
     let result = await reader.getOraclesDetails();
-    const mapped = result.map((oracle) => ({
-      oracleAddress: oracle[0],
-      signaturesCount: oracle[1],
-      additionTimestamp: oracle[2],
-    }));
+    const mapped = result.map(formatOracleDetails);
     oracle_assignation_timestamp += 1; // Increment to simulate the addition timestamp
     expect(mapped).to.deep.equal([
       {
@@ -622,10 +640,7 @@ describe("Reader contract", function () {
     let result = await reader.getAddressesBalances([
       await firstUser.getAddress(),
     ]);
-    const mapped = result.map((balance) => ({
-      address: balance[0],
-      balance: balance[1],
-    }));
+    const mapped = result.map(formatAddressBalance);
     expect(mapped).to.deep.equal([
       {
         address: await firstUser.getAddress(),

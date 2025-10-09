@@ -140,7 +140,10 @@ export async function deployMNDContract({
 }
 
 export function generateInvoiceUuid(label: string = "invoice"): string {
-  const data = ethers.solidityPacked(["string", "uint256"], [label, invoiceNonce++]);
+  const data = ethers.solidityPacked(
+    ["string", "uint256"],
+    [label, invoiceNonce++]
+  );
   return ethers.keccak256(data);
 }
 
@@ -206,12 +209,8 @@ export async function buyLicenseAndLinkNode({
   const totalWithVat = totalWithoutVat + vatAmount;
   const maxAccepted = totalWithVat + totalWithVat / 10n;
 
-  await r1
-    .connect(mintAuthority)
-    .mint(buyerAddress, maxAccepted);
-  await r1
-    .connect(buyer)
-    .approve(await nd.getAddress(), maxAccepted);
+  await r1.connect(mintAuthority).mint(buyerAddress, maxAccepted);
+  await r1.connect(buyer).approve(await nd.getAddress(), maxAccepted);
 
   const signature = await signBuyLicense(
     oracleSigner,
@@ -237,9 +236,7 @@ export async function buyLicenseAndLinkNode({
   const latestLicense = licenses[licenses.length - 1];
   const ndLicenseId = Number(latestLicense.licenseId);
   const linkSignature = await signLinkNode(oracleSigner, buyer, nodeAddress);
-  await nd
-    .connect(buyer)
-    .linkNode(ndLicenseId, nodeAddress, linkSignature);
+  await nd.connect(buyer).linkNode(ndLicenseId, nodeAddress, linkSignature);
 
   return ndLicenseId;
 }
@@ -419,9 +416,7 @@ export async function signComputeParams({
   return ethers.hexlify(signatureBytes);
 }
 
-export async function deployUniswapMocks(
-  r1: R1
-): Promise<{
+export async function deployUniswapMocks(r1: R1): Promise<{
   usdc: ERC20Mock;
   router: UniswapMockRouter;
   pair: UniswapMockPair;
