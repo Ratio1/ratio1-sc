@@ -150,6 +150,11 @@ contract CspEscrow is Initializable {
         uint256 newLastExecutionEpoch,
         uint256 additionalAmount
     );
+    event JobNodesExtended(
+        uint256 indexed jobId,
+        uint256 newNumberOfNodesRequested,
+        uint256 additionalAmount
+    );
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -272,7 +277,8 @@ contract CspEscrow is Initializable {
             "New epoch must be in future"
         );
 
-        uint256 additionalEpochs = newLastExecutionEpoch - job.lastExecutionEpoch;
+        uint256 additionalEpochs = newLastExecutionEpoch -
+            job.lastExecutionEpoch;
         require(additionalEpochs > 0, "No additional epochs");
 
         uint256 additionalAmount = job.pricePerEpoch *
@@ -292,7 +298,54 @@ contract CspEscrow is Initializable {
         job.balance += int256(additionalAmount);
         job.lastExecutionEpoch = newLastExecutionEpoch;
 
-        emit JobDurationExtended(jobId, newLastExecutionEpoch, additionalAmount);
+        emit JobDurationExtended(
+            jobId,
+            newLastExecutionEpoch,
+            additionalAmount
+        );
+    }
+
+    function extendJobNodes(
+        uint256 jobId,
+        uint256 newNumberOfNodesRequested
+    ) external onlyCspOwner {
+        JobDetails storage job = jobDetails[jobId];
+        require(job.id != 0, "Job does not exist");
+        require(
+            newNumberOfNodesRequested > job.numberOfNodesRequested,
+            "New number of nodes must be greater"
+        );
+
+        uint256 additionalNodes = newNumberOfNodesRequested -
+            job.numberOfNodesRequested;
+        require(additionalNodes > 0, "No additional nodes");
+
+        uint256 currentEpoch = getCurrentEpoch();
+        require(job.lastExecutionEpoch > currentEpoch, "Job has already ended");
+
+        uint256 remainingEpochs = job.lastExecutionEpoch - currentEpoch;
+        uint256 additionalAmount = job.pricePerEpoch *
+            additionalNodes *
+            remainingEpochs;
+
+        require(additionalAmount > 0, "No additional amount");
+        require(
+            IERC20(usdcToken).transferFrom(
+                msg.sender,
+                address(this),
+                additionalAmount
+            ),
+            "USDC transfer failed"
+        );
+
+        job.balance += int256(additionalAmount);
+        job.numberOfNodesRequested = newNumberOfNodesRequested;
+
+        emit JobNodesExtended(
+            jobId,
+            newNumberOfNodesRequested,
+            additionalAmount
+        );
     }
 
     // Receive consensus-based updates from PoAI Manager
