@@ -1,7 +1,17 @@
 import { expect } from "chai";
-import { ethers, upgrades } from "hardhat";
+import { ethers } from "hardhat";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import { R1, NDContract, Controller } from "../typechain-types";
+import { Controller, NDContract, R1 } from "../typechain-types";
+import {
+  deployController,
+  deployNDContract,
+  deployR1,
+  NULL_ADDRESS,
+  ONE_TOKEN,
+  START_EPOCH_TIMESTAMP,
+  takeSnapshot,
+  revertSnapshotAndCapture,
+} from "./helpers";
 
 /*
 ..######...#######..##....##..######..########....###....##....##.########..######.
@@ -12,10 +22,6 @@ import { R1, NDContract, Controller } from "../typechain-types";
 .##....##.##.....##.##...###.##....##....##....##.....##.##...###....##....##....##
 ..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 */
-
-const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
-const ONE_TOKEN = 10n ** 18n;
-const START_EPOCH_TIMESTAMP = 1738767600;
 
 describe("R1 contract", function () {
   /*
@@ -44,34 +50,21 @@ describe("R1 contract", function () {
     secondUser = user2;
     backend = backendSigner;
 
-    const R1Contract = await ethers.getContractFactory("R1");
-    r1Contract = await R1Contract.deploy(owner.getAddress());
+    r1Contract = await deployR1(owner);
+    controllerContract = await deployController({
+      owner,
+      oracleSigners: [backend],
+    });
+    ndContract = await deployNDContract({
+      r1: r1Contract,
+      controller: controllerContract,
+      owner,
+    });
 
-    const ControllerContract = await ethers.getContractFactory("Controller");
-    controllerContract = await ControllerContract.deploy(
-      START_EPOCH_TIMESTAMP,
-      86400,
-      owner.getAddress()
-    );
-    await controllerContract.addOracle(backend.getAddress());
-
-    const NDContractFactory = await ethers.getContractFactory("NDContract");
-    ndContract = (await upgrades.deployProxy(
-      NDContractFactory,
-      [
-        await r1Contract.getAddress(),
-        await controllerContract.getAddress(),
-        await owner.getAddress(),
-      ],
-      { initializer: "initialize" }
-    )) as NDContract;
-
-    //await ndContract.setUniswapRouter(uniswapContract.getAddress());
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
+    snapshotId = await takeSnapshot();
   });
   afterEach(async function () {
-    await ethers.provider.send("evm_revert", [snapshotId]);
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
+    snapshotId = await revertSnapshotAndCapture(snapshotId);
   });
 
   /*

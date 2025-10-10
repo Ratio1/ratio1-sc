@@ -1,8 +1,28 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import { R1, NDContract, Controller } from "../typechain-types";
+import {
+  buyLicenseWithMintAndAllowance as buyLicenseWithMintAndAllowanceHelper,
+  deployController,
+  deployMNDContract,
+  deployNDContract,
+  deployR1,
+  deployUniswapMocks,
+  NODE_ADDRESS,
+  NULL_ADDRESS,
+  ONE_DAY_IN_SECS,
+  ONE_TOKEN,
+  revertSnapshotAndCapture,
+  setTimestampAndMine,
+  signBuyLicense,
+  signComputeParams,
+  signLinkNode,
+  START_EPOCH_TIMESTAMP,
+  takeSnapshot,
+} from "./helpers";
+import { Controller, NDContract, R1 } from "../typechain-types";
 import { v4 as uuidv4 } from "uuid";
+import { BigNumberish } from "ethers";
 
 /*
 ..######...#######..##....##..######..########....###....##....##.########..######.
@@ -14,10 +34,6 @@ import { v4 as uuidv4 } from "uuid";
 ..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 */
 
-const ONE_TOKEN = 10n ** 18n;
-const ONE_DAY_IN_SECS = 24 * 60 * 60;
-const NODE_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-const NULL_ADDRESS = "0x0000000000000000000000000000000000000000";
 const newCompanyWallet = "0x0000000000000000000000000000000000000009";
 const newVatWallet = "0x0000000000000000000000000000000000000009";
 const newLpWallet = "0x0000000000000000000000000000000000000001";
@@ -26,7 +42,6 @@ const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: 1n,
   rewardsAmount: REWARDS_AMOUNT,
 };
-const START_EPOCH_TIMESTAMP = 1738767600;
 const EXPECTED_LICENSES_INFO = [
   {
     licenseId: 1n,
@@ -141,59 +156,31 @@ describe("NDContract", function () {
 
     maxUnits = 100;
 
-    const R1Contract = await ethers.getContractFactory("R1");
-    r1Contract = await R1Contract.deploy(await owner.getAddress());
+    r1Contract = await deployR1(owner);
+    controllerContract = await deployController({
+      owner,
+      oracleSigners: [backend],
+    });
+    ndContract = await deployNDContract({
+      r1: r1Contract,
+      controller: controllerContract,
+      owner,
+    });
+    await ndContract.connect(owner).setDirectAddLpPercentage(50n);
 
-    const USDCContract = await ethers.getContractFactory("ERC20Mock");
-    let usdcContract = await USDCContract.deploy();
-
-    const ControllerContract = await ethers.getContractFactory("Controller");
-    controllerContract = await ControllerContract.deploy(
-      START_EPOCH_TIMESTAMP,
-      86400,
-      await owner.getAddress()
-    );
-    await controllerContract.addOracle(await backend.getAddress());
-
-    const NDContractFactory = await ethers.getContractFactory("NDContract");
-    ndContract = (await upgrades.deployProxy(
-      NDContractFactory,
-      [
-        await r1Contract.getAddress(),
-        await controllerContract.getAddress(),
-        await owner.getAddress(),
-      ],
-      { initializer: "initialize" }
-    )) as NDContract;
-
-    let LpPercentage = 50n;
-    await ndContract.connect(owner).setDirectAddLpPercentage(LpPercentage);
-
-    const MNDContractFactory = await ethers.getContractFactory("MNDContract");
-    const mndContract = await upgrades.deployProxy(
-      MNDContractFactory,
-      [
-        await r1Contract.getAddress(),
-        await controllerContract.getAddress(),
-        await owner.getAddress(),
-      ],
-      { initializer: "initialize" }
-    );
+    const mndContract = await deployMNDContract({
+      r1: r1Contract,
+      controller: controllerContract,
+      owner,
+    });
 
     await ndContract.setMNDContract(await mndContract.getAddress());
 
-    const UniswapMockRouterContract = await ethers.getContractFactory(
-      "UniswapMockRouter"
-    );
-    const uniswapMockRouterContract = await UniswapMockRouterContract.deploy();
-
-    const UniswapMockPairContract = await ethers.getContractFactory(
-      "UniswapMockPair"
-    );
-    const uniswapMockPairContract = await UniswapMockPairContract.deploy(
-      await usdcContract.getAddress(),
-      await r1Contract.getAddress()
-    );
+    const {
+      usdc: usdcContract,
+      router: uniswapMockRouterContract,
+      pair: uniswapMockPairContract,
+    } = await deployUniswapMocks(r1Contract);
 
     await ndContract.setUniswapParams(
       await uniswapMockRouterContract.getAddress(),
@@ -236,13 +223,11 @@ describe("NDContract", function () {
     await poaiManager.waitForDeployment();
     await ndContract.setPoAIManager(await poaiManager.getAddress());
 
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
+    snapshotId = await takeSnapshot();
   });
   beforeEach(async function () {
     //ADD TWO DAYS TO REACH START EPOCH
-    let daysToAdd = START_EPOCH_TIMESTAMP;
-    await ethers.provider.send("evm_setNextBlockTimestamp", [daysToAdd]);
-    await ethers.provider.send("evm_mine", []);
+    await setTimestampAndMine(START_EPOCH_TIMESTAMP);
   });
 
   afterEach(async function () {
@@ -252,53 +237,34 @@ describe("NDContract", function () {
       epochs: [0, 1, 2, 3, 4],
       availabilies: [250, 130, 178, 12, 0],
     };
-    await ethers.provider.send("evm_revert", [snapshotId]);
-    snapshotId = await ethers.provider.send("evm_snapshot", []);
+    snapshotId = await revertSnapshotAndCapture(snapshotId);
   });
 
-  /*
-  .##.....##.########.####.##........######.
-  .##.....##....##.....##..##.......##....##
-  .##.....##....##.....##..##.......##......
-  .##.....##....##.....##..##........######.
-  .##.....##....##.....##..##.............##
-  .##.....##....##.....##..##.......##....##
-  ..#######.....##....####.########..######.
-  */
-
   async function buyLicenseWithMintAndAllowance(
-    r1Contract: R1,
-    ndContract: NDContract,
-    owner: HardhatEthersSigner,
-    user: HardhatEthersSigner,
-    numTokens: bigint,
-    numLicenses: number,
+    r1: R1,
+    nd: NDContract,
+    mintAuthority: HardhatEthersSigner,
+    buyer: HardhatEthersSigner,
+    pricePerLicense: bigint,
+    licenseCount: number,
     priceTier: number,
     usdMintLimit: number,
     vatPercent: number,
     signature: string
   ) {
-    let _NUM_TOKENS =
-      numTokens + (numTokens * BigInt(vatPercent)) / BigInt(100);
-    let _MAX_ACCEPTED_NUM_TOKENS = _NUM_TOKENS + _NUM_TOKENS / 10n;
-    _MAX_ACCEPTED_NUM_TOKENS = _MAX_ACCEPTED_NUM_TOKENS * BigInt(numLicenses);
-    await r1Contract
-      .connect(owner)
-      .mint(await user.getAddress(), _MAX_ACCEPTED_NUM_TOKENS);
-    await r1Contract
-      .connect(user)
-      .approve(await ndContract.getAddress(), _MAX_ACCEPTED_NUM_TOKENS);
-    await ndContract
-      .connect(user)
-      .buyLicense(
-        numLicenses,
-        priceTier,
-        _MAX_ACCEPTED_NUM_TOKENS,
-        invoiceUuid,
-        usdMintLimit,
-        vatPercent,
-        Buffer.from(signature, "hex")
-      );
+    return buyLicenseWithMintAndAllowanceHelper({
+      r1,
+      nd,
+      mintAuthority,
+      buyer,
+      pricePerLicense,
+      licenseCount,
+      priceTier,
+      invoiceUuid,
+      usdMintLimit,
+      vatPercent,
+      signature,
+    });
   }
 
   async function linkNode(
@@ -323,90 +289,81 @@ describe("NDContract", function () {
     await ndContract.connect(user).unlinkNode(licenseId);
   }
 
-  async function signAddress(
+  async function createLicenseSignature(
     signer: HardhatEthersSigner,
     user: HardhatEthersSigner,
-    invoiceUuid: Buffer,
-    usdMintLimit: number,
+    usdMintLimit: BigNumberish,
     vatPercent: number = 20
   ) {
-    const addressBytes = Buffer.from((await user.getAddress()).slice(2), "hex");
-
-    let messageBytes = Buffer.concat([addressBytes, invoiceUuid]);
-    const buffer = ethers.zeroPadValue(ethers.toBeHex(usdMintLimit), 32);
-    messageBytes = Buffer.concat([
-      messageBytes,
-      Buffer.from(buffer.slice(2), "hex"),
-    ]);
-    const bufferVatPercentage = ethers.zeroPadValue(
-      ethers.toBeHex(vatPercent),
-      32
+    return signBuyLicense(
+      signer,
+      await user.getAddress(),
+      invoiceUuid,
+      usdMintLimit,
+      vatPercent
     );
-    messageBytes = Buffer.concat([
-      messageBytes,
-      Buffer.from(bufferVatPercentage.slice(2), "hex"),
-    ]);
-    const messageHash = ethers.keccak256(messageBytes);
-    const signature = await signer.signMessage(ethers.getBytes(messageHash));
-
-    let signatureBytes = Buffer.from(signature.slice(2), "hex");
-    if (signatureBytes[64] < 27) {
-      signatureBytes[64] += 27;
-    }
-
-    return signatureBytes.toString("hex");
   }
 
-  async function signLinkNode(
-    signer: HardhatEthersSigner,
-    user: HardhatEthersSigner,
-    nodeAddress: string
-  ) {
-    const messageHash = ethers.solidityPackedKeccak256(
-      ["address", "address"],
-      [await user.getAddress(), nodeAddress]
-    );
-    return signer.signMessage(ethers.getBytes(messageHash));
-  }
+  const computeSignatureHex = (signer: HardhatEthersSigner) =>
+    signComputeParams({
+      signer,
+      nodeAddress: COMPUTE_PARAMS.nodeAddress,
+      epochs: COMPUTE_PARAMS.epochs,
+      availabilities: COMPUTE_PARAMS.availabilies,
+    });
 
-  async function signComputeParams(signer: HardhatEthersSigner) {
-    let messageBytes = Buffer.from(COMPUTE_PARAMS.nodeAddress.slice(2), "hex");
-
-    for (const epoch of COMPUTE_PARAMS.epochs) {
-      const epochBytes = ethers.zeroPadValue(ethers.toBeArray(epoch), 32);
-      messageBytes = Buffer.concat([
-        messageBytes,
-        Buffer.from(epochBytes.slice(2), "hex"),
-      ]);
-    }
-
-    for (const availability of COMPUTE_PARAMS.availabilies) {
-      const availabilityBytes = ethers.zeroPadValue(
-        ethers.toBeArray(availability),
-        32
-      );
-      messageBytes = Buffer.concat([
-        messageBytes,
-        Buffer.from(availabilityBytes.slice(2), "hex"),
-      ]);
-    }
-
-    const messageHash = ethers.keccak256(messageBytes);
-    let signature = await signer.signMessage(ethers.getBytes(messageHash));
-    let signatureBytes = Buffer.from(signature.slice(2), "hex");
-    if (signatureBytes[64] < 27) {
-      signatureBytes[64] += 27;
-    }
-
-    return signatureBytes.toString("hex");
-  }
+  const computeSignatureBytes = (signer: HardhatEthersSigner) =>
+    computeSignatureHex(signer).then((signature) => ethers.getBytes(signature));
 
   async function updateTimestamp() {
-    await ethers.provider.send("evm_setNextBlockTimestamp", [
-      START_EPOCH_TIMESTAMP + (ONE_DAY_IN_SECS * 2) / EPOCH_IN_A_DAY,
-    ]);
-    await ethers.provider.send("evm_mine", []);
+    await setTimestampAndMine(
+      START_EPOCH_TIMESTAMP + (ONE_DAY_IN_SECS * 2) / EPOCH_IN_A_DAY
+    );
   }
+
+  type LicenseInfoOutput =
+    Awaited<ReturnType<NDContract["getLicenses"]>>[number];
+  type PriceTierOutput =
+    Awaited<ReturnType<NDContract["getPriceTiers"]>>[number];
+  type RewardsResultOutput =
+    Awaited<ReturnType<NDContract["calculateRewards"]>>[number];
+
+  function formatLicenseInfo(license: LicenseInfoOutput) {
+    return {
+      licenseId: license.licenseId,
+      nodeAddress: license.nodeAddress,
+      totalClaimedAmount: license.totalClaimedAmount,
+      remainingAmount: license.remainingAmount,
+      lastClaimEpoch: license.lastClaimEpoch,
+      claimableEpochs: license.claimableEpochs,
+      assignTimestamp: license.assignTimestamp,
+    };
+  }
+
+  function formatPriceTier(tier: PriceTierOutput) {
+    return {
+      usdPrice: tier.usdPrice,
+      totalUnits: tier.totalUnits,
+      soldUnits: tier.soldUnits,
+    };
+  }
+
+  function formatRewardsResult(result: RewardsResultOutput) {
+    return {
+      licenseId: result.licenseId,
+      rewardsAmount: result.rewardsAmount,
+    };
+  }
+
+  /*
+  .##.....##.########.####.##........######.
+  .##.....##....##.....##..##.......##....##
+  .##.....##....##.....##..##.......##......
+  .##.....##....##.....##..##........######.
+  .##.....##....##.....##..##.............##
+  .##.....##....##.....##..##.......##....##
+  ..#######.....##....####.########..######.
+  */
 
   /*
   .########.########..######..########..######.
@@ -434,41 +391,21 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await updateTimestamp();
 
     let result = await ndContract.getLicenses(await firstUser.getAddress());
     expect(EXPECTED_LICENSES_INFO).to.deep.equal(
-      result.map((r) => {
-        return {
-          licenseId: r.licenseId,
-          nodeAddress: r.nodeAddress,
-          totalClaimedAmount: r.totalClaimedAmount,
-          remainingAmount: r.remainingAmount,
-          lastClaimEpoch: r.lastClaimEpoch,
-          claimableEpochs: r.claimableEpochs,
-          assignTimestamp: r.assignTimestamp,
-        };
-      })
+      result.map(formatLicenseInfo)
     );
   });
 
   it("Get licenses - user has no license", async function () {
     let result = await ndContract.getLicenses(await firstUser.getAddress());
     expect([]).to.deep.equal(
-      result.map((r) => {
-        return {
-          licenseId: r.licenseId,
-          nodeAddress: r.nodeAddress,
-          totalClaimedAmount: r.totalClaimedAmount,
-          remainingAmount: r.remainingAmount,
-          lastClaimEpoch: r.lastClaimEpoch,
-          claimableEpochs: r.claimableEpochs,
-          assignTimestamp: r.assignTimestamp,
-        };
-      })
+      result.map(formatLicenseInfo)
     );
   });
 
@@ -516,7 +453,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await expect(ndContract.connect(firstUser).burn(1)).not.to.be.reverted;
   });
@@ -532,7 +469,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await expect(ndContract.connect(secondUser).burn(1)).to.be.revertedWith(
       "Not the owner of the license"
@@ -550,7 +487,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await ndContract.connect(owner).pause();
     await expect(
@@ -572,7 +509,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
 
     let result = await ndContract.tokenURI(1n);
@@ -582,13 +519,7 @@ describe("NDContract", function () {
   it("Get price tiers", async function () {
     let result = await ndContract.getPriceTiers();
     expect(EXPECTED_PRICE_TIERS).to.deep.equal(
-      result.map((r) => {
-        return {
-          usdPrice: r.usdPrice,
-          totalUnits: r.totalUnits,
-          soldUnits: r.soldUnits,
-        };
-      })
+      result.map(formatPriceTier)
     );
   });
 
@@ -606,7 +537,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     expect(await firstUser.getAddress()).to.equal(await ndContract.ownerOf(1));
     let newLpWalletAmount = await r1Contract.balanceOf(newLpWallet);
@@ -625,7 +556,7 @@ describe("NDContract", function () {
         1,
         10000,
         20,
-        await signAddress(backend, firstUser, invoiceUuid, 10000)
+        await createLicenseSignature(backend, firstUser, 10000)
       )
     ).to.be.revertedWith("Price exceeds max accepted");
   });
@@ -650,9 +581,8 @@ describe("NDContract", function () {
           invoiceUuid,
           10000,
           20,
-          Buffer.from(
-            await signAddress(backend, firstUser, invoiceUuid, 10000),
-            "hex"
+          ethers.getBytes(
+            await createLicenseSignature(backend, firstUser, 10000)
           )
         )
     ).to.be.revertedWith("Price exceeds max accepted");
@@ -674,7 +604,7 @@ describe("NDContract", function () {
         1,
         10000,
         20,
-        await signAddress(backend, firstUser, invoiceUuid, 10000)
+        await createLicenseSignature(backend, firstUser, 10000)
       )
     ).to.be.revertedWithCustomError(ndContract, "EnforcedPause");
   });
@@ -691,7 +621,7 @@ describe("NDContract", function () {
         1,
         10000,
         20,
-        await signAddress(secondUser, firstUser, invoiceUuid, 10000)
+        await createLicenseSignature(secondUser, firstUser, 10000)
       )
     ).to.be.revertedWith("Invalid oracle signature");
   });
@@ -709,7 +639,7 @@ describe("NDContract", function () {
         2,
         10000,
         20,
-        await signAddress(backend, firstUser, invoiceUuid, 10000)
+        await createLicenseSignature(backend, firstUser, 10000)
       )
     ).to.be.revertedWith("Not in the right price tier");
   });
@@ -727,7 +657,7 @@ describe("NDContract", function () {
         1,
         10000,
         20,
-        await signAddress(backend, firstUser, invoiceUuid, 10000)
+        await createLicenseSignature(backend, firstUser, 10000)
       )
     ).to.be.revertedWith("Exceeds mint limit");
   });
@@ -745,7 +675,7 @@ describe("NDContract", function () {
         1,
         10000,
         20,
-        await signAddress(backend, firstUser, invoiceUuid, 10000)
+        await createLicenseSignature(backend, firstUser, 10000)
       )
     ).not.to.be.reverted;
     await expect(
@@ -759,7 +689,7 @@ describe("NDContract", function () {
         1,
         10000,
         20,
-        await signAddress(backend, firstUser, invoiceUuid, 10000)
+        await createLicenseSignature(backend, firstUser, 10000)
       )
     ).to.be.revertedWith("Invoice UUID has already been used");
   });
@@ -776,7 +706,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     expect(await ndContract.isNodeActive(NODE_ADDRESS)).to.be.false;
 
@@ -801,7 +731,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
 
@@ -823,7 +753,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
 
@@ -845,7 +775,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
 
     //DO TEST - try to link with wrong license
@@ -866,7 +796,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
 
     //DO TEST - try to link with wrong node address
@@ -893,7 +823,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
 
@@ -916,7 +846,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await unlinkNode(ndContract, firstUser, 1);
@@ -939,7 +869,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
 
@@ -963,7 +893,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
 
     //DO TEST - transfer empty license
@@ -991,7 +921,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
 
@@ -1020,7 +950,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [
@@ -1032,10 +962,7 @@ describe("NDContract", function () {
     let result = await ndContract
       .connect(owner)
       .calculateRewards([COMPUTE_PARAMS]);
-    const formattedResults = result.map((result) => ({
-      licenseId: result.licenseId,
-      rewardsAmount: result.rewardsAmount,
-    }));
+    const formattedResults = result.map(formatRewardsResult);
     expect(formattedResults[0]).to.deep.equal(EXPECTED_COMPUTE_REWARDS_RESULT);
   });
 
@@ -1051,7 +978,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [
@@ -1065,10 +992,7 @@ describe("NDContract", function () {
     );
     await ndContract
       .connect(firstUser)
-      .claimRewards(
-        [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(backend), "hex")]]
-      );
+      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT + userPreviousBalance
     );
@@ -1089,7 +1013,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await ethers.provider.send("evm_increaseTime", [
       ONE_DAY_IN_SECS / EPOCH_IN_A_DAY,
@@ -1141,7 +1065,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [
@@ -1155,7 +1079,7 @@ describe("NDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS, COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(backend), "hex")]]
+          [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWith("Mismatched input arrays length");
   });
@@ -1172,7 +1096,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -1184,7 +1108,7 @@ describe("NDContract", function () {
         .connect(secondUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(backend), "hex")]]
+          [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWith("User does not have the license");
   });
@@ -1201,7 +1125,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -1213,7 +1137,7 @@ describe("NDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(secondUser), "hex")]]
+          [[await computeSignatureBytes(secondUser)]]
         )
     ).to.be.revertedWith("Invalid oracle signature");
   });
@@ -1231,7 +1155,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -1245,8 +1169,8 @@ describe("NDContract", function () {
           [COMPUTE_PARAMS],
           [
             [
-              Buffer.from(await signComputeParams(backend), "hex"),
-              Buffer.from(await signComputeParams(backend), "hex"),
+              await computeSignatureBytes(backend),
+              await computeSignatureBytes(backend),
             ],
           ]
         )
@@ -1266,7 +1190,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await controllerContract.addOracle(await secondUser.getAddress());
@@ -1285,8 +1209,8 @@ describe("NDContract", function () {
         [COMPUTE_PARAMS],
         [
           [
-            Buffer.from(await signComputeParams(backend), "hex"),
-            Buffer.from(await signComputeParams(secondUser), "hex"),
+            await computeSignatureBytes(backend),
+            await computeSignatureBytes(secondUser),
           ],
         ]
       );
@@ -1308,7 +1232,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -1320,7 +1244,7 @@ describe("NDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(backend), "hex")]]
+          [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWith("Insufficient signatures");
   });
@@ -1337,7 +1261,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -1350,7 +1274,7 @@ describe("NDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(backend), "hex")]]
+          [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWith("Invalid node address.");
   });
@@ -1367,7 +1291,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
@@ -1380,7 +1304,7 @@ describe("NDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(backend), "hex")]]
+          [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWith("Incorrect number of params.");
   });
@@ -1397,7 +1321,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [
@@ -1411,20 +1335,14 @@ describe("NDContract", function () {
     );
     await ndContract
       .connect(firstUser)
-      .claimRewards(
-        [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(backend), "hex")]]
-      );
+      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT + userPreviousBalance
     );
     //should not modify amount
     await ndContract
       .connect(firstUser)
-      .claimRewards(
-        [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(backend), "hex")]]
-      );
+      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT + userPreviousBalance
     );
@@ -1442,7 +1360,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [
@@ -1462,10 +1380,7 @@ describe("NDContract", function () {
     );
     await ndContract
       .connect(firstUser)
-      .claimRewards(
-        [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(backend), "hex")]]
-      );
+      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       expected_result + userPreviousBalance
     );
@@ -1479,10 +1394,7 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_mine", []);
     await ndContract
       .connect(firstUser)
-      .claimRewards(
-        [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(backend), "hex")]]
-      );
+      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       expected_result + userPreviousBalance //should not be changed
     );
@@ -1508,7 +1420,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 36 * 30]);
@@ -1530,11 +1442,11 @@ describe("NDContract", function () {
         [COMPUTE_PARAMS],
         [
           [
-            Buffer.from(await signComputeParams(oracle1), "hex"),
-            Buffer.from(await signComputeParams(oracle2), "hex"),
-            Buffer.from(await signComputeParams(oracle3), "hex"),
-            Buffer.from(await signComputeParams(oracle4), "hex"),
-            Buffer.from(await signComputeParams(oracle5), "hex"),
+            await computeSignatureBytes(oracle1),
+            await computeSignatureBytes(oracle2),
+            await computeSignatureBytes(oracle3),
+            await computeSignatureBytes(oracle4),
+            await computeSignatureBytes(oracle5),
           ],
         ]
       );
@@ -1558,7 +1470,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(secondUser, firstUser, invoiceUuid, 10000) //second user is a signer
+      await createLicenseSignature(secondUser, firstUser, 10000) //second user is a signer
     );
   });
 
@@ -1575,7 +1487,7 @@ describe("NDContract", function () {
         1,
         10000,
         20,
-        await signAddress(backend, firstUser, invoiceUuid, 10000)
+        await createLicenseSignature(backend, firstUser, 10000)
       )
     ).to.be.revertedWithCustomError(ndContract, "EnforcedPause");
   });
@@ -1599,7 +1511,7 @@ describe("NDContract", function () {
         1,
         10000,
         20,
-        await signAddress(backend, firstUser, invoiceUuid, 10000)
+        await createLicenseSignature(backend, firstUser, 10000)
       )
     ).to.be.revertedWithCustomError(ndContract, "EnforcedPause");
 
@@ -1615,7 +1527,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
   });
 
@@ -1637,7 +1549,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
 
     await ndContract.connect(owner).banLicense(1);
@@ -1650,7 +1562,7 @@ describe("NDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(backend), "hex")]]
+          [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWith("License is banned, cannot perform action");
   });
@@ -1666,7 +1578,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
 
     await ndContract.connect(owner).banLicense(1);
@@ -1692,7 +1604,7 @@ describe("NDContract", function () {
       1,
       10000,
       20,
-      await signAddress(backend, firstUser, invoiceUuid, 10000)
+      await createLicenseSignature(backend, firstUser, 10000)
     );
     await linkNode(ndContract, firstUser, 1);
     await ndContract.connect(owner).banLicense(1);
@@ -1707,16 +1619,13 @@ describe("NDContract", function () {
         .connect(firstUser)
         .claimRewards(
           [COMPUTE_PARAMS],
-          [[Buffer.from(await signComputeParams(backend), "hex")]]
+          [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWith("License is banned, cannot perform action");
     await ndContract.connect(owner).unbanLicense(1);
     await ndContract
       .connect(firstUser)
-      .claimRewards(
-        [COMPUTE_PARAMS],
-        [[Buffer.from(await signComputeParams(backend), "hex")]]
-      );
+      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
   });
 
   it("Unban license - not the owner", async function () {
@@ -1740,11 +1649,12 @@ describe("NDContract", function () {
       do {
         const uuidHex = uuidv4().replace(/-/g, "");
         const uuidBuffer = Buffer.from(uuidHex);
-        let signature = await signAddress(
+        const signature = await signBuyLicense(
           backend,
-          firstUser,
+          await firstUser.getAddress(),
           uuidBuffer,
-          1_000_000
+          1_000_000,
+          20
         );
 
         if (units > maxUnits) {
@@ -1790,7 +1700,7 @@ describe("NDContract", function () {
         12,
         1_000_000,
         20,
-        await signAddress(backend, firstUser, invoiceUuid, 1_000_000)
+        await createLicenseSignature(backend, firstUser, 1_000_000)
       )
     ).to.be.revertedWith("All licenses have been sold");
   });

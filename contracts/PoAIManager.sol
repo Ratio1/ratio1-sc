@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
 import "./Controller.sol";
 import "./CspEscrow.sol";
+import "./R1.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 struct NDLicense {
@@ -212,10 +213,33 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         );
         BeaconProxy proxy = new BeaconProxy(address(cspEscrowBeacon), data);
         address escrowAddr = address(proxy);
+        R1 r1 = R1(r1Token);
+        require(r1.owner() == address(this), "PoAIManager must be R1 owner");
+        r1.addBurner(escrowAddr);
         allEscrows.push(escrowAddr);
         ownerToEscrow[sender] = escrowAddr;
         escrowToOwner[escrowAddr] = sender;
         emit EscrowDeployed(sender, escrowAddr);
+    }
+
+    function addR1Burner(address account) external onlyOwner {
+        require(account != address(0), "Invalid burner address");
+        R1 r1 = R1(r1Token);
+        require(r1.owner() == address(this), "PoAIManager must be R1 owner");
+        r1.addBurner(account);
+    }
+
+    function removeR1Burner(address account) external onlyOwner {
+        require(account != address(0), "Invalid burner address");
+        R1 r1 = R1(r1Token);
+        require(r1.owner() == address(this), "PoAIManager must be R1 owner");
+        r1.removeBurner(account);
+    }
+
+    function reclaimR1Ownership() external onlyOwner {
+        R1 r1 = R1(r1Token);
+        require(r1.owner() == address(this), "PoAIManager must be R1 owner");
+        r1.transferOwnership(owner());
     }
 
     // Internal function to check if user owns at least one ND or MND with a linked node address that is an oracle
@@ -551,10 +575,65 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     }
 
     // Get total balance across all escrows
-    function getTotalEscrowsBalance() external view returns (int256 totalBalance) {
+    function getTotalEscrowsBalance()
+        external
+        view
+        returns (int256 totalBalance)
+    {
         for (uint256 i = 0; i < allEscrows.length; i++) {
             totalBalance += CspEscrow(allEscrows[i]).getTotalJobsBalance();
         }
+    }
+
+    function getActiveJobsCount() external view returns (uint256 totalActiveJobs) {
+        uint256 escrowCount = allEscrows.length;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            totalActiveJobs += CspEscrow(allEscrows[i]).getActiveJobsCount();
+        }
+    }
+
+    function getAllActiveJobs()
+        external
+        view
+        returns (JobWithAllDetails[] memory)
+    {
+        uint256 escrowCount = allEscrows.length;
+        uint256 totalActiveJobs = 0;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            totalActiveJobs += CspEscrow(allEscrows[i]).getActiveJobsCount();
+        }
+
+        JobWithAllDetails[] memory jobs = new JobWithAllDetails[](
+            totalActiveJobs
+        );
+        uint256 index = 0;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            address escrowAddress = allEscrows[i];
+            address escrowOwner = escrowToOwner[escrowAddress];
+            JobDetails[] memory escrowJobs = CspEscrow(escrowAddress)
+                .getActiveJobs();
+            for (uint256 j = 0; j < escrowJobs.length; j++) {
+                JobDetails memory job = escrowJobs[j];
+                jobs[index] = JobWithAllDetails({
+                    id: job.id,
+                    projectHash: job.projectHash,
+                    requestTimestamp: job.requestTimestamp,
+                    startTimestamp: job.startTimestamp,
+                    lastNodesChangeTimestamp: job.lastNodesChangeTimestamp,
+                    jobType: job.jobType,
+                    pricePerEpoch: job.pricePerEpoch,
+                    lastExecutionEpoch: job.lastExecutionEpoch,
+                    numberOfNodesRequested: job.numberOfNodesRequested,
+                    balance: job.balance,
+                    lastAllocatedEpoch: job.lastAllocatedEpoch,
+                    activeNodes: job.activeNodes,
+                    escrowAddress: escrowAddress,
+                    escrowOwner: escrowOwner
+                });
+                index++;
+            }
+        }
+        return jobs;
     }
 
     function getAllCspsWithOwner()
