@@ -592,6 +592,50 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         }
     }
 
+    function getAllActiveJobs()
+        external
+        view
+        returns (JobWithAllDetails[] memory)
+    {
+        uint256 escrowCount = allEscrows.length;
+        uint256 totalActiveJobs = 0;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            totalActiveJobs += CspEscrow(allEscrows[i]).getActiveJobsCount();
+        }
+
+        JobWithAllDetails[] memory jobs = new JobWithAllDetails[](
+            totalActiveJobs
+        );
+        uint256 index = 0;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            address escrowAddress = allEscrows[i];
+            address escrowOwner = escrowToOwner[escrowAddress];
+            JobDetails[] memory escrowJobs = CspEscrow(escrowAddress)
+                .getActiveJobs();
+            for (uint256 j = 0; j < escrowJobs.length; j++) {
+                JobDetails memory job = escrowJobs[j];
+                jobs[index] = JobWithAllDetails({
+                    id: job.id,
+                    projectHash: job.projectHash,
+                    requestTimestamp: job.requestTimestamp,
+                    startTimestamp: job.startTimestamp,
+                    lastNodesChangeTimestamp: job.lastNodesChangeTimestamp,
+                    jobType: job.jobType,
+                    pricePerEpoch: job.pricePerEpoch,
+                    lastExecutionEpoch: job.lastExecutionEpoch,
+                    numberOfNodesRequested: job.numberOfNodesRequested,
+                    balance: job.balance,
+                    lastAllocatedEpoch: job.lastAllocatedEpoch,
+                    activeNodes: job.activeNodes,
+                    escrowAddress: escrowAddress,
+                    escrowOwner: escrowOwner
+                });
+                index++;
+            }
+        }
+        return jobs;
+    }
+
     function getAllCspsWithOwner()
         external
         view

@@ -212,6 +212,11 @@ describe("PoAIManager", function () {
     await ethers.provider.send("evm_mine", []);
   }
 
+  it("should return empty array when there are no active jobs", async function () {
+    const jobs = await poaiManager.getAllActiveJobs();
+    expect(jobs.length).to.equal(0);
+  });
+
   it("should revert if user does not own an oracle node", async function () {
     await expect(
       poaiManager.connect(user).deployCspEscrow()
@@ -370,6 +375,49 @@ describe("PoAIManager", function () {
     expect(await poaiManager.getActiveJobsCount()).to.equal(1);
   });
 
+  it("should return active job details for a single escrow", async function () {
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+    const userAddress = await user.getAddress();
+    const currentEpoch = await poaiManager.getCurrentEpoch();
+    const lastExecutionEpoch = currentEpoch + 35n;
+    const numberOfNodesRequested = 2n;
+    const numberOfEpochs = lastExecutionEpoch - currentEpoch;
+    const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
+    const totalCost = pricePerEpoch * numberOfNodesRequested * numberOfEpochs;
+
+    await mockUsdc.mint(userAddress, totalCost);
+    await mockUsdc.connect(user).approve(escrowAddress, totalCost);
+
+    const projectHash = ethers.keccak256(
+      ethers.toUtf8Bytes("single-escrow-active-job")
+    );
+
+    await cspEscrow.connect(user).createJobs([
+      {
+        jobType: 1,
+        projectHash,
+        lastExecutionEpoch,
+        numberOfNodesRequested,
+      },
+    ]);
+
+    const jobs = await poaiManager.getAllActiveJobs();
+    expect(jobs.length).to.equal(1);
+
+    const [job] = jobs;
+    expect(job.id).to.equal(1n);
+    expect(job.projectHash).to.equal(projectHash);
+    expect(job.numberOfNodesRequested).to.equal(numberOfNodesRequested);
+    expect(job.pricePerEpoch).to.equal(pricePerEpoch);
+    expect(job.balance).to.equal(totalCost);
+    expect(job.escrowAddress).to.equal(escrowAddress);
+    expect(job.escrowOwner).to.equal(userAddress);
+    expect(job.activeNodes.length).to.equal(0);
+  });
+
   it("should aggregate active job counts across multiple escrows", async function () {
     const firstEscrowAddress = await setupUserWithEscrow(user, oracle);
     const CspEscrow = await ethers.getContractFactory("CspEscrow");
@@ -384,13 +432,17 @@ describe("PoAIManager", function () {
     const pricePerEpoch = await firstEscrow.getPriceForJobType(1);
     const firstCost = pricePerEpoch * numberOfNodesRequested * epochs;
 
-    await mockUsdc.mint(await user.getAddress(), firstCost);
+    const userAddress = await user.getAddress();
+    await mockUsdc.mint(userAddress, firstCost);
     await mockUsdc.connect(user).approve(firstEscrowAddress, firstCost);
 
+    const firstProjectHash = ethers.keccak256(
+      ethers.toUtf8Bytes("first-escrow-job")
+    );
     await firstEscrow.connect(user).createJobs([
       {
         jobType: 1,
-        projectHash: ethers.keccak256(ethers.toUtf8Bytes("first-escrow-job")),
+        projectHash: firstProjectHash,
         lastExecutionEpoch: firstLastExecutionEpoch,
         numberOfNodesRequested,
       },
@@ -409,25 +461,55 @@ describe("PoAIManager", function () {
     const secondCost =
       secondPricePerEpoch * numberOfNodesRequested * secondEpochs;
 
-    await mockUsdc.mint(await other.getAddress(), secondCost * 2n);
+    const otherAddress = await other.getAddress();
+    await mockUsdc.mint(otherAddress, secondCost * 2n);
     await mockUsdc.connect(other).approve(secondEscrowAddress, secondCost * 2n);
+
+    const secondProjectHashA = ethers.keccak256(
+      ethers.toUtf8Bytes("second-escrow-job-a")
+    );
+    const secondProjectHashB = ethers.keccak256(
+      ethers.toUtf8Bytes("second-escrow-job-b")
+    );
 
     await secondEscrow.connect(other).createJobs([
       {
         jobType: 1,
-        projectHash: ethers.keccak256(ethers.toUtf8Bytes("second-escrow-job")),
+        projectHash: secondProjectHashA,
         lastExecutionEpoch: secondLastExecutionEpoch,
         numberOfNodesRequested,
       },
       {
         jobType: 1,
-        projectHash: ethers.keccak256(ethers.toUtf8Bytes("second-escrow-job")),
+        projectHash: secondProjectHashB,
         lastExecutionEpoch: secondLastExecutionEpoch,
         numberOfNodesRequested,
       },
     ]);
 
     expect(await poaiManager.getActiveJobsCount()).to.equal(3);
+
+    const jobs = await poaiManager.getAllActiveJobs();
+    expect(jobs.length).to.equal(3);
+    expect(jobs.map((job) => job.id)).to.deep.equal([1n, 2n, 3n]);
+    expect(jobs[0].escrowAddress).to.equal(firstEscrowAddress);
+    expect(jobs[0].escrowOwner).to.equal(userAddress);
+    expect(jobs[0].projectHash).to.equal(firstProjectHash);
+    expect(jobs[0].numberOfNodesRequested).to.equal(numberOfNodesRequested);
+    expect(jobs[0].balance).to.equal(firstCost);
+    expect(jobs[1].escrowAddress).to.equal(secondEscrowAddress);
+    expect(jobs[1].escrowOwner).to.equal(otherAddress);
+    expect(jobs[1].projectHash).to.equal(secondProjectHashA);
+    expect(jobs[1].numberOfNodesRequested).to.equal(numberOfNodesRequested);
+    expect(jobs[1].balance).to.equal(secondCost);
+    expect(jobs[2].escrowAddress).to.equal(secondEscrowAddress);
+    expect(jobs[2].escrowOwner).to.equal(otherAddress);
+    expect(jobs[2].projectHash).to.equal(secondProjectHashB);
+    expect(jobs[2].numberOfNodesRequested).to.equal(numberOfNodesRequested);
+    expect(jobs[2].balance).to.equal(secondCost);
+    expect(jobs[0].activeNodes.length).to.equal(0);
+    expect(jobs[1].activeNodes.length).to.equal(0);
+    expect(jobs[2].activeNodes.length).to.equal(0);
   });
 
   it("should allow CSP owner to extend job duration", async function () {
