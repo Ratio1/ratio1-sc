@@ -257,6 +257,26 @@ describe("PoAIManager", function () {
     ).to.be.revertedWithCustomError(poaiManager, "OwnableUnauthorizedAccount");
   });
 
+  it("should allow the PoAI manager owner to reclaim ownership of the R1 token", async function () {
+    expect(await r1.owner()).to.equal(poaiManager);
+    const ownerAddress = await owner.getAddress();
+    await poaiManager.connect(owner).reclaimR1Ownership();
+    expect(await r1.owner()).to.equal(ownerAddress);
+  });
+
+  it("should restrict reclaiming R1 ownership to the PoAI manager owner", async function () {
+    await expect(
+      poaiManager.connect(other).reclaimR1Ownership()
+    ).to.be.revertedWithCustomError(poaiManager, "OwnableUnauthorizedAccount");
+  });
+
+  it("should revert reclaiming R1 ownership when PoAI manager is not the R1 owner", async function () {
+    await poaiManager.connect(owner).reclaimR1Ownership();
+    await expect(
+      poaiManager.connect(owner).reclaimR1Ownership()
+    ).to.be.revertedWith("PoAIManager must be R1 owner");
+  });
+
   it("should not allow double escrow deploy for the same user", async function () {
     await setupUserWithOracleNode(user, oracle);
 
@@ -499,9 +519,7 @@ describe("PoAIManager", function () {
     await mockUsdc.mint(await user.getAddress(), additionalAmount);
     await mockUsdc.connect(user).approve(escrowAddress, additionalAmount);
 
-    await expect(
-      cspEscrow.connect(user).extendJobNodes(1, newNumberOfNodes)
-    )
+    await expect(cspEscrow.connect(user).extendJobNodes(1, newNumberOfNodes))
       .to.emit(cspEscrow, "JobNodesExtended")
       .withArgs(1, newNumberOfNodes, additionalAmount);
 

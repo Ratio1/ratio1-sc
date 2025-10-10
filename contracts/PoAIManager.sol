@@ -236,6 +236,12 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         r1.removeBurner(account);
     }
 
+    function reclaimR1Ownership() external onlyOwner {
+        R1 r1 = R1(r1Token);
+        require(r1.owner() == address(this), "PoAIManager must be R1 owner");
+        r1.transferOwnership(owner());
+    }
+
     // Internal function to check if user owns at least one ND or MND with a linked node address that is an oracle
     function _hasOracleNode(address user) internal view returns (bool) {
         address[] memory oracles = controller.getOracles();
