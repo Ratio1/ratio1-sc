@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - develop
+  pull_request:
+    branches:
       - main
   workflow_dispatch:
 
@@ -32,6 +34,14 @@ jobs:
       - name: Determine matrix skip
         id: gate
         run: |
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if [ "${{ github.base_ref }}" != "main" ] || [ "${{ matrix.stage }}" != "mainnet" ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
           if [ "${{ github.ref }}" = "refs/heads/develop" ] && [ "${{ matrix.stage }}" != "devnet" ] && [ "${{ matrix.stage }}" != "testnet" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -40,7 +50,7 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -87,6 +97,7 @@ jobs:
       - name: Commit manifest updates
         if: steps.gate.outputs.skip != 'true'
         run: |
+          TARGET_REF="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ".openzeppelin/${OPENZEPPELIN_FILE}"
@@ -94,6 +105,6 @@ jobs:
             echo "No manifest changes to commit"
           else
             git commit -m "chore: update ${UPGRADE_STAGE} manifest [skip ci]"
-            git pull --rebase origin "${GITHUB_REF_NAME}"
-            git push origin HEAD:${GITHUB_REF_NAME}
+            git pull --rebase origin "$TARGET_REF"
+            git push origin HEAD:"$TARGET_REF"
           fi
