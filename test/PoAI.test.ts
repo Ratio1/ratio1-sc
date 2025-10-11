@@ -124,9 +124,6 @@ describe("PoAIManager", function () {
     await poaiManager.waitForDeployment();
     await ndContract.setPoAIManager(await poaiManager.getAddress());
 
-    // Transfer R1 ownership to PoAI Manager so it can manage burners
-    await r1.transferOwnership(await poaiManager.getAddress());
-
     // Set timestamp to start epoch + 1 day to avoid epoch 0 underflow issues
     const block = await ethers.provider.getBlock("latest");
     const nextTimestamp = Math.max(
@@ -172,6 +169,7 @@ describe("PoAIManager", function () {
     const escrowAddress = await poaiManager.ownerToEscrow(
       await userSigner.getAddress()
     );
+    await r1.connect(owner).addBurner(escrowAddress);
     return escrowAddress;
   }
 
@@ -231,55 +229,6 @@ describe("PoAIManager", function () {
     const escrowAddress = await poaiManager.ownerToEscrow(
       await user.getAddress()
     );
-    await expect(poaiManager.connect(owner).removeR1Burner(escrowAddress)).to
-      .not.be.reverted;
-    // Restore burner status for subsequent tests relying on the setup
-    await poaiManager.connect(owner).addR1Burner(escrowAddress);
-  });
-
-  it("should allow the PoAI Manager owner to manage R1 burners", async function () {
-    const burnerCandidate = await other.getAddress();
-
-    await poaiManager.connect(owner).addR1Burner(burnerCandidate);
-
-    await poaiManager.connect(owner).removeR1Burner(burnerCandidate);
-    await expect(
-      poaiManager.connect(owner).removeR1Burner(burnerCandidate)
-    ).to.be.revertedWith("Address is not a burner");
-  });
-
-  it("should restrict R1 burner management helpers to the owner", async function () {
-    const burnerCandidate = await other.getAddress();
-
-    await expect(
-      poaiManager.connect(other).addR1Burner(burnerCandidate)
-    ).to.be.revertedWithCustomError(poaiManager, "OwnableUnauthorizedAccount");
-
-    await poaiManager.connect(owner).addR1Burner(burnerCandidate);
-
-    await expect(
-      poaiManager.connect(other).removeR1Burner(burnerCandidate)
-    ).to.be.revertedWithCustomError(poaiManager, "OwnableUnauthorizedAccount");
-  });
-
-  it("should allow the PoAI manager owner to reclaim ownership of the R1 token", async function () {
-    expect(await r1.owner()).to.equal(poaiManager);
-    const ownerAddress = await owner.getAddress();
-    await poaiManager.connect(owner).reclaimR1Ownership();
-    expect(await r1.owner()).to.equal(ownerAddress);
-  });
-
-  it("should restrict reclaiming R1 ownership to the PoAI manager owner", async function () {
-    await expect(
-      poaiManager.connect(other).reclaimR1Ownership()
-    ).to.be.revertedWithCustomError(poaiManager, "OwnableUnauthorizedAccount");
-  });
-
-  it("should revert reclaiming R1 ownership when PoAI manager is not the R1 owner", async function () {
-    await poaiManager.connect(owner).reclaimR1Ownership();
-    await expect(
-      poaiManager.connect(owner).reclaimR1Ownership()
-    ).to.be.revertedWith("PoAIManager must be R1 owner");
   });
 
   it("should not allow double escrow deploy for the same user", async function () {
