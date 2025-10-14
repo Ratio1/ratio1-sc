@@ -648,4 +648,70 @@ describe("Reader contract", function () {
       },
     ]);
   });
+
+  describe("hasOracleNode", function () {
+    it("returns false for wallet without linked nodes", async function () {
+      const result = await reader.hasOracleNode(
+        await firstUser.getAddress()
+      );
+      expect(result).to.equal(false);
+    });
+
+    it("returns false when user nodes are not oracles", async function () {
+      await buyLicenseWithMintAndAllowance(
+        r1Contract,
+        ndContract,
+        owner,
+        firstUser,
+        await ndContract.getLicenseTokenPrice(),
+        1,
+        1,
+        10000,
+        20,
+        await createLicenseSignature(backend, firstUser, invoiceUuid, 10000)
+      );
+      await linkNode(ndContract, firstUser, 1);
+
+      const result = await reader.hasOracleNode(
+        await firstUser.getAddress()
+      );
+      expect(result).to.equal(false);
+    });
+
+    it("returns true when user has ND node operated by oracle", async function () {
+      const oracleAddress = await backend.getAddress();
+      await buyLicenseWithMintAndAllowance(
+        r1Contract,
+        ndContract,
+        owner,
+        firstUser,
+        await ndContract.getLicenseTokenPrice(),
+        1,
+        1,
+        10000,
+        20,
+        await createLicenseSignature(backend, firstUser, invoiceUuid, 10000)
+      );
+      await linkNode(ndContract, firstUser, 1, oracleAddress);
+
+      const result = await reader.hasOracleNode(
+        await firstUser.getAddress()
+      );
+      expect(result).to.equal(true);
+    });
+
+    it("returns true when user has MND node operated by oracle", async function () {
+      const oracleAddress = await backend.getAddress();
+      await mndContract
+        .connect(owner)
+        .linkNode(
+          1,
+          oracleAddress,
+          await signLinkNode(backend, owner, oracleAddress)
+        );
+
+      const result = await reader.hasOracleNode(await owner.getAddress());
+      expect(result).to.equal(true);
+    });
+  });
 });
