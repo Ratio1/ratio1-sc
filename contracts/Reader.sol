@@ -346,4 +346,41 @@ contract Reader is Initializable {
         }
         return balances;
     }
+
+    function hasOracleNode(address user) public view returns (bool) {
+        address[] memory oracles = controller.getOracles();
+        // Check MND licenses assigned to user
+        uint256 mndBalance = mndContract.balanceOf(user);
+        for (uint256 i = 0; i < mndBalance; i++) {
+            uint256 licenseId = mndContract.tokenOfOwnerByIndex(user, i);
+            MNDLicense memory mndLicense = mndContract.licenses(licenseId);
+            address nodeAddr = mndLicense.nodeAddress;
+            if (nodeAddr != address(0) && _isOracle(nodeAddr, oracles)) {
+                return true;
+            }
+        }
+        // Check ND licenses assigned to user
+        uint256 ndBalance = ndContract.balanceOf(user);
+        for (uint256 i = 0; i < ndBalance; i++) {
+            uint256 licenseId = ndContract.tokenOfOwnerByIndex(user, i);
+            NDLicense memory ndLicense = ndContract.licenses(licenseId);
+            address nodeAddr = ndLicense.nodeAddress;
+            if (nodeAddr != address(0) && _isOracle(nodeAddr, oracles)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function _isOracle(
+        address node,
+        address[] memory oracles
+    ) private pure returns (bool) {
+        for (uint256 i = 0; i < oracles.length; i++) {
+            if (oracles[i] == node) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
