@@ -221,6 +221,37 @@ describe("PoAIManager", function () {
     ).to.be.revertedWith("No oracle node owned");
   });
 
+  it("should deploy a new CSP Escrow for a user with an oracle node and multiple licenses (ND path)", async function () {
+    const nodeAddress = await oracle.getAddress();
+    const otherNodeAddress = await other.getAddress();
+
+    await buyLicenseAndLinkNode({
+      r1,
+      nd: ndContract,
+      mintAuthority: owner,
+      buyer: user,
+      oracleSigner: oracle,
+      nodeAddress: otherNodeAddress,
+    });
+    await buyLicenseAndLinkNode({
+      r1,
+      nd: ndContract,
+      mintAuthority: owner,
+      buyer: user,
+      oracleSigner: oracle,
+      nodeAddress,
+    });
+
+    const mndLicenses = await mndContract.getLicenses(await user.getAddress());
+    expect(mndLicenses.length).to.equal(0);
+
+    await poaiManager.connect(user).deployCspEscrow();
+    const escrowAddress = await poaiManager.ownerToEscrow(
+      await user.getAddress()
+    );
+    expect(escrowAddress).to.not.equal(ethers.ZeroAddress);
+  });
+
   it("should deploy a new CSP Escrow for a user with an oracle node (MND path)", async function () {
     await setupUserWithOracleNode(user, oracle);
 
