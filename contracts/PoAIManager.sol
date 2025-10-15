@@ -20,6 +20,8 @@ struct NDLicense {
     uint256 assignTimestamp;
     address lastClaimOracle;
     bool isBanned;
+    uint256 usdcPoaiRewards;
+    uint256 r1PoaiRewards;
 }
 
 struct MNDLicense {
