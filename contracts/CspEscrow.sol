@@ -555,6 +555,12 @@ contract CspEscrow is Initializable {
         return jobDetails[jobId];
     }
 
+    function getJobActiveNodes(
+        uint256 jobId
+    ) external view returns (address[] memory) {
+        return jobDetails[jobId].activeNodes;
+    }
+
     function getActiveJobs() external view returns (JobDetails[] memory) {
         JobDetails[] memory jobs = new JobDetails[](activeJobs.length);
         for (uint256 i = 0; i < activeJobs.length; i++) {

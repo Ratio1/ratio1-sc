@@ -302,18 +302,20 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         NodesTransitionProposal[] storage proposals = nodesTransactionProposals[
             jobId
         ][currentEpoch];
-        require(jobIdToEscrow[jobId] != address(0), "Job does not exist");
+        address escrowAddress = jobIdToEscrow[jobId];
+        require(escrowAddress != address(0), "Job does not exist");
         // Check if the sender is already in the proposals
         for (uint256 i = 0; i < proposals.length; i++) {
             require(proposals[i].proposer != sender, "Already submitted");
         }
         // Check if the nodes are the same as the current active nodes
         bytes32 newActiveNodesHash = keccak256(abi.encode(newActiveNodes));
-        JobWithAllDetails memory jobDetails = getJobDetails(jobId);
+        address[] memory currentNodes = CspEscrow(escrowAddress)
+            .getJobActiveNodes(jobId);
         //do not open a new consensus session if the node is reporting the same nodes (probably a late oracle)
         if (
             !isJobUnvalidated[jobId] &&
-            keccak256(abi.encode(jobDetails.activeNodes)) == newActiveNodesHash
+            keccak256(abi.encode(currentNodes)) == newActiveNodesHash
         ) {
             return;
         }
