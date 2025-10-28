@@ -295,9 +295,11 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     function submitNodeUpdate(
         uint256 jobId,
         address[] memory newActiveNodes
-    ) external onlyOracle {
-        address[] memory oracles = controller.getOracles();
+    ) external {
         address sender = msg.sender;
+        address[] memory oracles = controller.getOracles();
+        require(_isOracle(sender, oracles), "Not an oracle");
+        uint256 oraclesCount = oracles.length;
         uint256 currentEpoch = getCurrentEpoch();
         NodesTransitionProposal[] storage proposals = nodesTransactionProposals[
             jobId
@@ -348,9 +350,9 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         );
 
         // Check if we have enough submissions to attempt consensus
-        uint256 requiredSubmissions = (oracles.length / 2) + 1; // 50% + 1
+        uint256 requiredSubmissions = (oraclesCount / 2) + 1; // 50% + 1
         if (proposals.length >= requiredSubmissions) {
-            _attemptConsensus(jobId, oracles.length, proposals);
+            _attemptConsensus(jobId, oraclesCount, proposals);
         }
     }
 
@@ -759,12 +761,6 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
                 }
             }
         }
-    }
-
-    modifier onlyOracle() {
-        address[] memory oracles = controller.getOracles();
-        require(_isOracle(msg.sender, oracles), "Not an oracle");
-        _;
     }
 
     modifier onlyCspEscrow() {
