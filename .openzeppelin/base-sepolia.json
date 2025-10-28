@@ -20246,6 +20246,123 @@
           ]
         }
       }
+    },
+    "ceab167662244a8a4bd634511e9c211a68b556e5fb57107b77660914b0eb3463": {
+      "address": "0xcDA7f050f05b3D3fdf15959dAF61cC1cD89b198B",
+      "txHash": "0x2d1adc50445401c0248e50b9d6def74596b0a5a59830d0a6e2c1063e45a30ce4",
+      "layout": {
+        "solcVersion": "0.8.22",
+        "storage": [
+          {
+            "label": "ndContract",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IND)28468",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:132"
+          },
+          {
+            "label": "mndContract",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_contract(IMND)28479",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:133"
+          },
+          {
+            "label": "controller",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_contract(Controller)19028",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:134"
+          },
+          {
+            "label": "r1Contract",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_contract(R1)28301",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:135"
+          },
+          {
+            "label": "poaiManager",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_contract(IPoAIManager)28503",
+            "contract": "Reader",
+            "src": "contracts/Reader.sol:136"
+          }
+        ],
+        "types": {
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_contract(Controller)19028": {
+            "label": "contract Controller",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IMND)28479": {
+            "label": "contract IMND",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IND)28468": {
+            "label": "contract IND",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IPoAIManager)28503": {
+            "label": "contract IPoAIManager",
+            "numberOfBytes": "20"
+          },
+          "t_contract(R1)28301": {
+            "label": "contract R1",
+            "numberOfBytes": "20"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
     }
   }
 }
