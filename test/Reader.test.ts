@@ -260,6 +260,9 @@ describe("Reader contract", function () {
   type EscrowDetailsOutput = Awaited<
     ReturnType<Reader["getAllEscrowsDetails"]>
   >[number];
+  type EscrowDetailsSingleOutput = Awaited<
+    ReturnType<Reader["getEscrowDetailsByOwner"]>
+  >;
 
   function formatOracleDetails(oracle: OracleDetailsOutput) {
     return {
@@ -276,7 +279,9 @@ describe("Reader contract", function () {
     };
   }
 
-  function formatEscrowDetails(escrow: EscrowDetailsOutput) {
+  function formatEscrowDetails(
+    escrow: EscrowDetailsOutput | EscrowDetailsSingleOutput
+  ) {
     return {
       escrowAddress: escrow[0],
       owner: escrow[1],
@@ -704,6 +709,58 @@ describe("Reader contract", function () {
           activeJobsCount: 0n,
         },
       ]);
+    });
+  });
+
+  describe("getEscrowDetailsByOwner", function () {
+    it("returns empty structure when owner has no escrow", async function () {
+      const ownerWithoutEscrow = await firstUser.getAddress();
+      const result = await reader.getEscrowDetailsByOwner(ownerWithoutEscrow);
+      const mapped = formatEscrowDetails(result);
+      expect(mapped).to.deep.equal({
+        escrowAddress: NULL_ADDRESS,
+        owner: NULL_ADDRESS,
+        tvl: 0n,
+        activeJobsCount: 0n,
+      });
+    });
+
+    it("returns escrow details for owner with escrow", async function () {
+      await buyLicenseWithMintAndAllowance(
+        r1Contract,
+        ndContract,
+        owner,
+        owner,
+        await ndContract.getLicenseTokenPrice(),
+        1,
+        1,
+        10000,
+        20,
+        await createLicenseSignature(backend, owner, invoiceUuid, 10000)
+      );
+      await linkNode(
+        ndContract,
+        owner,
+        1,
+        await backend.getAddress()
+      );
+
+      await poaiManager.connect(owner).deployCspEscrow();
+      const escrowAddress = await poaiManager.ownerToEscrow(
+        await owner.getAddress()
+      );
+
+      const result = await reader.getEscrowDetailsByOwner(
+        await owner.getAddress()
+      );
+      const mapped = formatEscrowDetails(result);
+
+      expect(mapped).to.deep.equal({
+        escrowAddress,
+        owner: await owner.getAddress(),
+        tvl: 0n,
+        activeJobsCount: 0n,
+      });
     });
   });
 
