@@ -160,13 +160,17 @@ function computeDiffs(baseMap, prMap, accessor) {
 
 function buildTable(rows, options = {}) {
   const { includeCalls = true } = options;
+  const filteredRows = rows.filter((row) => row.baseAvg !== undefined || row.prAvg !== undefined);
+  if (filteredRows.length === 0) {
+    return null;
+  }
   const header = includeCalls
     ? ["Contract", "Method", "Calls (base→PR)", "Base Avg Gas", "PR Avg Gas", "Δ Gas", "Δ %"]
     : ["Contract", "Base Avg Gas", "PR Avg Gas", "Δ Gas", "Δ %"];
   const lines = [];
   lines.push(`| ${header.join(" | ")} |`);
   lines.push(`| ${header.map(() => "---").join(" | ")} |`);
-  for (const row of rows) {
+  for (const row of filteredRows) {
     if (includeCalls) {
       lines.push(
         `| ${row.contract} | ${row.method} | ${formatCalls(row.baseCalls, row.prCalls)} | ${formatNumber(row.baseAvg)} | ${formatNumber(row.prAvg)} | ${formatDelta(row.baseAvg, row.prAvg)} | ${formatPercent(row.baseAvg, row.prAvg)} |`
@@ -260,45 +264,55 @@ function main() {
   lines.push("");
 
   lines.push("### Largest method changes");
-  if (topMethodChanges.length === 0) {
+  const topMethodsTable = buildTable(topMethodChanges);
+  if (!topMethodsTable) {
     lines.push("No significant method gas differences detected.");
   } else {
-    lines.push(buildTable(topMethodChanges));
+    lines.push(topMethodsTable);
   }
   lines.push("");
 
   lines.push("### Deployment changes");
-  if (topDeploymentChanges.length === 0) {
-    lines.push("No deployment gas differences detected.");
-  } else {
-    const deploymentTableRows = topDeploymentChanges.map((row) => ({
+  const topDeploymentTable = buildTable(
+    topDeploymentChanges.map((row) => ({
       contract: row.contract,
       baseAvg: row.baseAvg,
       prAvg: row.prAvg,
       delta: row.delta,
-    }));
-    lines.push(buildTable(deploymentTableRows, { includeCalls: false }));
+    })),
+    { includeCalls: false }
+  );
+  if (!topDeploymentTable) {
+    lines.push("No deployment gas differences detected.");
+  } else {
+    lines.push(topDeploymentTable);
   }
   lines.push("");
 
-  if (methodRows.length > topMethodChanges.length) {
+  const allMethodsTable = buildTable(methodRows);
+  if (allMethodsTable && methodRows.length > topMethodChanges.length) {
     lines.push("<details><summary>All method measurements</summary>\n");
-    lines.push(buildTable(methodRows));
+    lines.push(allMethodsTable);
     lines.push("\n</details>");
     lines.push("");
   }
 
   if (deploymentRows.length > topDeploymentChanges.length) {
-    lines.push("<details><summary>All deployments</summary>\n");
-    const fullDeploymentRows = deploymentRows.map((row) => ({
-      contract: row.contract,
-      baseAvg: row.baseAvg,
-      prAvg: row.prAvg,
-      delta: row.delta,
-    }));
-    lines.push(buildTable(fullDeploymentRows, { includeCalls: false }));
-    lines.push("\n</details>");
-    lines.push("");
+    const fullDeploymentsTable = buildTable(
+      deploymentRows.map((row) => ({
+        contract: row.contract,
+        baseAvg: row.baseAvg,
+        prAvg: row.prAvg,
+        delta: row.delta,
+      })),
+      { includeCalls: false }
+    );
+    if (fullDeploymentsTable) {
+      lines.push("<details><summary>All deployments</summary>\n");
+      lines.push(fullDeploymentsTable);
+      lines.push("\n</details>");
+      lines.push("");
+    }
   }
 
   fs.writeFileSync(path.resolve(outputPath), `${lines.join("\n")}\n`, "utf8");
