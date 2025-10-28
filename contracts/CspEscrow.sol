@@ -403,11 +403,6 @@ contract CspEscrow is Initializable {
             uint256 jobId = activeJobs[i];
             JobDetails storage job = jobDetails[jobId];
             uint256 lastAllocatedEpoch = job.lastAllocatedEpoch;
-            // Finish the loop if job ID is not set (no more jobs)
-            if (job.id == 0) {
-                //TODO this is not correct
-                break;
-            }
             // Skip if job has no active nodes
             if (job.activeNodes.length == 0) {
                 continue;
