@@ -350,16 +350,19 @@ contract CspEscrow is Initializable {
         uint256 jobId,
         address[] memory newActiveNodes
     ) external onlyPoAIManager {
-        require(jobDetails[jobId].id != 0, "Job does not exist");
-        jobDetails[jobId].activeNodes = newActiveNodes;
-        jobDetails[jobId].lastNodesChangeTimestamp = block.timestamp;
-        if (jobDetails[jobId].startTimestamp == 0) {
-            jobDetails[jobId].startTimestamp = block.timestamp;
-            jobDetails[jobId].lastAllocatedEpoch = getCurrentEpoch() - 1;
-            emit JobStarted(jobId, block.timestamp);
+        JobDetails storage job = jobDetails[jobId];
+        require(job.id != 0, "Job does not exist");
+        uint256 currentTimestamp = block.timestamp;
+
+        job.activeNodes = newActiveNodes;
+        job.lastNodesChangeTimestamp = currentTimestamp;
+        if (job.startTimestamp == 0) {
+            job.startTimestamp = currentTimestamp;
+            job.lastAllocatedEpoch = getCurrentEpoch() - 1;
+            emit JobStarted(jobId, currentTimestamp);
         }
         if (newActiveNodes.length == 0) {
-            emit JobClosed(jobId, block.timestamp);
+            emit JobClosed(jobId, currentTimestamp);
             swapRemoveActiveJob(jobId);
             closedJobs.push(jobId);
         }
