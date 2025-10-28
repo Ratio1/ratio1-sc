@@ -304,16 +304,8 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         address[] memory oracles = controller.getOracles();
         require(_isOracle(sender, oracles), "Not an oracle");
         uint256 oraclesCount = oracles.length;
-        uint256 currentEpoch = getCurrentEpoch();
-        NodesTransitionProposal[] storage proposals = nodesTransactionProposals[
-            jobId
-        ][currentEpoch];
         address escrowAddress = jobIdToEscrow[jobId];
         require(escrowAddress != address(0), "Job does not exist");
-        // Check if the sender is already in the proposals
-        for (uint256 i = 0; i < proposals.length; i++) {
-            require(proposals[i].proposer != sender, "Already submitted");
-        }
         // Check if the nodes are the same as the current active nodes
         bytes32 newActiveNodesHash = keccak256(abi.encode(newActiveNodes));
         //do not open a new consensus session if the node is reporting the same nodes (probably a late oracle)
@@ -330,6 +322,14 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
                 CONSENSUS_COOLDOWN_PERIOD,
             "Consensus cooldown not expired"
         );
+        uint256 currentEpoch = getCurrentEpoch();
+        // Check if the sender has already submitted a proposal for this job in the current epoch
+        NodesTransitionProposal[] storage proposals = nodesTransactionProposals[
+            jobId
+        ][currentEpoch];
+        for (uint256 i = 0; i < proposals.length; i++) {
+            require(proposals[i].proposer != sender, "Already submitted");
+        }
 
         _cacheNodesForJob(jobId, newActiveNodesHash, newActiveNodes);
         proposals.push(
