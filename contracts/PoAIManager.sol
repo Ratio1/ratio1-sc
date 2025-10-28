@@ -316,14 +316,13 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         }
         // Check if the nodes are the same as the current active nodes
         bytes32 newActiveNodesHash = keccak256(abi.encode(newActiveNodes));
-        address[] memory currentNodes = CspEscrow(escrowAddress)
-            .getJobActiveNodes(jobId);
         //do not open a new consensus session if the node is reporting the same nodes (probably a late oracle)
-        if (
-            !isJobUnvalidated[jobId] &&
-            keccak256(abi.encode(currentNodes)) == newActiveNodesHash
-        ) {
-            return;
+        if (!isJobUnvalidated[jobId]) {
+            address[] memory currentNodes = CspEscrow(escrowAddress)
+                .getJobActiveNodes(jobId);
+            if (keccak256(abi.encode(currentNodes)) == newActiveNodesHash) {
+                return;
+            }
         }
         // Check if we're in the cooldown period after consensus
         require(
