@@ -71,6 +71,18 @@ struct MndDetails {
     uint256 remainingAmount;
 }
 
+struct CspWithOwner {
+    address cspAddress;
+    address cspOwner;
+}
+
+struct EscrowDetails {
+    address escrowAddress;
+    address owner;
+    int256 tvl;
+    uint256 activeJobsCount;
+}
+
 interface IBaseDeed {
     function nodeToLicenseId(address node) external view returns (uint256);
 
@@ -104,6 +116,17 @@ interface IPoAIManager {
     function getNodePoAIRewards(
         address nodeAddress
     ) external view returns (uint256 usdcRewards, uint256 r1Rewards);
+
+    function getAllCspsWithOwner()
+        external
+        view
+        returns (CspWithOwner[] memory);
+}
+
+interface ICspEscrow {
+    function getTotalJobsBalance() external view returns (int256);
+
+    function getActiveJobsCount() external view returns (uint256);
 }
 
 contract Reader is Initializable {
@@ -347,6 +370,27 @@ contract Reader is Initializable {
         return balances;
     }
 
+    function getAllEscrowsDetails()
+        external
+        view
+        returns (EscrowDetails[] memory)
+    {
+        CspWithOwner[] memory cspsWithOwner = poaiManager.getAllCspsWithOwner();
+        EscrowDetails[] memory details = new EscrowDetails[](
+            cspsWithOwner.length
+        );
+        for (uint256 i = 0; i < cspsWithOwner.length; i++) {
+            address escrowAddr = cspsWithOwner[i].cspAddress;
+            details[i] = EscrowDetails({
+                escrowAddress: escrowAddr,
+                owner: cspsWithOwner[i].cspOwner,
+                tvl: ICspEscrow(escrowAddr).getTotalJobsBalance(),
+                activeJobsCount: ICspEscrow(escrowAddr).getActiveJobsCount()
+            });
+        }
+        return details;
+    }
+
     function hasOracleNode(address user) public view returns (bool) {
         address[] memory oracles = controller.getOracles();
         // Check MND licenses assigned to user
@@ -383,4 +427,5 @@ contract Reader is Initializable {
         }
         return false;
     }
+
 }

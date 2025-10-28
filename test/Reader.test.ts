@@ -142,6 +142,10 @@ describe("Reader contract", function () {
     );
     await poaiManager.waitForDeployment();
 
+    await ndContract
+      .connect(owner)
+      .setPoAIManager(await poaiManager.getAddress());
+
     const ReaderContract = await ethers.getContractFactory("Reader");
     reader = await ReaderContract.deploy();
 
@@ -247,10 +251,15 @@ describe("Reader contract", function () {
       );
   }
 
-  type OracleDetailsOutput =
-    Awaited<ReturnType<Reader["getOraclesDetails"]>>[number];
-  type AddressBalanceOutput =
-    Awaited<ReturnType<Reader["getAddressesBalances"]>>[number];
+  type OracleDetailsOutput = Awaited<
+    ReturnType<Reader["getOraclesDetails"]>
+  >[number];
+  type AddressBalanceOutput = Awaited<
+    ReturnType<Reader["getAddressesBalances"]>
+  >[number];
+  type EscrowDetailsOutput = Awaited<
+    ReturnType<Reader["getAllEscrowsDetails"]>
+  >[number];
 
   function formatOracleDetails(oracle: OracleDetailsOutput) {
     return {
@@ -264,6 +273,15 @@ describe("Reader contract", function () {
     return {
       address: balance[0],
       balance: balance[1],
+    };
+  }
+
+  function formatEscrowDetails(escrow: EscrowDetailsOutput) {
+    return {
+      escrowAddress: escrow[0],
+      owner: escrow[1],
+      tvl: escrow[2],
+      activeJobsCount: escrow[3],
     };
   }
 
@@ -649,11 +667,49 @@ describe("Reader contract", function () {
     ]);
   });
 
+  describe("getAllEscrowsDetails", function () {
+    it("returns empty array when no escrows deployed", async function () {
+      const result = await reader.getAllEscrowsDetails();
+      expect(result).to.deep.equal([]);
+    });
+
+    it("returns escrow details for deployed escrows", async function () {
+      await buyLicenseWithMintAndAllowance(
+        r1Contract,
+        ndContract,
+        owner,
+        owner,
+        await ndContract.getLicenseTokenPrice(),
+        1,
+        1,
+        10000,
+        20,
+        await createLicenseSignature(backend, owner, invoiceUuid, 10000)
+      );
+      await linkNode(ndContract, owner, 1, await backend.getAddress());
+
+      await poaiManager.connect(owner).deployCspEscrow();
+      const escrowAddress = await poaiManager.ownerToEscrow(
+        await owner.getAddress()
+      );
+
+      const result = await reader.getAllEscrowsDetails();
+      const mapped = result.map(formatEscrowDetails);
+
+      expect(mapped).to.deep.equal([
+        {
+          escrowAddress,
+          owner: await owner.getAddress(),
+          tvl: 0n,
+          activeJobsCount: 0n,
+        },
+      ]);
+    });
+  });
+
   describe("hasOracleNode", function () {
     it("returns false for wallet without linked nodes", async function () {
-      const result = await reader.hasOracleNode(
-        await firstUser.getAddress()
-      );
+      const result = await reader.hasOracleNode(await firstUser.getAddress());
       expect(result).to.equal(false);
     });
 
@@ -672,9 +728,7 @@ describe("Reader contract", function () {
       );
       await linkNode(ndContract, firstUser, 1);
 
-      const result = await reader.hasOracleNode(
-        await firstUser.getAddress()
-      );
+      const result = await reader.hasOracleNode(await firstUser.getAddress());
       expect(result).to.equal(false);
     });
 
@@ -694,9 +748,7 @@ describe("Reader contract", function () {
       );
       await linkNode(ndContract, firstUser, 1, oracleAddress);
 
-      const result = await reader.hasOracleNode(
-        await firstUser.getAddress()
-      );
+      const result = await reader.hasOracleNode(await firstUser.getAddress());
       expect(result).to.equal(true);
     });
 
