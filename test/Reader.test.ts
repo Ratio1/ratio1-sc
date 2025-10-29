@@ -263,6 +263,9 @@ describe("Reader contract", function () {
   type EscrowDetailsSingleOutput = Awaited<
     ReturnType<Reader["getEscrowDetailsByOwner"]>
   >;
+  type NdNodeOwnerOutput = Awaited<
+    ReturnType<Reader["getNdNodesOwners"]>
+  >[number];
 
   function formatOracleDetails(oracle: OracleDetailsOutput) {
     return {
@@ -287,6 +290,13 @@ describe("Reader contract", function () {
       owner: escrow[1],
       tvl: escrow[2],
       activeJobsCount: escrow[3],
+    };
+  }
+
+  function formatNdNodeOwner(nodeOwner: NdNodeOwnerOutput) {
+    return {
+      nodeAddress: nodeOwner[0],
+      owner: nodeOwner[1],
     };
   }
 
@@ -738,12 +748,7 @@ describe("Reader contract", function () {
         20,
         await createLicenseSignature(backend, owner, invoiceUuid, 10000)
       );
-      await linkNode(
-        ndContract,
-        owner,
-        1,
-        await backend.getAddress()
-      );
+      await linkNode(ndContract, owner, 1, await backend.getAddress());
 
       await poaiManager.connect(owner).deployCspEscrow();
       const escrowAddress = await poaiManager.ownerToEscrow(
@@ -761,6 +766,69 @@ describe("Reader contract", function () {
         tvl: 0n,
         activeJobsCount: 0n,
       });
+    });
+  });
+
+  describe("getNdNodesOwners", function () {
+    it("returns owners for ND nodes", async function () {
+      await buyLicenseWithMintAndAllowance(
+        r1Contract,
+        ndContract,
+        owner,
+        firstUser,
+        await ndContract.getLicenseTokenPrice(),
+        1,
+        1,
+        10000,
+        20,
+        await createLicenseSignature(backend, firstUser, invoiceUuid, 10000)
+      );
+      await linkNode(ndContract, firstUser, 1);
+
+      const result = await reader.getNdNodesOwners([NODE_ADDRESS]);
+      const mapped = result.map(formatNdNodeOwner);
+
+      expect(mapped).to.deep.equal([
+        {
+          nodeAddress: NODE_ADDRESS,
+          owner: await firstUser.getAddress(),
+        },
+      ]);
+    });
+
+    it("returns zero owner for unregistered nodes", async function () {
+      const randomNodeAddress = ethers.Wallet.createRandom().address;
+
+      const result = await reader.getNdNodesOwners([randomNodeAddress]);
+      const mapped = result.map(formatNdNodeOwner);
+
+      expect(mapped).to.deep.equal([
+        {
+          nodeAddress: randomNodeAddress,
+          owner: NULL_ADDRESS,
+        },
+      ]);
+    });
+
+    it("ignores MND nodes when resolving owners", async function () {
+      const mndNodeAddress = ethers.Wallet.createRandom().address;
+      await mndContract
+        .connect(owner)
+        .linkNode(
+          1,
+          mndNodeAddress,
+          await signLinkNode(backend, owner, mndNodeAddress)
+        );
+
+      const result = await reader.getNdNodesOwners([mndNodeAddress]);
+      const mapped = result.map(formatNdNodeOwner);
+
+      expect(mapped).to.deep.equal([
+        {
+          nodeAddress: mndNodeAddress,
+          owner: NULL_ADDRESS,
+        },
+      ]);
     });
   });
 
