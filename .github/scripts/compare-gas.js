@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const fs = require("fs");
 const path = require("path");
+const istanbul = require("sc-istanbul");
 
 function parseArgs(argv) {
   const args = {};
@@ -30,6 +31,194 @@ function readReport(filePath) {
   }
   const data = JSON.parse(fs.readFileSync(resolved, "utf8"));
   return data;
+}
+
+function normalizeCoveragePath(filePath, rootDir) {
+  if (!filePath) {
+    return "Unknown";
+  }
+
+  const normalizedRoot = rootDir ? path.resolve(rootDir) : undefined;
+  const resolvedPath = path.isAbsolute(filePath)
+    ? path.resolve(filePath)
+    : normalizedRoot
+      ? path.resolve(normalizedRoot, filePath)
+      : path.resolve(filePath);
+
+  if (normalizedRoot) {
+    const relative = path.relative(normalizedRoot, resolvedPath);
+    if (relative && !relative.startsWith("..")) {
+      return relative.replace(/\\/g, "/");
+    }
+  }
+
+  return resolvedPath.replace(/\\/g, "/");
+}
+
+function readCoverageReport(filePath, rootDir) {
+  if (!filePath) {
+    return null;
+  }
+
+  const resolved = path.resolve(filePath);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Coverage report not found at ${resolved}`);
+  }
+
+  const raw = JSON.parse(fs.readFileSync(resolved, "utf8"));
+  const summary = istanbul.utils.summarizeCoverage(raw);
+  const files = Object.keys(raw).map((key) => {
+    const fileCoverage = raw[key] || {};
+    const coveragePath = fileCoverage.path || key;
+    return {
+      file: normalizeCoveragePath(coveragePath, rootDir),
+      summary: istanbul.utils.summarizeFileCoverage(fileCoverage),
+    };
+  });
+
+  return {
+    summary,
+    files,
+  };
+}
+
+function getCoverageMetric(summary, key) {
+  if (!summary || typeof summary !== "object") {
+    return { pct: undefined, covered: 0, total: 0 };
+  }
+  const metric = summary[key];
+  if (!metric || typeof metric !== "object") {
+    return { pct: undefined, covered: 0, total: 0 };
+  }
+  const total = typeof metric.total === "number" ? metric.total : 0;
+  const pct = total === 0 || typeof metric.pct !== "number" || !Number.isFinite(metric.pct) ? undefined : metric.pct;
+  return {
+    pct,
+    covered: typeof metric.covered === "number" ? metric.covered : 0,
+    total,
+  };
+}
+
+function formatCoverageValue(metric) {
+  if (!metric) {
+    return "—";
+  }
+
+  const pct = metric.pct;
+  const covered = metric.covered ?? 0;
+  const total = metric.total ?? 0;
+  const pctText = typeof pct === "number" ? `${pct.toFixed(2)}%` : "—";
+  return `${pctText} (${covered}/${total})`;
+}
+
+function computeCoverageDeltaValue(baseMetric, prMetric) {
+  const basePct = baseMetric?.pct;
+  const prPct = prMetric?.pct;
+  if (typeof basePct === "number" && typeof prPct === "number") {
+    return prPct - basePct;
+  }
+  if (typeof prPct === "number") {
+    return prPct;
+  }
+  if (typeof basePct === "number") {
+    return -basePct;
+  }
+  return 0;
+}
+
+function formatCoverageDelta(baseMetric, prMetric) {
+  const delta = computeCoverageDeltaValue(baseMetric, prMetric);
+  if (delta === 0) {
+    return "±0.00 pp";
+  }
+  const sign = delta > 0 ? "+" : "";
+  return `${sign}${delta.toFixed(2)} pp`;
+}
+
+function formatCoverageCoveredDelta(baseMetric, prMetric) {
+  const baseCovered = baseMetric?.covered ?? 0;
+  const prCovered = prMetric?.covered ?? 0;
+  const delta = prCovered - baseCovered;
+  if (delta === 0) {
+    return "±0 covered";
+  }
+  const sign = delta > 0 ? "+" : "";
+  return `${sign}${delta} covered`;
+}
+
+function buildCoverageSummaryLines(baseSummary, prSummary) {
+  const metrics = [
+    { key: "statements", label: "Statements" },
+    { key: "branches", label: "Branches" },
+    { key: "functions", label: "Functions" },
+    { key: "lines", label: "Lines" },
+  ];
+
+  return metrics.map(({ key, label }) => {
+    const baseMetric = getCoverageMetric(baseSummary, key);
+    const prMetric = getCoverageMetric(prSummary, key);
+    return `- **${label}:** ${formatCoverageValue(baseMetric)} → ${formatCoverageValue(prMetric)} (${formatCoverageDelta(baseMetric, prMetric)}, ${formatCoverageCoveredDelta(baseMetric, prMetric)})`;
+  });
+}
+
+function computeCoverageDiffRows(baseReport, prReport) {
+  if (!baseReport && !prReport) {
+    return [];
+  }
+
+  const baseMap = new Map();
+  for (const entry of baseReport?.files || []) {
+    baseMap.set(entry.file, entry);
+  }
+
+  const rows = [];
+
+  for (const entry of prReport?.files || []) {
+    const baseEntry = baseMap.get(entry.file);
+    baseMap.delete(entry.file);
+    rows.push({
+      file: entry.file,
+      baseMetric: getCoverageMetric(baseEntry?.summary, "statements"),
+      prMetric: getCoverageMetric(entry.summary, "statements"),
+    });
+  }
+
+  for (const [file, entry] of baseMap.entries()) {
+    rows.push({
+      file,
+      baseMetric: getCoverageMetric(entry.summary, "statements"),
+      prMetric: getCoverageMetric(null, "statements"),
+    });
+  }
+
+  return rows
+    .map((row) => {
+      const delta = computeCoverageDeltaValue(row.baseMetric, row.prMetric);
+      return {
+        ...row,
+        baseText: formatCoverageValue(row.baseMetric),
+        prText: formatCoverageValue(row.prMetric),
+        deltaText: formatCoverageDelta(row.baseMetric, row.prMetric),
+        absoluteDelta: Math.abs(delta),
+      };
+    })
+    .sort((a, b) => {
+      if (b.absoluteDelta !== a.absoluteDelta) {
+        return b.absoluteDelta - a.absoluteDelta;
+      }
+      return a.file.localeCompare(b.file);
+    });
+}
+
+function buildCoverageTable(rows) {
+  if (!rows || rows.length === 0) {
+    return "";
+  }
+
+  const header = "| File | Base (stmts) | PR (stmts) | Δ (pp) |";
+  const separator = "| --- | --- | --- | --- |";
+  const body = rows.map((row) => `| ${row.file} | ${row.baseText} | ${row.prText} | ${row.deltaText} |`);
+  return [header, separator, ...body].join("\n");
 }
 
 function collectMethods(report) {
@@ -210,9 +399,20 @@ function main() {
   const outputPath = args.out || "gas-report-comment.md";
   const baseSha = args.baseSha || "";
   const prSha = args.prSha || "";
+  const coverageBasePath = args.coverageBase;
+  const coveragePrPath = args.coveragePr;
+  const coverageBaseRoot = args.coverageBaseRoot ? path.resolve(args.coverageBaseRoot) : undefined;
+  const coveragePrRoot = args.coveragePrRoot ? path.resolve(args.coveragePrRoot) : undefined;
 
   const baseReport = readReport(basePath);
   const prReport = readReport(prPath);
+
+  let baseCoverage = null;
+  let prCoverage = null;
+  if (coverageBasePath && coveragePrPath) {
+    baseCoverage = readCoverageReport(coverageBasePath, coverageBaseRoot);
+    prCoverage = readCoverageReport(coveragePrPath, coveragePrRoot);
+  }
 
   const { rows: methodRows, baseTotal: methodBaseTotal, prTotal: methodPrTotal } = computeDiffs(
     collectMethods(baseReport),
@@ -247,8 +447,6 @@ function main() {
 
   const lines = [];
   lines.push("<!-- gas-report -->");
-  lines.push("## Gas usage comparison");
-  lines.push("");
   if (baseSha) {
     lines.push(`Base commit: \`${baseSha.slice(0, 7)}\``);
   }
@@ -258,6 +456,52 @@ function main() {
   if (baseSha || prSha) {
     lines.push("");
   }
+
+  lines.push("## Test coverage comparison");
+  lines.push("");
+  if (baseCoverage && prCoverage) {
+    lines.push("### Summary");
+    lines.push(...buildCoverageSummaryLines(baseCoverage.summary, prCoverage.summary));
+    lines.push("");
+
+    const allCoverageRows = computeCoverageDiffRows(baseCoverage, prCoverage);
+    const significantCoverageRows = allCoverageRows.filter((row) => row.absoluteDelta > 0.01);
+
+    lines.push("### Largest coverage changes (statements)");
+    if (significantCoverageRows.length === 0) {
+      lines.push("No coverage percentage differences detected.");
+      const fullCoverageTable = buildCoverageTable(allCoverageRows);
+      if (fullCoverageTable) {
+        lines.push("");
+        lines.push("<details><summary>All file coverage</summary>\n");
+        lines.push(fullCoverageTable);
+        lines.push("\n</details>");
+      }
+      lines.push("");
+    } else {
+      const topCoverageTable = buildCoverageTable(significantCoverageRows.slice(0, 10));
+      if (topCoverageTable) {
+        lines.push(topCoverageTable);
+        lines.push("");
+      }
+
+      if (allCoverageRows.length > significantCoverageRows.length) {
+        const fullCoverageTable = buildCoverageTable(allCoverageRows);
+        if (fullCoverageTable) {
+          lines.push("<details><summary>All file coverage</summary>\n");
+          lines.push(fullCoverageTable);
+          lines.push("\n</details>");
+          lines.push("");
+        }
+      }
+    }
+  } else {
+    lines.push("Coverage data not available.");
+    lines.push("");
+  }
+
+  lines.push("## Gas usage comparison");
+  lines.push("");
   lines.push("### Summary");
   lines.push(buildSummary("Method gas total", methodBaseTotal, methodPrTotal));
   lines.push(buildSummary("Deployment gas total", deploymentBaseTotal, deploymentPrTotal));
