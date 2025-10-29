@@ -64,10 +64,6 @@ interface IPoAIManager {
     function removeNodeFromRewardsList(address nodeAddress) external;
 }
 
-interface INDContract {
-    function getNodeOwner(address nodeAddress) external view returns (address);
-}
-
 struct JobDetails {
     uint256 id;
     bytes32 projectHash;
@@ -137,10 +133,9 @@ contract CspEscrow is Initializable {
         uint256 usdcAmount,
         uint256 r1Amount
     );
-    event RewardsAllocatedV2(
+    event RewardsAllocatedV3(
         uint256 indexed jobId,
         address nodeAddress,
-        address nodeOwner,
         uint256 usdcAmount
     );
     event TokensBurned(uint256 usdcAmount, uint256 r1Amount);
@@ -440,20 +435,15 @@ contract CspEscrow is Initializable {
                 job.activeNodes.length;
             uint256 jobAmountToBurn = amountToBurnPerNode *
                 job.activeNodes.length;
-            INDContract ndContract = INDContract(
-                address(controller.ndContract())
-            );
             for (uint256 j = 0; j < job.activeNodes.length; j++) {
                 address nodeAddress = job.activeNodes[j];
                 virtualWalletBalance[nodeAddress] += amountRewardsPerNode;
                 // Register node with rewards in PoAI Manager
                 poaiManager.registerNodeWithRewards(nodeAddress);
                 // Emit event for rewards allocation
-                address nodeOwner = ndContract.getNodeOwner(nodeAddress);
-                emit RewardsAllocatedV2(
+                emit RewardsAllocatedV3(
                     jobId,
                     nodeAddress,
-                    nodeOwner,
                     amountRewardsPerNode
                 );
             }
