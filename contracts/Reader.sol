@@ -58,6 +58,11 @@ struct AddressBalances {
     uint256 r1Balance;
 }
 
+struct NdNodeOwner {
+    address nodeAddress;
+    address owner;
+}
+
 struct MndDetails {
     uint256 licenseId;
     address owner;
@@ -104,6 +109,7 @@ interface IND is IBaseDeed {
     function licenses(
         uint256 licenseId
     ) external view returns (NDLicense memory);
+    function getNodeOwner(address nodeAddress) external view returns (address);
 }
 
 interface IMND is IBaseDeed {
@@ -388,6 +394,24 @@ contract Reader is Initializable {
             });
         }
         return details;
+    }
+
+    function getNdNodesOwners(
+        address[] memory nodeAddresses
+    ) public view returns (NdNodeOwner[] memory nodesOwners) {
+        nodesOwners = new NdNodeOwner[](nodeAddresses.length);
+        for (uint256 i = 0; i < nodeAddresses.length; i++) {
+            address nodeAddr = nodeAddresses[i];
+            address owner = address(0);
+            if (ndContract.nodeToLicenseId(nodeAddr) != 0) {
+                owner = ndContract.getNodeOwner(nodeAddr);
+            }
+            nodesOwners[i] = NdNodeOwner({
+                nodeAddress: nodeAddr,
+                owner: owner
+            });
+        }
+        return nodesOwners;
     }
 
     function getEscrowDetailsByOwner(
