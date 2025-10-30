@@ -1403,11 +1403,10 @@ describe("PoAIManager", function () {
         );
 
       const rewardEvents = (parsedEvents ?? []).filter(
-        (event) => event?.name === "RewardsAllocatedV2"
+        (event) => event?.name === "RewardsAllocatedV3"
       );
       expect(rewardEvents.length).to.equal(activeNodes.length);
 
-      const userAddress = await user.getAddress();
       const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
       const burnPerNode = (pricePerEpoch * BURN_PERCENTAGE) / 100n;
       const rewardPerNode = pricePerEpoch - burnPerNode;
@@ -1416,8 +1415,7 @@ describe("PoAIManager", function () {
       for (const event of rewardEvents) {
         expect(event?.args[0]).to.equal(1n);
         expect(event?.args[1]).to.be.oneOf(activeNodes);
-        expect(event?.args[2]).to.equal(userAddress);
-        expect(event?.args[3]).to.equal(rewardPerNode);
+        expect(event?.args[2]).to.equal(rewardPerNode);
       }
 
       const burnEvents = (parsedEvents ?? []).filter(
@@ -1525,7 +1523,7 @@ describe("PoAIManager", function () {
         );
 
       const rewardEvents = (parsedEvents ?? []).filter(
-        (event) => event?.name === "RewardsAllocatedV2"
+        (event) => event?.name === "RewardsAllocatedV3"
       );
       expect(rewardEvents.length).to.equal(numberOfJobs * Number(nodesPerJob));
 
@@ -1541,7 +1539,7 @@ describe("PoAIManager", function () {
         expect(nodeAddresses).to.include(nodeAddr);
         expect(event?.args[0]).to.be.gte(1n);
         expect(event?.args[0]).to.be.lte(BigInt(numberOfJobs));
-        expect(event?.args[3]).to.equal(rewardPerNode);
+        expect(event?.args[2]).to.equal(rewardPerNode);
 
         actualNodeCounts.set(
           nodeAddr,
@@ -1643,11 +1641,11 @@ describe("PoAIManager", function () {
       const totalBurn = burnPerNode * BigInt(activeNodes.length);
 
       const rewardEvents = (parsedEvents ?? []).filter(
-        (event) => event?.name === "RewardsAllocatedV2"
+        (event) => event?.name === "RewardsAllocatedV3"
       );
       expect(rewardEvents.length).to.equal(activeNodes.length);
       for (const event of rewardEvents) {
-        expect(event?.args[3]).to.equal(rewardPerNode);
+        expect(event?.args[2]).to.equal(rewardPerNode);
       }
 
       const burnEvents = (parsedEvents ?? []).filter(
@@ -1692,7 +1690,7 @@ describe("PoAIManager", function () {
       // Allocate rewards - should not emit any events
       await expect(poaiManager.allocateRewardsAcrossAllEscrows()).to.not.emit(
         cspEscrow,
-        "RewardsAllocatedV2"
+        "RewardsAllocatedV3"
       );
     });
 
@@ -1819,7 +1817,7 @@ describe("PoAIManager", function () {
       // Try to allocate again - should not emit events
       await expect(poaiManager.allocateRewardsAcrossAllEscrows()).to.not.emit(
         cspEscrow,
-        "RewardsAllocatedV2"
+        "RewardsAllocatedV3"
       );
     });
 
@@ -2392,7 +2390,7 @@ describe("PoAIManager", function () {
       // Try to allocate again in same epoch - should not emit events
       await expect(poaiManager.allocateRewardsAcrossAllEscrows()).to.not.emit(
         cspEscrow,
-        "RewardsAllocatedV2"
+        "RewardsAllocatedV3"
       );
     });
   });

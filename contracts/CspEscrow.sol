@@ -64,10 +64,6 @@ interface IPoAIManager {
     function removeNodeFromRewardsList(address nodeAddress) external;
 }
 
-interface INDContract {
-    function getNodeOwner(address nodeAddress) external view returns (address);
-}
-
 struct JobDetails {
     uint256 id;
     bytes32 projectHash;
@@ -137,10 +133,9 @@ contract CspEscrow is Initializable {
         uint256 usdcAmount,
         uint256 r1Amount
     );
-    event RewardsAllocatedV2(
+    event RewardsAllocatedV3(
         uint256 indexed jobId,
         address nodeAddress,
-        address nodeOwner,
         uint256 usdcAmount
     );
     event TokensBurned(uint256 usdcAmount, uint256 r1Amount);
@@ -350,16 +345,19 @@ contract CspEscrow is Initializable {
         uint256 jobId,
         address[] memory newActiveNodes
     ) external onlyPoAIManager {
-        require(jobDetails[jobId].id != 0, "Job does not exist");
-        jobDetails[jobId].activeNodes = newActiveNodes;
-        jobDetails[jobId].lastNodesChangeTimestamp = block.timestamp;
-        if (jobDetails[jobId].startTimestamp == 0) {
-            jobDetails[jobId].startTimestamp = block.timestamp;
-            jobDetails[jobId].lastAllocatedEpoch = getCurrentEpoch() - 1;
-            emit JobStarted(jobId, block.timestamp);
+        JobDetails storage job = jobDetails[jobId];
+        require(job.id != 0, "Job does not exist");
+        uint256 currentTimestamp = block.timestamp;
+
+        job.activeNodes = newActiveNodes;
+        job.lastNodesChangeTimestamp = currentTimestamp;
+        if (job.startTimestamp == 0) {
+            job.startTimestamp = currentTimestamp;
+            job.lastAllocatedEpoch = getCurrentEpoch() - 1;
+            emit JobStarted(jobId, currentTimestamp);
         }
         if (newActiveNodes.length == 0) {
-            emit JobClosed(jobId, block.timestamp);
+            emit JobClosed(jobId, currentTimestamp);
             swapRemoveActiveJob(jobId);
             closedJobs.push(jobId);
         }
@@ -437,20 +435,15 @@ contract CspEscrow is Initializable {
                 job.activeNodes.length;
             uint256 jobAmountToBurn = amountToBurnPerNode *
                 job.activeNodes.length;
-            INDContract ndContract = INDContract(
-                address(controller.ndContract())
-            );
             for (uint256 j = 0; j < job.activeNodes.length; j++) {
                 address nodeAddress = job.activeNodes[j];
                 virtualWalletBalance[nodeAddress] += amountRewardsPerNode;
                 // Register node with rewards in PoAI Manager
                 poaiManager.registerNodeWithRewards(nodeAddress);
                 // Emit event for rewards allocation
-                address nodeOwner = ndContract.getNodeOwner(nodeAddress);
-                emit RewardsAllocatedV2(
+                emit RewardsAllocatedV3(
                     jobId,
                     nodeAddress,
-                    nodeOwner,
                     amountRewardsPerNode
                 );
             }

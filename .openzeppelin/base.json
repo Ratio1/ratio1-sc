@@ -2875,10 +2875,10 @@
             "src": "contracts/PoAIManager.sol:102"
           },
           {
-            "label": "nodesTransactionProposals",
+            "label": "deprecatedNodesTransactionProposals",
             "offset": 0,
             "slot": "15",
-            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25182_storage)dyn_storage))",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25182_storage)dyn_storage))",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:106"
           },
@@ -2908,8 +2908,8 @@
             "label": "address[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(NodesTransitionProposal)25182_storage)dyn_storage": {
-            "label": "struct NodesTransitionProposal[]",
+          "t_array(t_struct(DeprecatedNodesTransitionProposal)25182_storage)dyn_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal[]",
             "numberOfBytes": "32"
           },
           "t_array(t_uint256)dyn_storage": {
@@ -2952,20 +2952,20 @@
             "label": "mapping(uint256 => address)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25182_storage)dyn_storage)": {
-            "label": "mapping(uint256 => struct NodesTransitionProposal[])",
+          "t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25182_storage)dyn_storage)": {
+            "label": "mapping(uint256 => struct DeprecatedNodesTransitionProposal[])",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_bool)": {
             "label": "mapping(uint256 => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25182_storage)dyn_storage))": {
-            "label": "mapping(uint256 => mapping(uint256 => struct NodesTransitionProposal[]))",
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25182_storage)dyn_storage))": {
+            "label": "mapping(uint256 => mapping(uint256 => struct DeprecatedNodesTransitionProposal[]))",
             "numberOfBytes": "32"
           },
-          "t_struct(NodesTransitionProposal)25182_storage": {
-            "label": "struct NodesTransitionProposal",
+          "t_struct(DeprecatedNodesTransitionProposal)25182_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal",
             "members": [
               {
                 "label": "proposer",
@@ -3607,10 +3607,10 @@
             "src": "contracts/PoAIManager.sol:102"
           },
           {
-            "label": "nodesTransactionProposals",
+            "label": "deprecatedNodesTransactionProposals",
             "offset": 0,
             "slot": "15",
-            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)5429_storage)dyn_storage))",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)5429_storage)dyn_storage))",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:106"
           },
@@ -3640,8 +3640,8 @@
             "label": "address[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(NodesTransitionProposal)5429_storage)dyn_storage": {
-            "label": "struct NodesTransitionProposal[]",
+          "t_array(t_struct(DeprecatedNodesTransitionProposal)5429_storage)dyn_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal[]",
             "numberOfBytes": "32"
           },
           "t_array(t_uint256)dyn_storage": {
@@ -3684,20 +3684,20 @@
             "label": "mapping(uint256 => address)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)5429_storage)dyn_storage)": {
-            "label": "mapping(uint256 => struct NodesTransitionProposal[])",
+          "t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)5429_storage)dyn_storage)": {
+            "label": "mapping(uint256 => struct DeprecatedNodesTransitionProposal[])",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_bool)": {
             "label": "mapping(uint256 => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)5429_storage)dyn_storage))": {
-            "label": "mapping(uint256 => mapping(uint256 => struct NodesTransitionProposal[]))",
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)5429_storage)dyn_storage))": {
+            "label": "mapping(uint256 => mapping(uint256 => struct DeprecatedNodesTransitionProposal[]))",
             "numberOfBytes": "32"
           },
-          "t_struct(NodesTransitionProposal)5429_storage": {
-            "label": "struct NodesTransitionProposal",
+          "t_struct(DeprecatedNodesTransitionProposal)5429_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal",
             "members": [
               {
                 "label": "proposer",
@@ -3881,10 +3881,10 @@
             "src": "contracts/PoAIManager.sol:102"
           },
           {
-            "label": "nodesTransactionProposals",
+            "label": "deprecatedNodesTransactionProposals",
             "offset": 0,
             "slot": "15",
-            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)15671_storage)dyn_storage))",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)15671_storage)dyn_storage))",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:106"
           },
@@ -3914,8 +3914,8 @@
             "label": "address[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(NodesTransitionProposal)15671_storage)dyn_storage": {
-            "label": "struct NodesTransitionProposal[]",
+          "t_array(t_struct(DeprecatedNodesTransitionProposal)15671_storage)dyn_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal[]",
             "numberOfBytes": "32"
           },
           "t_array(t_uint256)dyn_storage": {
@@ -3958,20 +3958,20 @@
             "label": "mapping(uint256 => address)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)15671_storage)dyn_storage)": {
-            "label": "mapping(uint256 => struct NodesTransitionProposal[])",
+          "t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)15671_storage)dyn_storage)": {
+            "label": "mapping(uint256 => struct DeprecatedNodesTransitionProposal[])",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_bool)": {
             "label": "mapping(uint256 => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)15671_storage)dyn_storage))": {
-            "label": "mapping(uint256 => mapping(uint256 => struct NodesTransitionProposal[]))",
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)15671_storage)dyn_storage))": {
+            "label": "mapping(uint256 => mapping(uint256 => struct DeprecatedNodesTransitionProposal[]))",
             "numberOfBytes": "32"
           },
-          "t_struct(NodesTransitionProposal)15671_storage": {
-            "label": "struct NodesTransitionProposal",
+          "t_struct(DeprecatedNodesTransitionProposal)15671_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal",
             "members": [
               {
                 "label": "proposer",
@@ -4625,10 +4625,10 @@
             "src": "contracts/PoAIManager.sol:108"
           },
           {
-            "label": "nodesTransactionProposals",
+            "label": "deprecatedNodesTransactionProposals",
             "offset": 0,
             "slot": "15",
-            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)5462_storage)dyn_storage))",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)5462_storage)dyn_storage))",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:112"
           },
@@ -4666,8 +4666,8 @@
             "label": "address[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(NodesTransitionProposal)5462_storage)dyn_storage": {
-            "label": "struct NodesTransitionProposal[]",
+          "t_array(t_struct(DeprecatedNodesTransitionProposal)5462_storage)dyn_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal[]",
             "numberOfBytes": "32"
           },
           "t_array(t_uint256)dyn_storage": {
@@ -4710,24 +4710,24 @@
             "label": "mapping(uint256 => address)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)5462_storage)dyn_storage)": {
-            "label": "mapping(uint256 => struct NodesTransitionProposal[])",
+          "t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)5462_storage)dyn_storage)": {
+            "label": "mapping(uint256 => struct DeprecatedNodesTransitionProposal[])",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_bool)": {
             "label": "mapping(uint256 => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)5462_storage)dyn_storage))": {
-            "label": "mapping(uint256 => mapping(uint256 => struct NodesTransitionProposal[]))",
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)5462_storage)dyn_storage))": {
+            "label": "mapping(uint256 => mapping(uint256 => struct DeprecatedNodesTransitionProposal[]))",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_uint256)": {
             "label": "mapping(uint256 => uint256)",
             "numberOfBytes": "32"
           },
-          "t_struct(NodesTransitionProposal)5462_storage": {
-            "label": "struct NodesTransitionProposal",
+          "t_struct(DeprecatedNodesTransitionProposal)5462_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal",
             "members": [
               {
                 "label": "proposer",
@@ -5759,10 +5759,10 @@
             "src": "contracts/PoAIManager.sol:108"
           },
           {
-            "label": "nodesTransactionProposals",
+            "label": "deprecatedNodesTransactionProposals",
             "offset": 0,
             "slot": "15",
-            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25363_storage)dyn_storage))",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25363_storage)dyn_storage))",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:112"
           },
@@ -5800,8 +5800,8 @@
             "label": "address[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(NodesTransitionProposal)25363_storage)dyn_storage": {
-            "label": "struct NodesTransitionProposal[]",
+          "t_array(t_struct(DeprecatedNodesTransitionProposal)25363_storage)dyn_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal[]",
             "numberOfBytes": "32"
           },
           "t_array(t_uint256)dyn_storage": {
@@ -5844,24 +5844,24 @@
             "label": "mapping(uint256 => address)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25363_storage)dyn_storage)": {
-            "label": "mapping(uint256 => struct NodesTransitionProposal[])",
+          "t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25363_storage)dyn_storage)": {
+            "label": "mapping(uint256 => struct DeprecatedNodesTransitionProposal[])",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_bool)": {
             "label": "mapping(uint256 => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25363_storage)dyn_storage))": {
-            "label": "mapping(uint256 => mapping(uint256 => struct NodesTransitionProposal[]))",
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25363_storage)dyn_storage))": {
+            "label": "mapping(uint256 => mapping(uint256 => struct DeprecatedNodesTransitionProposal[]))",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_uint256)": {
             "label": "mapping(uint256 => uint256)",
             "numberOfBytes": "32"
           },
-          "t_struct(NodesTransitionProposal)25363_storage": {
-            "label": "struct NodesTransitionProposal",
+          "t_struct(DeprecatedNodesTransitionProposal)25363_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal",
             "members": [
               {
                 "label": "proposer",
@@ -6320,10 +6320,10 @@
             "src": "contracts/PoAIManager.sol:108"
           },
           {
-            "label": "nodesTransactionProposals",
+            "label": "deprecatedNodesTransactionProposals",
             "offset": 0,
             "slot": "15",
-            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25823_storage)dyn_storage))",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25823_storage)dyn_storage))",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:112"
           },
@@ -6369,8 +6369,8 @@
             "label": "address[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(NodesTransitionProposal)25823_storage)dyn_storage": {
-            "label": "struct NodesTransitionProposal[]",
+          "t_array(t_struct(DeprecatedNodesTransitionProposal)25823_storage)dyn_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal[]",
             "numberOfBytes": "32"
           },
           "t_array(t_uint256)dyn_storage": {
@@ -6413,24 +6413,24 @@
             "label": "mapping(uint256 => address)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25823_storage)dyn_storage)": {
-            "label": "mapping(uint256 => struct NodesTransitionProposal[])",
+          "t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25823_storage)dyn_storage)": {
+            "label": "mapping(uint256 => struct DeprecatedNodesTransitionProposal[])",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_bool)": {
             "label": "mapping(uint256 => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25823_storage)dyn_storage))": {
-            "label": "mapping(uint256 => mapping(uint256 => struct NodesTransitionProposal[]))",
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25823_storage)dyn_storage))": {
+            "label": "mapping(uint256 => mapping(uint256 => struct DeprecatedNodesTransitionProposal[]))",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_uint256)": {
             "label": "mapping(uint256 => uint256)",
             "numberOfBytes": "32"
           },
-          "t_struct(NodesTransitionProposal)25823_storage": {
-            "label": "struct NodesTransitionProposal",
+          "t_struct(DeprecatedNodesTransitionProposal)25823_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal",
             "members": [
               {
                 "label": "proposer",
@@ -7834,10 +7834,10 @@
             "src": "contracts/PoAIManager.sol:108"
           },
           {
-            "label": "nodesTransactionProposals",
+            "label": "deprecatedNodesTransactionProposals",
             "offset": 0,
             "slot": "15",
-            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25825_storage)dyn_storage))",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25825_storage)dyn_storage))",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:112"
           },
@@ -7921,8 +7921,8 @@
             "label": "address[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(NodesTransitionProposal)25825_storage)dyn_storage": {
-            "label": "struct NodesTransitionProposal[]",
+          "t_array(t_struct(DeprecatedNodesTransitionProposal)25825_storage)dyn_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal[]",
             "numberOfBytes": "32"
           },
           "t_array(t_uint256)dyn_storage": {
@@ -7961,24 +7961,24 @@
             "label": "mapping(uint256 => address)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25825_storage)dyn_storage)": {
-            "label": "mapping(uint256 => struct NodesTransitionProposal[])",
+          "t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25825_storage)dyn_storage)": {
+            "label": "mapping(uint256 => struct DeprecatedNodesTransitionProposal[])",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_bool)": {
             "label": "mapping(uint256 => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25825_storage)dyn_storage))": {
-            "label": "mapping(uint256 => mapping(uint256 => struct NodesTransitionProposal[]))",
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25825_storage)dyn_storage))": {
+            "label": "mapping(uint256 => mapping(uint256 => struct DeprecatedNodesTransitionProposal[]))",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_uint256)": {
             "label": "mapping(uint256 => uint256)",
             "numberOfBytes": "32"
           },
-          "t_struct(NodesTransitionProposal)25825_storage": {
-            "label": "struct NodesTransitionProposal",
+          "t_struct(DeprecatedNodesTransitionProposal)25825_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal",
             "members": [
               {
                 "label": "proposer",
@@ -8440,10 +8440,10 @@
             "src": "contracts/PoAIManager.sol:109"
           },
           {
-            "label": "nodesTransactionProposals",
+            "label": "deprecatedNodesTransactionProposals",
             "offset": 0,
             "slot": "15",
-            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25949_storage)dyn_storage))",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25949_storage)dyn_storage))",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:113"
           },
@@ -8527,8 +8527,8 @@
             "label": "address[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(NodesTransitionProposal)25949_storage)dyn_storage": {
-            "label": "struct NodesTransitionProposal[]",
+          "t_array(t_struct(DeprecatedNodesTransitionProposal)25949_storage)dyn_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal[]",
             "numberOfBytes": "32"
           },
           "t_array(t_uint256)dyn_storage": {
@@ -8567,24 +8567,24 @@
             "label": "mapping(uint256 => address)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25949_storage)dyn_storage)": {
-            "label": "mapping(uint256 => struct NodesTransitionProposal[])",
+          "t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25949_storage)dyn_storage)": {
+            "label": "mapping(uint256 => struct DeprecatedNodesTransitionProposal[])",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_bool)": {
             "label": "mapping(uint256 => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25949_storage)dyn_storage))": {
-            "label": "mapping(uint256 => mapping(uint256 => struct NodesTransitionProposal[]))",
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25949_storage)dyn_storage))": {
+            "label": "mapping(uint256 => mapping(uint256 => struct DeprecatedNodesTransitionProposal[]))",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_uint256)": {
             "label": "mapping(uint256 => uint256)",
             "numberOfBytes": "32"
           },
-          "t_struct(NodesTransitionProposal)25949_storage": {
-            "label": "struct NodesTransitionProposal",
+          "t_struct(DeprecatedNodesTransitionProposal)25949_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal",
             "members": [
               {
                 "label": "proposer",
@@ -8771,10 +8771,10 @@
             "src": "contracts/PoAIManager.sol:109"
           },
           {
-            "label": "nodesTransactionProposals",
+            "label": "deprecatedNodesTransactionProposals",
             "offset": 0,
             "slot": "15",
-            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25949_storage)dyn_storage))",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25949_storage)dyn_storage))",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:113"
           },
@@ -8858,8 +8858,8 @@
             "label": "address[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(NodesTransitionProposal)25949_storage)dyn_storage": {
-            "label": "struct NodesTransitionProposal[]",
+          "t_array(t_struct(DeprecatedNodesTransitionProposal)25949_storage)dyn_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal[]",
             "numberOfBytes": "32"
           },
           "t_array(t_uint256)dyn_storage": {
@@ -8898,24 +8898,24 @@
             "label": "mapping(uint256 => address)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25949_storage)dyn_storage)": {
-            "label": "mapping(uint256 => struct NodesTransitionProposal[])",
+          "t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25949_storage)dyn_storage)": {
+            "label": "mapping(uint256 => struct DeprecatedNodesTransitionProposal[])",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_bool)": {
             "label": "mapping(uint256 => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25949_storage)dyn_storage))": {
-            "label": "mapping(uint256 => mapping(uint256 => struct NodesTransitionProposal[]))",
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25949_storage)dyn_storage))": {
+            "label": "mapping(uint256 => mapping(uint256 => struct DeprecatedNodesTransitionProposal[]))",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_uint256)": {
             "label": "mapping(uint256 => uint256)",
             "numberOfBytes": "32"
           },
-          "t_struct(NodesTransitionProposal)25949_storage": {
-            "label": "struct NodesTransitionProposal",
+          "t_struct(DeprecatedNodesTransitionProposal)25949_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal",
             "members": [
               {
                 "label": "proposer",
@@ -9102,10 +9102,10 @@
             "src": "contracts/PoAIManager.sol:111"
           },
           {
-            "label": "nodesTransactionProposals",
+            "label": "deprecatedNodesTransactionProposals",
             "offset": 0,
             "slot": "15",
-            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25953_storage)dyn_storage))",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25953_storage)dyn_storage))",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:115"
           },
@@ -9189,8 +9189,8 @@
             "label": "address[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(NodesTransitionProposal)25953_storage)dyn_storage": {
-            "label": "struct NodesTransitionProposal[]",
+          "t_array(t_struct(DeprecatedNodesTransitionProposal)25953_storage)dyn_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal[]",
             "numberOfBytes": "32"
           },
           "t_array(t_uint256)dyn_storage": {
@@ -9229,24 +9229,24 @@
             "label": "mapping(uint256 => address)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25953_storage)dyn_storage)": {
-            "label": "mapping(uint256 => struct NodesTransitionProposal[])",
+          "t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25953_storage)dyn_storage)": {
+            "label": "mapping(uint256 => struct DeprecatedNodesTransitionProposal[])",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_bool)": {
             "label": "mapping(uint256 => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)25953_storage)dyn_storage))": {
-            "label": "mapping(uint256 => mapping(uint256 => struct NodesTransitionProposal[]))",
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)25953_storage)dyn_storage))": {
+            "label": "mapping(uint256 => mapping(uint256 => struct DeprecatedNodesTransitionProposal[]))",
             "numberOfBytes": "32"
           },
           "t_mapping(t_uint256,t_uint256)": {
             "label": "mapping(uint256 => uint256)",
             "numberOfBytes": "32"
           },
-          "t_struct(NodesTransitionProposal)25953_storage": {
-            "label": "struct NodesTransitionProposal",
+          "t_struct(DeprecatedNodesTransitionProposal)25953_storage": {
+            "label": "struct DeprecatedNodesTransitionProposal",
             "members": [
               {
                 "label": "proposer",

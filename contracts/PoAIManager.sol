@@ -50,9 +50,14 @@ interface IMND {
     ) external view returns (MNDLicense[] memory);
 }
 
-struct NodesTransitionProposal {
+struct DeprecatedNodesTransitionProposal {
     address proposer;
     address[] newActiveNodes;
+    bytes32 newActiveNodesHash;
+}
+
+struct NodesTransitionProposal {
+    address proposer;
     bytes32 newActiveNodesHash;
 }
 
@@ -110,10 +115,8 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     // Mapping from node address to array of escrow addresses with allocated rewards
     mapping(address => address[]) public nodeToEscrowsWithRewards;
 
-    // Consensus mechanism for node updates
-    /// jobId => epochId => proposals
-    mapping(uint256 => mapping(uint256 => NodesTransitionProposal[]))
-        public nodesTransactionProposals;
+    /// Deprecated. Use NodesTransitionProposal instead.
+    mapping(uint256 => mapping(uint256 => DeprecatedNodesTransitionProposal[])) deprecatedNodesTransactionProposals;
 
     // Array to track unvalidated job IDs (jobs with pending consensus)
     uint256[] public unvalidatedJobIds;
@@ -124,6 +127,15 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     // Cooldown period after consensus (5 minutes)
     uint256 public constant CONSENSUS_COOLDOWN_PERIOD = 300;
     bool public hasReconciled;
+    // Cache of node sets keyed by jobId and proposal hash
+    mapping(uint256 => mapping(bytes32 => address[]))
+        private jobIdToNodesByNodesHash;
+    // Track which hashes have been stored per job to avoid duplicate pushes
+    mapping(uint256 => mapping(bytes32 => bool)) private jobIdNodesHashStored;
+    // Consensus mechanism for node updates
+    /// jobId => epochId => proposals
+    mapping(uint256 => mapping(uint256 => NodesTransitionProposal[]))
+        public nodesTransactionProposals;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -300,26 +312,17 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         address[] memory oracles = controller.getOracles();
         require(_isOracle(sender, oracles), "Not an oracle");
         uint256 oraclesCount = oracles.length;
-        uint256 currentEpoch = getCurrentEpoch();
-        NodesTransitionProposal[] storage proposals = nodesTransactionProposals[
-            jobId
-        ][currentEpoch];
         address escrowAddress = jobIdToEscrow[jobId];
         require(escrowAddress != address(0), "Job does not exist");
-        // Check if the sender is already in the proposals
-        for (uint256 i = 0; i < proposals.length; i++) {
-            require(proposals[i].proposer != sender, "Already submitted");
-        }
         // Check if the nodes are the same as the current active nodes
         bytes32 newActiveNodesHash = keccak256(abi.encode(newActiveNodes));
-        address[] memory currentNodes = CspEscrow(escrowAddress)
-            .getJobActiveNodes(jobId);
         //do not open a new consensus session if the node is reporting the same nodes (probably a late oracle)
-        if (
-            !isJobUnvalidated[jobId] &&
-            keccak256(abi.encode(currentNodes)) == newActiveNodesHash
-        ) {
-            return;
+        if (!isJobUnvalidated[jobId]) {
+            address[] memory currentNodes = CspEscrow(escrowAddress)
+                .getJobActiveNodes(jobId);
+            if (keccak256(abi.encode(currentNodes)) == newActiveNodesHash) {
+                return;
+            }
         }
         // Check if we're in the cooldown period after consensus
         require(
@@ -327,11 +330,19 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
                 CONSENSUS_COOLDOWN_PERIOD,
             "Consensus cooldown not expired"
         );
+        uint256 currentEpoch = getCurrentEpoch();
+        // Check if the sender has already submitted a proposal for this job in the current epoch
+        NodesTransitionProposal[] storage proposals = nodesTransactionProposals[
+            jobId
+        ][currentEpoch];
+        for (uint256 i = 0; i < proposals.length; i++) {
+            require(proposals[i].proposer != sender, "Already submitted");
+        }
 
+        _cacheNodesForJob(jobId, newActiveNodesHash, newActiveNodes);
         proposals.push(
             NodesTransitionProposal({
                 proposer: sender,
-                newActiveNodes: newActiveNodes,
                 newActiveNodesHash: newActiveNodesHash
             })
         );
@@ -361,14 +372,15 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         uint256 oraclesCount,
         NodesTransitionProposal[] storage proposals
     ) internal {
+        uint256 proposalsLength = proposals.length;
         // Find the most common newActiveNodes
         uint256 maxCount = 0;
-        address[] memory mostCommonNewActiveNodes;
-        for (uint256 i = 0; i < proposals.length; i++) {
+        bytes32 mostCommonHash;
+        for (uint256 i = 0; i < proposalsLength; i++) {
             NodesTransitionProposal storage proposal = proposals[i];
             // Count occurrences of each newActiveNodes
             uint256 count = 1;
-            for (uint256 j = i + 1; j < proposals.length; j++) {
+            for (uint256 j = i + 1; j < proposalsLength; j++) {
                 if (
                     proposals[j].newActiveNodesHash ==
                     proposal.newActiveNodesHash
@@ -379,22 +391,25 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             // If this is the first or has more occurrences, update the max
             if (count > maxCount) {
                 maxCount = count;
-                mostCommonNewActiveNodes = proposal.newActiveNodes;
+                mostCommonHash = proposal.newActiveNodesHash;
             }
         }
 
         // Check if we have enough consensus (33% + 1)
         uint256 requiredConsensus = (oraclesCount / 3) + 1;
         if (maxCount >= requiredConsensus) {
-            JobWithAllDetails memory jobDetails = getJobDetails(jobId);
-            bytes32 newActiveNodesHash = keccak256(
-                abi.encode(mostCommonNewActiveNodes)
+            require(
+                jobIdNodesHashStored[jobId][mostCommonHash],
+                "Hash not stored"
             );
+            address[] memory mostCommonNewActiveNodes = jobIdToNodesByNodesHash[
+                jobId
+            ][mostCommonHash];
             // Get participants
             address[] memory participants = new address[](maxCount);
             uint256 addedParticipants = 0;
-            for (uint256 i = 0; i < proposals.length; i++) {
-                if (proposals[i].newActiveNodesHash == newActiveNodesHash) {
+            for (uint256 i = 0; i < proposalsLength; i++) {
+                if (proposals[i].newActiveNodesHash == mostCommonHash) {
                     participants[addedParticipants] = proposals[i].proposer;
                     addedParticipants++;
                 }
@@ -406,17 +421,18 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             );
             uint256 currentEpoch = getCurrentEpoch();
             delete nodesTransactionProposals[jobId][currentEpoch];
+            delete jobIdToNodesByNodesHash[jobId][mostCommonHash];
+            delete jobIdNodesHashStored[jobId][mostCommonHash];
             // Set consensus timestamp for cooldown period
             jobConsensusTimestamp[jobId] = block.timestamp;
 
             // Remove job from unvalidated list
             _removeJobFromUnvalidatedList(jobId);
             // Update active nodes on the escrow if they are different
-            if (
-                keccak256(abi.encode(jobDetails.activeNodes)) !=
-                newActiveNodesHash
-            ) {
-                address escrowAddress = jobIdToEscrow[jobId];
+            address escrowAddress = jobIdToEscrow[jobId];
+            address[] memory currentNodes = CspEscrow(escrowAddress)
+                .getJobActiveNodes(jobId);
+            if (keccak256(abi.encode(currentNodes)) != mostCommonHash) {
                 CspEscrow(escrowAddress).updateActiveNodes(
                     jobId,
                     mostCommonNewActiveNodes
@@ -426,7 +442,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             emit ConsensusNotReached(
                 jobId,
                 oraclesCount,
-                proposals.length,
+                proposalsLength,
                 maxCount
             );
         }
@@ -502,6 +518,18 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         );
 
         return (timestamp - startEpochTimestamp) / epochDuration;
+    }
+
+    function _cacheNodesForJob(
+        uint256 jobId,
+        bytes32 nodesHash,
+        address[] memory nodes
+    ) private {
+        if (jobIdNodesHashStored[jobId][nodesHash]) {
+            return;
+        }
+        jobIdToNodesByNodesHash[jobId][nodesHash] = nodes;
+        jobIdNodesHashStored[jobId][nodesHash] = true;
     }
 
     // Helper function to remove a job from the unvalidated list
