@@ -1251,6 +1251,80 @@ describe("PoAIManager", function () {
       expect(jobDetails.activeNodes.length).to.equal(0);
       expect(jobDetails.startTimestamp).to.equal(0);
     });
+
+    it("should reach consensus with 20 oracles when 11 submit matching nodes", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+      const jobPrice = 100000000;
+      await mockUsdc.mint(await user.getAddress(), jobPrice);
+      await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
+
+      const currentEpoch = await poaiManager.getCurrentEpoch();
+      const lastExecutionEpoch = currentEpoch + 31n;
+      await cspEscrow.connect(user).createJobs([
+        {
+          jobType: 1,
+          projectHash: ethers.keccak256(
+            ethers.toUtf8Bytes("consensus-20-oracles")
+          ),
+          lastExecutionEpoch,
+          numberOfNodesRequested: 5,
+        },
+      ]);
+
+      const targetOracles = 20;
+      let registeredOracles: string[] = await controller.getOracles();
+      if (registeredOracles.length < targetOracles) {
+        const allSigners = await ethers.getSigners();
+        const existing = new Set(
+          registeredOracles.map((addr) => addr.toLowerCase())
+        );
+        for (const signer of allSigners) {
+          if (existing.size >= targetOracles) {
+            break;
+          }
+          const address = await signer.getAddress();
+          const normalized = address.toLowerCase();
+          if (!existing.has(normalized)) {
+            await controller.addOracle(address);
+            existing.add(normalized);
+          }
+        }
+      }
+      registeredOracles = await controller.getOracles();
+      expect(registeredOracles.length).to.equal(targetOracles);
+
+      const allSigners = await ethers.getSigners();
+      const signerEntries = await Promise.all(
+        allSigners.map(async (signer) => {
+          const address = await signer.getAddress();
+          return [address.toLowerCase(), signer] as const;
+        })
+      );
+      const signerMap = new Map(signerEntries);
+
+      const consensusNodes = [
+        await oracle.getAddress(),
+        await oracle2.getAddress(),
+      ];
+
+      for (let i = 0; i < 11; i++) {
+        const oracleAddress = registeredOracles[i];
+        const oracleSigner = signerMap.get(oracleAddress.toLowerCase());
+        if (!oracleSigner) {
+          throw new Error("missing oracle signer");
+        }
+        await poaiManager
+          .connect(oracleSigner)
+          .submitNodeUpdate(1, consensusNodes);
+      }
+
+      const jobDetails = await cspEscrow.getJobDetails(1);
+      expect(jobDetails.activeNodes).to.deep.equal(consensusNodes);
+      expect(jobDetails.startTimestamp).to.be.gt(0);
+    });
   });
 
   describe("Rewards Allocation and Burning", function () {
@@ -1329,11 +1403,10 @@ describe("PoAIManager", function () {
         );
 
       const rewardEvents = (parsedEvents ?? []).filter(
-        (event) => event?.name === "RewardsAllocatedV2"
+        (event) => event?.name === "RewardsAllocatedV3"
       );
       expect(rewardEvents.length).to.equal(activeNodes.length);
 
-      const userAddress = await user.getAddress();
       const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
       const burnPerNode = (pricePerEpoch * BURN_PERCENTAGE) / 100n;
       const rewardPerNode = pricePerEpoch - burnPerNode;
@@ -1342,8 +1415,7 @@ describe("PoAIManager", function () {
       for (const event of rewardEvents) {
         expect(event?.args[0]).to.equal(1n);
         expect(event?.args[1]).to.be.oneOf(activeNodes);
-        expect(event?.args[2]).to.equal(userAddress);
-        expect(event?.args[3]).to.equal(rewardPerNode);
+        expect(event?.args[2]).to.equal(rewardPerNode);
       }
 
       const burnEvents = (parsedEvents ?? []).filter(
@@ -1365,6 +1437,140 @@ describe("PoAIManager", function () {
       expect(jobDetails.lastAllocatedEpoch).to.equal(
         (await poaiManager.getCurrentEpoch()) - 1n
       );
+    });
+
+    it("should allocate rewards across 100 jobs with 2 nodes each", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+      const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
+      const currentEpoch = await poaiManager.getCurrentEpoch();
+      const lastExecutionEpoch = currentEpoch + 35n;
+      const numberOfEpochs = lastExecutionEpoch - currentEpoch;
+      const numberOfJobs = 100;
+      const nodesPerJob = 2n;
+      const totalCost =
+        pricePerEpoch * nodesPerJob * numberOfEpochs * BigInt(numberOfJobs);
+
+      await mockUsdc.mint(await user.getAddress(), totalCost);
+      await mockUsdc.connect(user).approve(escrowAddress, totalCost);
+
+      const jobRequests = Array.from({ length: numberOfJobs }, (_, index) => ({
+        jobType: 1,
+        projectHash: ethers.keccak256(ethers.toUtf8Bytes(`mass-job-${index}`)),
+        lastExecutionEpoch,
+        numberOfNodesRequested: Number(nodesPerJob),
+      }));
+
+      await cspEscrow.connect(user).createJobs(jobRequests);
+
+      const signers = await ethers.getSigners();
+      const nodeAddresses = await Promise.all(
+        signers.slice(2, 12).map((signer) => signer.getAddress())
+      );
+      expect(nodeAddresses.length).to.equal(10);
+
+      for (let i = 1; i < nodeAddresses.length; i++) {
+        await buyLicenseAndLinkNode({
+          r1,
+          nd: ndContract,
+          mintAuthority: owner,
+          buyer: user,
+          oracleSigner: oracle,
+          nodeAddress: nodeAddresses[i],
+        });
+      }
+
+      const nodeJobCounts = new Map<string, bigint>();
+
+      for (let jobIndex = 0; jobIndex < numberOfJobs; jobIndex++) {
+        const jobId = jobIndex + 1;
+        const firstNode = nodeAddresses[jobIndex % nodeAddresses.length];
+        const secondNode = nodeAddresses[(jobIndex + 1) % nodeAddresses.length];
+        const jobNodes = [firstNode, secondNode];
+
+        await poaiManager.connect(oracle).submitNodeUpdate(jobId, jobNodes);
+
+        nodeJobCounts.set(firstNode, (nodeJobCounts.get(firstNode) ?? 0n) + 1n);
+        nodeJobCounts.set(
+          secondNode,
+          (nodeJobCounts.get(secondNode) ?? 0n) + 1n
+        );
+      }
+
+      await r1.mint(
+        await mockUniswapRouter.getAddress(),
+        ethers.parseEther("100000")
+      );
+      await advanceEpochs(1);
+
+      const tx = await poaiManager.allocateRewardsAcrossAllEscrows();
+      const receipt = await tx.wait();
+
+      const parsedEvents = receipt?.logs
+        .filter((log) => log.address === escrowAddress)
+        .map((log) => {
+          try {
+            return cspEscrow.interface.parseLog(log);
+          } catch {
+            return null;
+          }
+        })
+        .filter(
+          (event): event is ReturnType<typeof cspEscrow.interface.parseLog> =>
+            !!event
+        );
+
+      const rewardEvents = (parsedEvents ?? []).filter(
+        (event) => event?.name === "RewardsAllocatedV3"
+      );
+      expect(rewardEvents.length).to.equal(numberOfJobs * Number(nodesPerJob));
+
+      const burnPerNode = (pricePerEpoch * BURN_PERCENTAGE) / 100n;
+      const rewardPerNode = pricePerEpoch - burnPerNode;
+      const totalBurn = burnPerNode * nodesPerJob * BigInt(numberOfJobs);
+      const expectedLastAllocatedEpoch =
+        (await poaiManager.getCurrentEpoch()) - 1n;
+
+      const actualNodeCounts = new Map<string, bigint>();
+      for (const event of rewardEvents) {
+        const nodeAddr = event?.args[1] as string;
+        expect(nodeAddresses).to.include(nodeAddr);
+        expect(event?.args[0]).to.be.gte(1n);
+        expect(event?.args[0]).to.be.lte(BigInt(numberOfJobs));
+        expect(event?.args[2]).to.equal(rewardPerNode);
+
+        actualNodeCounts.set(
+          nodeAddr,
+          (actualNodeCounts.get(nodeAddr) ?? 0n) + 1n
+        );
+      }
+      expect(actualNodeCounts.size).to.equal(nodeJobCounts.size);
+      for (const [nodeAddr, expectedCount] of nodeJobCounts.entries()) {
+        expect(actualNodeCounts.get(nodeAddr)).to.equal(expectedCount);
+      }
+
+      const burnEvents = (parsedEvents ?? []).filter(
+        (event) => event?.name === "TokensBurned"
+      );
+      expect(burnEvents.length).to.equal(1);
+      expect(burnEvents[0]?.args[0]).to.equal(totalBurn);
+
+      for (const [nodeAddr, count] of nodeJobCounts.entries()) {
+        const balance = await cspEscrow.virtualWalletBalance(nodeAddr);
+        expect(balance).to.equal(rewardPerNode * count);
+      }
+
+      const initialBalance = pricePerEpoch * nodesPerJob * numberOfEpochs;
+      const expectedBalance = initialBalance - pricePerEpoch * nodesPerJob;
+      for (let jobId = 1; jobId <= numberOfJobs; jobId++) {
+        const jobDetails = await cspEscrow.getJobDetails(jobId);
+        expect(jobDetails.balance).to.equal(expectedBalance);
+        expect(jobDetails.lastAllocatedEpoch).to.equal(
+          expectedLastAllocatedEpoch
+        );
+      }
     });
 
     it("should burn 15% of rewards by swapping USDC for R1", async function () {
@@ -1435,11 +1641,11 @@ describe("PoAIManager", function () {
       const totalBurn = burnPerNode * BigInt(activeNodes.length);
 
       const rewardEvents = (parsedEvents ?? []).filter(
-        (event) => event?.name === "RewardsAllocatedV2"
+        (event) => event?.name === "RewardsAllocatedV3"
       );
       expect(rewardEvents.length).to.equal(activeNodes.length);
       for (const event of rewardEvents) {
-        expect(event?.args[3]).to.equal(rewardPerNode);
+        expect(event?.args[2]).to.equal(rewardPerNode);
       }
 
       const burnEvents = (parsedEvents ?? []).filter(
@@ -1484,7 +1690,7 @@ describe("PoAIManager", function () {
       // Allocate rewards - should not emit any events
       await expect(poaiManager.allocateRewardsAcrossAllEscrows()).to.not.emit(
         cspEscrow,
-        "RewardsAllocatedV2"
+        "RewardsAllocatedV3"
       );
     });
 
@@ -1611,7 +1817,7 @@ describe("PoAIManager", function () {
       // Try to allocate again - should not emit events
       await expect(poaiManager.allocateRewardsAcrossAllEscrows()).to.not.emit(
         cspEscrow,
-        "RewardsAllocatedV2"
+        "RewardsAllocatedV3"
       );
     });
 
@@ -2184,7 +2390,7 @@ describe("PoAIManager", function () {
       // Try to allocate again in same epoch - should not emit events
       await expect(poaiManager.allocateRewardsAcrossAllEscrows()).to.not.emit(
         cspEscrow,
-        "RewardsAllocatedV2"
+        "RewardsAllocatedV3"
       );
     });
   });
