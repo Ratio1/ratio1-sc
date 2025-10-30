@@ -50,6 +50,12 @@ interface IMND {
     ) external view returns (MNDLicense[] memory);
 }
 
+struct DeprecatedNodesTransitionProposal {
+    address proposer;
+    address[] newActiveNodes;
+    bytes32 newActiveNodesHash;
+}
+
 struct NodesTransitionProposal {
     address proposer;
     bytes32 newActiveNodesHash;
@@ -109,15 +115,8 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     // Mapping from node address to array of escrow addresses with allocated rewards
     mapping(address => address[]) public nodeToEscrowsWithRewards;
 
-    // Consensus mechanism for node updates
-    /// jobId => epochId => proposals
-    mapping(uint256 => mapping(uint256 => NodesTransitionProposal[]))
-        public nodesTransactionProposals;
-    // Cache of node sets keyed by jobId and proposal hash
-    mapping(uint256 => mapping(bytes32 => address[]))
-        private jobIdToNodesByNodesHash;
-    // Track which hashes have been stored per job to avoid duplicate pushes
-    mapping(uint256 => mapping(bytes32 => bool)) private jobIdNodesHashStored;
+    /// Deprecated. Use NodesTransitionProposal instead.
+    mapping(uint256 => mapping(uint256 => DeprecatedNodesTransitionProposal[])) deprecatedNodesTransactionProposals;
 
     // Array to track unvalidated job IDs (jobs with pending consensus)
     uint256[] public unvalidatedJobIds;
@@ -128,6 +127,15 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     // Cooldown period after consensus (5 minutes)
     uint256 public constant CONSENSUS_COOLDOWN_PERIOD = 300;
     bool public hasReconciled;
+    // Cache of node sets keyed by jobId and proposal hash
+    mapping(uint256 => mapping(bytes32 => address[]))
+        private jobIdToNodesByNodesHash;
+    // Track which hashes have been stored per job to avoid duplicate pushes
+    mapping(uint256 => mapping(bytes32 => bool)) private jobIdNodesHashStored;
+    // Consensus mechanism for node updates
+    /// jobId => epochId => proposals
+    mapping(uint256 => mapping(uint256 => NodesTransitionProposal[]))
+        public nodesTransactionProposals;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
