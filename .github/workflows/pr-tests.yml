@@ -33,3 +33,39 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  upgrade-safety:
+    name: Validate ${{ matrix.stage }} upgrade safety
+    needs: tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        stage: [devnet, testnet, mainnet]
+    env:
+      UPGRADE_STAGE: ${{ matrix.stage }}
+      UPGRADE_TARGETS: ${{ matrix.stage == 'mainnet' && vars.MAINNET_UPGRADE_TARGETS || matrix.stage == 'testnet' && vars.TESTNET_UPGRADE_TARGETS || vars.DEVNET_UPGRADE_TARGETS }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate upgrade safety
+        run: |
+          case "${{ matrix.stage }}" in
+            devnet|testnet)
+              NETWORK_NAME="baseSepolia"
+              ;;
+            *)
+              NETWORK_NAME="base"
+              ;;
+          esac
+          npx hardhat run --network "$NETWORK_NAME" scripts/ci/check-upgrade-safety.ts
