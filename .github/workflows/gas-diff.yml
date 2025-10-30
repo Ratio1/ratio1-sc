@@ -55,6 +55,16 @@ jobs:
         run: |
           cp ../base/gasReporterOutput.json ./gas-report-base.json
 
+      - name: Run coverage on base
+        working-directory: ../base
+        env:
+          GAS_REPORT: "false"
+        run: npx hardhat coverage --temp ./coverage-tmp
+
+      - name: Collect base coverage
+        run: |
+          cp ../base/coverage.json ./coverage-base.json
+
       - name: Clean base worktree
         if: always()
         run: |
@@ -64,9 +74,19 @@ jobs:
       - name: Run gas report on PR
         run: npx hardhat test
 
+      - name: Run coverage on PR
+        env:
+          GAS_REPORT: "false"
+        run: npx hardhat coverage --temp ./coverage-tmp
+
+      - name: Collect PR coverage
+        run: |
+          cp coverage.json ./coverage-pr.json
+          rm -rf coverage.json coverage coverage-tmp
+
       - name: Generate gas comparison
         run: |
-          node .github/scripts/compare-gas.js --base ./gas-report-base.json --pr ./gasReporterOutput.json --out ./gas-report-comment.md --baseSha ${{ github.event.pull_request.base.sha }} --prSha ${{ github.sha }}
+          node .github/scripts/compare-gas.js --base ./gas-report-base.json --pr ./gasReporterOutput.json --coverageBase ./coverage-base.json --coveragePr ./coverage-pr.json --coverageBaseRoot "${{ github.workspace }}/../base" --coveragePrRoot "${{ github.workspace }}" --out ./gas-report-comment.md --baseSha ${{ github.event.pull_request.base.sha }} --prSha ${{ github.sha }}
 
       - name: Comment on PR with gas report
         uses: actions/github-script@v7
