@@ -205,6 +205,46 @@ describe("PoAIManager", function () {
     return { cspEscrow, numberOfEpochs };
   }
 
+  async function setupPendingJob() {
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+    const jobDuration = 31n;
+    const currentEpoch = await poaiManager.getCurrentEpoch();
+    const lastExecutionEpoch = currentEpoch + jobDuration;
+    const numberOfNodesRequested = 1n;
+    const jobType = 1;
+    const userAddress = await user.getAddress();
+    const pricePerEpoch = await cspEscrow.getPriceForJobType(jobType);
+    const totalCost =
+      pricePerEpoch * numberOfNodesRequested * jobDuration;
+    const projectHash = ethers.keccak256(
+      ethers.toUtf8Bytes("pending-job")
+    );
+
+    await mockUsdc.mint(userAddress, totalCost);
+    await mockUsdc.connect(user).approve(escrowAddress, totalCost);
+
+    const jobRequest = {
+      jobType,
+      projectHash,
+      lastExecutionEpoch,
+      numberOfNodesRequested,
+    };
+    const jobIds = await cspEscrow
+      .connect(user)
+      .createJobs.staticCall([jobRequest]);
+    await cspEscrow.connect(user).createJobs([jobRequest]);
+
+    return {
+      cspEscrow,
+      escrowAddress,
+      jobId: jobIds[0],
+      totalCost,
+    };
+  }
+
   async function advanceEpochs(count: number = 1) {
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * count]);
     await ethers.provider.send("evm_mine", []);
@@ -396,6 +436,82 @@ describe("PoAIManager", function () {
     expect(job.escrowAddress).to.equal(escrowAddress);
     expect(job.escrowOwner).to.equal(userAddress);
     expect(job.activeNodes.length).to.equal(0);
+  });
+
+  describe("redeemUnusedJob", function () {
+    it("allows the CSP owner to redeem unused USDC for a pending job after cooldown", async function () {
+      const { cspEscrow, jobId, totalCost } = await setupPendingJob();
+      const userAddress = await user.getAddress();
+
+      await ethers.provider.send("evm_increaseTime", [3600]);
+      await ethers.provider.send("evm_mine", []);
+
+      const balanceBefore = await mockUsdc.balanceOf(userAddress);
+
+      await expect(
+        cspEscrow.connect(user).redeemUnusedJob(jobId)
+      )
+        .to.emit(cspEscrow, "JobRedeemed")
+        .withArgs(jobId, userAddress, totalCost);
+
+      const balanceAfter = await mockUsdc.balanceOf(userAddress);
+      expect(balanceAfter).to.equal(balanceBefore + totalCost);
+
+      const jobDetails = await cspEscrow.getJobDetails(jobId);
+      expect(jobDetails.id).to.equal(0n);
+      expect(await cspEscrow.getActiveJobsCount()).to.equal(0n);
+      expect(await poaiManager.jobIdToEscrow(jobId)).to.equal(ethers.ZeroAddress);
+    });
+
+    it("reverts if redemption is attempted before the cooldown has elapsed", async function () {
+      const { cspEscrow, jobId } = await setupPendingJob();
+
+      await expect(
+        cspEscrow.connect(user).redeemUnusedJob(jobId)
+      ).to.be.revertedWith("Redemption cooldown not elapsed");
+    });
+
+    it("reverts if the job already started", async function () {
+      const { cspEscrow, jobId } = await setupPendingJob();
+      const nodeAddress = await oracle.getAddress();
+
+      await ethers.provider.send("evm_increaseTime", [3600]);
+      await ethers.provider.send("evm_mine", []);
+      await poaiManager
+        .connect(oracle)
+        .submitNodeUpdate(jobId, [nodeAddress]);
+
+      await expect(
+        cspEscrow.connect(user).redeemUnusedJob(jobId)
+      ).to.be.revertedWith("Job already started");
+    });
+
+    it("reverts if the job has pending consensus updates", async function () {
+      await controller.addOracle(await oracle2.getAddress());
+      const { cspEscrow, jobId } = await setupPendingJob();
+
+      await poaiManager
+        .connect(oracle)
+        .submitNodeUpdate(jobId, [await oracle.getAddress()]);
+
+      await ethers.provider.send("evm_increaseTime", [3600]);
+      await ethers.provider.send("evm_mine", []);
+
+      await expect(
+        cspEscrow.connect(user).redeemUnusedJob(jobId)
+      ).to.be.revertedWith("Job is unvalidated, cannot remove");
+    });
+
+    it("reverts if called by a non-owner", async function () {
+      const { cspEscrow, jobId } = await setupPendingJob();
+
+      await ethers.provider.send("evm_increaseTime", [3600]);
+      await ethers.provider.send("evm_mine", []);
+
+      await expect(
+        cspEscrow.connect(other).redeemUnusedJob(jobId)
+      ).to.be.revertedWith("Not CSP owner");
+    });
   });
 
   it("should aggregate active job counts across multiple escrows", async function () {
