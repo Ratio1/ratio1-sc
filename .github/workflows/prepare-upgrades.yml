@@ -38,15 +38,19 @@ jobs:
       - name: Compile contracts
         run: npx hardhat compile
 
+      - name: Package prepared workspace
+        run: |
+          tar -czf prepared-workspace.tar.gz \
+            node_modules \
+            artifacts \
+            cache \
+            typechain-types
+
       - name: Upload prepared workspace
         uses: actions/upload-artifact@v4
         with:
           name: prepared-workspace
-          path: |
-            node_modules
-            artifacts
-            cache
-            typechain-types
+          path: prepared-workspace.tar.gz
 
   upgrades:
     name: Prepare ${{ matrix.stage }} Upgrades
@@ -103,6 +107,12 @@ jobs:
           name: prepared-workspace
           path: .
 
+      - name: Unpack prepared workspace
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          tar -xzf prepared-workspace.tar.gz
+          rm prepared-workspace.tar.gz
+
       - name: Prepare upgrade transactions
         if: steps.gate.outputs.skip != 'true'
         run: |
@@ -152,6 +162,7 @@ jobs:
     name: Upload Contract ABIs
     needs:
       - prepare-workspace
+      - upgrades
     runs-on: ubuntu-latest
     env:
       UPGRADE_TARGETS: ${{ vars.DEVNET_UPGRADE_TARGETS }}
@@ -173,6 +184,11 @@ jobs:
         with:
           name: prepared-workspace
           path: .
+
+      - name: Unpack prepared workspace
+        run: |
+          tar -xzf prepared-workspace.tar.gz
+          rm prepared-workspace.tar.gz
 
       - name: Export ABIs
         run: npx hardhat run --no-compile scripts/ci/export-abis.ts
