@@ -164,7 +164,6 @@ jobs:
     name: Upload Contract ABIs
     needs:
       - prepare-workspace
-      - upgrades
     runs-on: ubuntu-latest
     env:
       UPGRADE_TARGETS: ${{ vars.DEVNET_UPGRADE_TARGETS }}
