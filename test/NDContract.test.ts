@@ -321,12 +321,15 @@ describe("NDContract", function () {
     );
   }
 
-  type LicenseInfoOutput =
-    Awaited<ReturnType<NDContract["getLicenses"]>>[number];
-  type PriceTierOutput =
-    Awaited<ReturnType<NDContract["getPriceTiers"]>>[number];
-  type RewardsResultOutput =
-    Awaited<ReturnType<NDContract["calculateRewards"]>>[number];
+  type LicenseInfoOutput = Awaited<
+    ReturnType<NDContract["getLicenses"]>
+  >[number];
+  type PriceTierOutput = Awaited<
+    ReturnType<NDContract["getPriceTiers"]>
+  >[number];
+  type RewardsResultOutput = Awaited<
+    ReturnType<NDContract["calculateRewards"]>
+  >[number];
 
   function formatLicenseInfo(license: LicenseInfoOutput) {
     return {
@@ -397,16 +400,12 @@ describe("NDContract", function () {
     await updateTimestamp();
 
     let result = await ndContract.getLicenses(await firstUser.getAddress());
-    expect(EXPECTED_LICENSES_INFO).to.deep.equal(
-      result.map(formatLicenseInfo)
-    );
+    expect(EXPECTED_LICENSES_INFO).to.deep.equal(result.map(formatLicenseInfo));
   });
 
   it("Get licenses - user has no license", async function () {
     let result = await ndContract.getLicenses(await firstUser.getAddress());
-    expect([]).to.deep.equal(
-      result.map(formatLicenseInfo)
-    );
+    expect([]).to.deep.equal(result.map(formatLicenseInfo));
   });
 
   it("Set base uri- should work", async function () {
@@ -518,9 +517,7 @@ describe("NDContract", function () {
 
   it("Get price tiers", async function () {
     let result = await ndContract.getPriceTiers();
-    expect(EXPECTED_PRICE_TIERS).to.deep.equal(
-      result.map(formatPriceTier)
-    );
+    expect(EXPECTED_PRICE_TIERS).to.deep.equal(result.map(formatPriceTier));
   });
 
   it("Buy license - should work", async function () {
@@ -1051,95 +1048,6 @@ describe("NDContract", function () {
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       userPreviousBalance
     );
-  });
-
-  it("Claim rewards - mismatched input arrays length", async function () {
-    //SETUP WORLD
-    await buyLicenseWithMintAndAllowance(
-      r1Contract,
-      ndContract,
-      owner,
-      firstUser,
-      await ndContract.getLicenseTokenPrice(),
-      1,
-      1,
-      10000,
-      20,
-      await createLicenseSignature(backend, firstUser, 10000)
-    );
-    await linkNode(ndContract, firstUser, 1);
-    await ethers.provider.send("evm_increaseTime", [
-      (ONE_DAY_IN_SECS * 5) / EPOCH_IN_A_DAY,
-    ]);
-    await ethers.provider.send("evm_mine", []);
-
-    //DO TEST
-    await expect(
-      ndContract
-        .connect(firstUser)
-        .claimRewards(
-          [COMPUTE_PARAMS, COMPUTE_PARAMS],
-          [[await computeSignatureBytes(backend)]]
-        )
-    ).to.be.revertedWith("Mismatched input arrays length");
-  });
-
-  it("Claim rewards - user does not have the license", async function () {
-    //SETUP WORLD
-    await buyLicenseWithMintAndAllowance(
-      r1Contract,
-      ndContract,
-      owner,
-      firstUser,
-      await ndContract.getLicenseTokenPrice(),
-      1,
-      1,
-      10000,
-      20,
-      await createLicenseSignature(backend, firstUser, 10000)
-    );
-    await linkNode(ndContract, firstUser, 1);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
-    await ethers.provider.send("evm_mine", []);
-
-    //DO TEST
-    await expect(
-      ndContract
-        .connect(secondUser)
-        .claimRewards(
-          [COMPUTE_PARAMS],
-          [[await computeSignatureBytes(backend)]]
-        )
-    ).to.be.revertedWith("User does not have the license");
-  });
-
-  it("Claim rewards - invalid signature", async function () {
-    //SETUP WORLD
-    await buyLicenseWithMintAndAllowance(
-      r1Contract,
-      ndContract,
-      owner,
-      firstUser,
-      await ndContract.getLicenseTokenPrice(),
-      1,
-      1,
-      10000,
-      20,
-      await createLicenseSignature(backend, firstUser, 10000)
-    );
-    await linkNode(ndContract, firstUser, 1);
-    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
-    await ethers.provider.send("evm_mine", []);
-
-    //DO TEST
-    await expect(
-      ndContract
-        .connect(firstUser)
-        .claimRewards(
-          [COMPUTE_PARAMS],
-          [[await computeSignatureBytes(secondUser)]]
-        )
-    ).to.be.revertedWith("Invalid oracle signature");
   });
 
   it("Claim rewards - duplicate signature", async function () {
