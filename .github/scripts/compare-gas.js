@@ -234,7 +234,7 @@ function filterTopChanges(rows, limit = 15) {
   return sorted
     .filter(
       (row) =>
-        row.delta !== undefined && row.delta !== 0 && Math.abs(row.delta) > 0.2
+        row.delta !== undefined && row.delta !== 0 && Math.abs(row.delta) > 5000
     )
     .slice(0, limit);
 }
