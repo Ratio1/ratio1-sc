@@ -62,6 +62,7 @@ interface IPoAIManager {
     function getNewJobId() external returns (uint256);
     function registerNodeWithRewards(address nodeAddress) external;
     function removeNodeFromRewardsList(address nodeAddress) external;
+    function removeJob(uint256 jobId) external;
 }
 
 struct JobDetails {
@@ -149,6 +150,11 @@ contract CspEscrow is Initializable {
         uint256 indexed jobId,
         uint256 newNumberOfNodesRequested,
         uint256 additionalAmount
+    );
+    event JobRedeemed(
+        uint256 indexed jobId,
+        address owner,
+        uint256 refundAmount
     );
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
@@ -464,6 +470,32 @@ contract CspEscrow is Initializable {
             r1Token.burn(address(this), r1TokensToBurn);
             emit TokensBurned(totalAmountToBurn, r1TokensToBurn);
         }
+    }
+
+    function redeemUnusedJob(uint256 jobId) external onlyCspOwner {
+        JobDetails storage job = jobDetails[jobId];
+        require(job.id != 0, "Job does not exist");
+        require(job.startTimestamp == 0, "Job already started");
+        require(job.activeNodes.length == 0, "Job has active nodes");
+        require(
+            block.timestamp >= job.requestTimestamp + 1 hours,
+            "Redemption cooldown not elapsed"
+        );
+
+        int256 jobBalance = job.balance;
+        require(jobBalance > 0, "No balance to redeem");
+        uint256 refundAmount = uint256(jobBalance);
+
+        delete jobDetails[jobId];
+        swapRemoveActiveJob(jobId);
+        poaiManager.removeJob(jobId);
+
+        require(
+            IERC20(usdcToken).transfer(msg.sender, refundAmount),
+            "USDC transfer failed"
+        );
+
+        emit JobRedeemed(jobId, msg.sender, refundAmount);
     }
 
     function reconcileJobsBalance() public onlyPoAIManager {
