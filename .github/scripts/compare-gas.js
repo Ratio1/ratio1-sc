@@ -39,18 +39,27 @@ function collectMethods(report) {
     const contract = value.contract || "Unknown";
     const methodName = value.method || value.fnSig || value.key;
     const key = `${contract}::${methodName}`;
-    const calls = value.numberOfCalls ?? (Array.isArray(value.gasData) ? value.gasData.length : 0);
-    const avg = typeof value.executionGasAverage === "number"
-      ? value.executionGasAverage
-      : Array.isArray(value.gasData) && value.gasData.length > 0
-        ? Math.round(value.gasData.reduce((sum, gas) => sum + gas, 0) / value.gasData.length)
+    const calls =
+      value.numberOfCalls ??
+      (Array.isArray(value.gasData) ? value.gasData.length : 0);
+    const avg =
+      typeof value.executionGasAverage === "number"
+        ? value.executionGasAverage
+        : Array.isArray(value.gasData) && value.gasData.length > 0
+        ? Math.round(
+            value.gasData.reduce((sum, gas) => sum + gas, 0) /
+              value.gasData.length
+          )
         : undefined;
     map.set(key, {
       key,
       contract,
       method: methodName,
       avg,
-      calldataAvg: typeof value.calldataGasAverage === "number" ? value.calldataGasAverage : undefined,
+      calldataAvg:
+        typeof value.calldataGasAverage === "number"
+          ? value.calldataGasAverage
+          : undefined,
       calls,
     });
   }
@@ -62,17 +71,26 @@ function collectDeployments(report) {
   const deployments = report?.data?.deployments || [];
   for (const deployment of deployments) {
     const name = deployment.name || "Unknown";
-    const avg = typeof deployment.executionGasAverage === "number"
-      ? deployment.executionGasAverage
-      : Array.isArray(deployment.gasData) && deployment.gasData.length > 0
-        ? Math.round(deployment.gasData.reduce((sum, gas) => sum + gas, 0) / deployment.gasData.length)
+    const avg =
+      typeof deployment.executionGasAverage === "number"
+        ? deployment.executionGasAverage
+        : Array.isArray(deployment.gasData) && deployment.gasData.length > 0
+        ? Math.round(
+            deployment.gasData.reduce((sum, gas) => sum + gas, 0) /
+              deployment.gasData.length
+          )
         : undefined;
-    const calls = Array.isArray(deployment.gasData) ? deployment.gasData.length : 0;
+    const calls = Array.isArray(deployment.gasData)
+      ? deployment.gasData.length
+      : 0;
     map.set(name, {
       key: name,
       name,
       avg,
-      calldataAvg: typeof deployment.calldataGasAverage === "number" ? deployment.calldataGasAverage : undefined,
+      calldataAvg:
+        typeof deployment.calldataGasAverage === "number"
+          ? deployment.calldataGasAverage
+          : undefined,
       calls,
     });
   }
@@ -160,12 +178,22 @@ function computeDiffs(baseMap, prMap, accessor) {
 
 function buildTable(rows, options = {}) {
   const { includeCalls = true } = options;
-  const filteredRows = rows.filter((row) => row.baseAvg !== undefined || row.prAvg !== undefined);
+  const filteredRows = rows.filter(
+    (row) => row.baseAvg !== undefined || row.prAvg !== undefined
+  );
   if (filteredRows.length === 0) {
     return null;
   }
   const header = includeCalls
-    ? ["Contract", "Method", "Calls (base→PR)", "Base Avg Gas", "PR Avg Gas", "Δ Gas", "Δ %"]
+    ? [
+        "Contract",
+        "Method",
+        "Calls (base→PR)",
+        "Base Avg Gas",
+        "PR Avg Gas",
+        "Δ Gas",
+        "Δ %",
+      ]
     : ["Contract", "Base Avg Gas", "PR Avg Gas", "Δ Gas", "Δ %"];
   const lines = [];
   lines.push(`| ${header.join(" | ")} |`);
@@ -173,11 +201,24 @@ function buildTable(rows, options = {}) {
   for (const row of filteredRows) {
     if (includeCalls) {
       lines.push(
-        `| ${row.contract} | ${row.method} | ${formatCalls(row.baseCalls, row.prCalls)} | ${formatNumber(row.baseAvg)} | ${formatNumber(row.prAvg)} | ${formatDelta(row.baseAvg, row.prAvg)} | ${formatPercent(row.baseAvg, row.prAvg)} |`
+        `| ${row.contract} | ${row.method} | ${formatCalls(
+          row.baseCalls,
+          row.prCalls
+        )} | ${formatNumber(row.baseAvg)} | ${formatNumber(
+          row.prAvg
+        )} | ${formatDelta(row.baseAvg, row.prAvg)} | ${formatPercent(
+          row.baseAvg,
+          row.prAvg
+        )} |`
       );
     } else {
       lines.push(
-        `| ${row.contract} | ${formatNumber(row.baseAvg)} | ${formatNumber(row.prAvg)} | ${formatDelta(row.baseAvg, row.prAvg)} | ${formatPercent(row.baseAvg, row.prAvg)} |`
+        `| ${row.contract} | ${formatNumber(row.baseAvg)} | ${formatNumber(
+          row.prAvg
+        )} | ${formatDelta(row.baseAvg, row.prAvg)} | ${formatPercent(
+          row.baseAvg,
+          row.prAvg
+        )} |`
       );
     }
   }
@@ -191,16 +232,32 @@ function filterTopChanges(rows, limit = 15) {
     return bDelta - aDelta;
   });
   return sorted
-    .filter((row) => row.delta !== undefined && row.delta !== 0)
+    .filter(
+      (row) =>
+        row.delta !== undefined && row.delta !== 0 && Math.abs(row.delta) > 5000
+    )
     .slice(0, limit);
 }
 
 function buildSummary(title, baseTotal, prTotal) {
   const delta = prTotal - baseTotal;
-  const percent = baseTotal === 0 ? undefined : ((prTotal - baseTotal) / baseTotal) * 100;
-  const formattedDelta = delta === 0 ? "0" : `${delta > 0 ? "+" : ""}${new Intl.NumberFormat("en-US").format(Math.round(delta))}`;
-  const formattedPercent = percent === undefined ? "—" : `${percent > 0 ? "+" : ""}${percent.toFixed(2)}%`;
-  return `- **${title}:** ${new Intl.NumberFormat("en-US").format(Math.round(baseTotal))} → ${new Intl.NumberFormat("en-US").format(Math.round(prTotal))} (${formattedDelta}, ${formattedPercent})`;
+  const percent =
+    baseTotal === 0 ? undefined : ((prTotal - baseTotal) / baseTotal) * 100;
+  const formattedDelta =
+    delta === 0
+      ? "0"
+      : `${delta > 0 ? "+" : ""}${new Intl.NumberFormat("en-US").format(
+          Math.round(delta)
+        )}`;
+  const formattedPercent =
+    percent === undefined
+      ? "—"
+      : `${percent > 0 ? "+" : ""}${percent.toFixed(2)}%`;
+  return `- **${title}:** ${new Intl.NumberFormat("en-US").format(
+    Math.round(baseTotal)
+  )} → ${new Intl.NumberFormat("en-US").format(
+    Math.round(prTotal)
+  )} (${formattedDelta}, ${formattedPercent})`;
 }
 
 function main() {
@@ -214,7 +271,11 @@ function main() {
   const baseReport = readReport(basePath);
   const prReport = readReport(prPath);
 
-  const { rows: methodRows, baseTotal: methodBaseTotal, prTotal: methodPrTotal } = computeDiffs(
+  const {
+    rows: methodRows,
+    baseTotal: methodBaseTotal,
+    prTotal: methodPrTotal,
+  } = computeDiffs(
     collectMethods(baseReport),
     collectMethods(prReport),
     (base, pr) => ({
@@ -224,14 +285,20 @@ function main() {
   );
 
   methodRows.sort((a, b) => {
-    const contractComparison = (a.contract || "").localeCompare(b.contract || "");
+    const contractComparison = (a.contract || "").localeCompare(
+      b.contract || ""
+    );
     if (contractComparison !== 0) {
       return contractComparison;
     }
     return (a.method || "").localeCompare(b.method || "");
   });
 
-  const { rows: deploymentRows, baseTotal: deploymentBaseTotal, prTotal: deploymentPrTotal } = computeDiffs(
+  const {
+    rows: deploymentRows,
+    baseTotal: deploymentBaseTotal,
+    prTotal: deploymentPrTotal,
+  } = computeDiffs(
     collectDeployments(baseReport),
     collectDeployments(prReport),
     (base, pr) => ({
@@ -240,7 +307,9 @@ function main() {
     })
   );
 
-  deploymentRows.sort((a, b) => (a.contract || "").localeCompare(b.contract || ""));
+  deploymentRows.sort((a, b) =>
+    (a.contract || "").localeCompare(b.contract || "")
+  );
 
   const topMethodChanges = filterTopChanges(methodRows);
   const topDeploymentChanges = filterTopChanges(deploymentRows, 10);
@@ -260,7 +329,9 @@ function main() {
   }
   lines.push("### Summary");
   lines.push(buildSummary("Method gas total", methodBaseTotal, methodPrTotal));
-  lines.push(buildSummary("Deployment gas total", deploymentBaseTotal, deploymentPrTotal));
+  lines.push(
+    buildSummary("Deployment gas total", deploymentBaseTotal, deploymentPrTotal)
+  );
   lines.push("");
 
   lines.push("### Largest method changes");

@@ -14,10 +14,44 @@ permissions:
 
 env:
   HARDHAT_DISABLE_TELEMETRY: "1"
+  PREPARED_WORKSPACE_KEY: prepared-${{ github.run_id }}
 
 jobs:
+  prepare-workspace:
+    name: Install and Compile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile contracts
+        run: npx hardhat compile
+
+      - name: Cache prepared workspace
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ env.PREPARED_WORKSPACE_KEY }}
+          path: |
+            node_modules
+            artifacts
+            cache
+            typechain-types
+
   upgrades:
     name: Prepare ${{ matrix.stage }} Upgrades
+    needs: prepare-workspace
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -62,15 +96,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: "npm"
 
-      - name: Install dependencies
+      - name: Restore prepared workspace
         if: steps.gate.outputs.skip != 'true'
-        run: npm ci
+        id: restore-prepared-workspace
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ env.PREPARED_WORKSPACE_KEY }}
+          path: |
+            node_modules
+            artifacts
+            cache
+            typechain-types
 
-      - name: Compile contracts
-        if: steps.gate.outputs.skip != 'true'
-        run: npx hardhat compile
+      - name: Fallback install and compile
+        if: steps.gate.outputs.skip != 'true' && steps.restore-prepared-workspace.outputs.cache-hit != 'true'
+        run: |
+          npm ci
+          npx hardhat compile
 
       - name: Prepare upgrade transactions
         if: steps.gate.outputs.skip != 'true'
@@ -116,3 +159,50 @@ jobs:
               git push origin HEAD:"$TARGET_REF"
             fi
           fi
+
+  publish-abis:
+    name: Upload Contract ABIs
+    needs:
+      - prepare-workspace
+    runs-on: ubuntu-latest
+    env:
+      UPGRADE_TARGETS: ${{ vars.DEVNET_UPGRADE_TARGETS }}
+      ABI_OUTPUT_DIR: abis
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restore prepared workspace
+        id: restore-prepared-workspace
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ env.PREPARED_WORKSPACE_KEY }}
+          path: |
+            node_modules
+            artifacts
+            cache
+            typechain-types
+
+      - name: Fallback install and compile
+        if: steps.restore-prepared-workspace.outputs.cache-hit != 'true'
+        run: |
+          npm ci
+          npx hardhat compile
+
+      - name: Export ABIs
+        run: npx hardhat run --no-compile scripts/ci/export-abis.ts
+
+      - name: Upload contract ABIs
+        if: hashFiles('abis/*.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-abis
+          path: abis

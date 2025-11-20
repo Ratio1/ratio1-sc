@@ -174,6 +174,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         uint256 proposalsCount,
         uint256 maxAgreementCount
     );
+    event JobDeregistered(uint256 indexed jobId, address indexed escrow);
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -463,6 +464,16 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         nextJobId++;
         jobIdToEscrow[newJobId] = msg.sender;
         return newJobId;
+    }
+
+    function removeJob(uint256 jobId) external onlyCspEscrow {
+        address escrowAddress = jobIdToEscrow[jobId];
+        require(escrowAddress == msg.sender, "Invalid job");
+        require(!isJobUnvalidated[jobId], "Job is unvalidated, cannot remove");
+
+        delete jobConsensusTimestamp[jobId];
+        delete jobIdToEscrow[jobId];
+        emit JobDeregistered(jobId, escrowAddress);
     }
 
     // Register a node that has rewards to claim in a specific escrow
