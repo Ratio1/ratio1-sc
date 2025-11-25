@@ -617,7 +617,13 @@ describe("PoAIManager", function () {
       const jobDetails = await cspEscrow.getJobDetails(Number(jobId));
       expect(jobDetails.jobType).to.equal(BigInt(serviceEntryType));
       expect(jobDetails.pricePerEpoch).to.equal(serviceEntryPrice);
-      expect(jobDetails.balance).to.equal(targetBalance);
+      expect(jobDetails.balance).to.equal(serviceEntryCost);
+      expect(await mockUsdc.balanceOf(escrowAddress)).to.equal(
+        serviceEntryCost
+      );
+      expect(await mockUsdc.balanceOf(await user.getAddress())).to.equal(
+        additionalFunds
+      );
     });
   });
 

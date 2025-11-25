@@ -567,46 +567,85 @@ contract CspEscrow is Initializable {
             JobDetails storage job = jobDetails[jobId];
 
             /*
+            Verify if lastExecutionEpoch is consistent with startTimestamp and
+            requestTimestamp, and correct it if necessary.
+            */
+            if (job.startTimestamp != 0) {
+                uint256 requestEpoch = _calculateEpoch(job.requestTimestamp);
+                uint256 startEpoch = _calculateEpoch(job.startTimestamp);
+
+                uint256 purchasedEpochsFromRequest = job.lastExecutionEpoch -
+                    requestEpoch;
+                uint256 purchasedEpochsFromStart = job.lastExecutionEpoch -
+                    startEpoch;
+                if (purchasedEpochsFromStart < purchasedEpochsFromRequest) {
+                    uint256 oldLastExecutionEpoch = job.lastExecutionEpoch;
+                    uint256 newLastExecutionEpoch = startEpoch +
+                        purchasedEpochsFromRequest;
+                    job.lastExecutionEpoch = newLastExecutionEpoch;
+                    emit JobLastExecutionEpochReconciled(
+                        jobId,
+                        oldLastExecutionEpoch,
+                        newLastExecutionEpoch
+                    );
+                }
+            }
+
+            /*
             Migrate deprecated service job types to JOB_TYPE_SERVICE_ENTRY
             */
             if (_isDeprecatedJobType(job.jobType)) {
                 uint256 oldJobType = job.jobType;
-                uint256 newServicePrice = getPriceForJobType(
+                uint256 oldPricePerEpoch = job.pricePerEpoch;
+                uint256 newPricePerEpoch = getPriceForJobType(
                     JOB_TYPE_SERVICE_ENTRY
                 );
+                if (newPricePerEpoch < oldPricePerEpoch) {
+                    // The user paid more than the new price, refund the difference for the remaining epochs
+                    uint256 currentEpoch = getCurrentEpoch();
+                    uint256 remainingEpochs = job.lastExecutionEpoch >
+                        currentEpoch
+                        ? job.lastExecutionEpoch - currentEpoch
+                        : 0;
+                    if (remainingEpochs > 0) {
+                        uint256 refundAmount = (oldPricePerEpoch -
+                            newPricePerEpoch) *
+                            job.numberOfNodesRequested *
+                            remainingEpochs;
+                        require(
+                            IERC20(usdcToken).transfer(cspOwner, refundAmount),
+                            "USDC refund transfer failed"
+                        );
+                        job.balance -= int256(refundAmount);
+                    }
+                } else if (newPricePerEpoch > oldPricePerEpoch) {
+                    // The user paid less than the new price, update the lastExecutionEpoch accordingly
+                    uint256 currentEpoch = getCurrentEpoch();
+                    uint256 costPerEpoch = newPricePerEpoch *
+                        job.numberOfNodesRequested;
+                    if (job.balance < int256(costPerEpoch)) {
+                        uint256 refundAmount = uint256(job.balance);
+                        job.balance = 0;
+                        job.lastExecutionEpoch = currentEpoch;
+                        require(
+                            IERC20(usdcToken).transfer(cspOwner, refundAmount),
+                            "USDC refund transfer failed"
+                        );
+                    } else {
+                        uint256 affordableEpochs = uint256(job.balance) /
+                            costPerEpoch;
+                        job.lastExecutionEpoch =
+                            currentEpoch +
+                            affordableEpochs;
+                    }
+                }
                 job.jobType = JOB_TYPE_SERVICE_ENTRY;
-                job.pricePerEpoch = newServicePrice;
+                job.pricePerEpoch = newPricePerEpoch;
                 emit DeprecatedJobMigrated(
                     jobId,
                     oldJobType,
                     JOB_TYPE_SERVICE_ENTRY,
-                    newServicePrice
-                );
-            }
-
-            /*
-            Verify if lastExecutionEpoch is consistent with startTimestamp and
-            requestTimestamp, and correct it if necessary.
-            */
-            if (job.startTimestamp == 0) {
-                continue;
-            }
-            uint256 requestEpoch = _calculateEpoch(job.requestTimestamp);
-            uint256 startEpoch = _calculateEpoch(job.startTimestamp);
-
-            uint256 purchasedEpochsFromRequest = job.lastExecutionEpoch -
-                requestEpoch;
-            uint256 purchasedEpochsFromStart = job.lastExecutionEpoch -
-                startEpoch;
-            if (purchasedEpochsFromStart < purchasedEpochsFromRequest) {
-                uint256 oldLastExecutionEpoch = job.lastExecutionEpoch;
-                uint256 newLastExecutionEpoch = startEpoch +
-                    purchasedEpochsFromRequest;
-                job.lastExecutionEpoch = newLastExecutionEpoch;
-                emit JobLastExecutionEpochReconciled(
-                    jobId,
-                    oldLastExecutionEpoch,
-                    newLastExecutionEpoch
+                    newPricePerEpoch
                 );
             }
         }
