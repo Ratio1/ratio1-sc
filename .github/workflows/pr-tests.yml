@@ -3,8 +3,7 @@ name: PR Tests
 on:
   pull_request:
     branches:
-      - develop
-      - main
+      - "*"
 
 permissions:
   contents: read
