@@ -20,13 +20,17 @@ uint256 constant JOB_TYPE_HIGH1 = 6;
 uint256 constant JOB_TYPE_HIGH2 = 7;
 uint256 constant JOB_TYPE_ULTRA1 = 8;
 uint256 constant JOB_TYPE_ULTRA2 = 9;
-// Service job types
+// Deprecated service job types
 uint256 constant JOB_TYPE_PGSQL_LOW = 10;
 uint256 constant JOB_TYPE_PGSQL_MED = 11;
 uint256 constant JOB_TYPE_MYSQL_LOW = 12;
 uint256 constant JOB_TYPE_MYSQL_MED = 13;
 uint256 constant JOB_TYPE_NOSQL_LOW = 14;
 uint256 constant JOB_TYPE_NOSQL_MED = 15;
+// Service job types
+uint256 constant JOB_TYPE_SERVICE_ENTRY = 50;
+uint256 constant JOB_TYPE_SERVICE_MED1 = 51;
+uint256 constant JOB_TYPE_SERVICE_HIGH1 = 52;
 // Native app job types
 uint256 constant JOB_TYPE_N_ENTRY = 16;
 uint256 constant JOB_TYPE_N_MED1 = 17;
@@ -146,6 +150,12 @@ contract CspEscrow is Initializable {
         uint256 newLastExecutionEpoch,
         uint256 additionalAmount
     );
+    event DeprecatedJobMigrated(
+        uint256 indexed jobId,
+        uint256 oldJobType,
+        uint256 newJobType,
+        uint256 newPricePerEpoch
+    );
     event JobNodesExtended(
         uint256 indexed jobId,
         uint256 newNumberOfNodesRequested,
@@ -206,6 +216,10 @@ contract CspEscrow is Initializable {
         uint256 currentEpoch = getCurrentEpoch();
         uint256[] memory jobIds = new uint256[](jobCreationRequests.length);
         for (uint256 i = 0; i < jobCreationRequests.length; i++) {
+            require(
+                !_isDeprecatedServiceJobType(jobCreationRequests[i].jobType),
+                "Deprecated job type"
+            );
             require(
                 jobCreationRequests[i].lastExecutionEpoch > currentEpoch,
                 "Last execution epoch must be in the future"
@@ -553,6 +567,24 @@ contract CspEscrow is Initializable {
             JobDetails storage job = jobDetails[jobId];
 
             /*
+            Migrate deprecated service job types to JOB_TYPE_SERVICE_ENTRY
+            */
+            if (_isDeprecatedServiceJobType(job.jobType)) {
+                uint256 oldJobType = job.jobType;
+                uint256 newServicePrice = getPriceForJobType(
+                    JOB_TYPE_SERVICE_ENTRY
+                );
+                job.jobType = JOB_TYPE_SERVICE_ENTRY;
+                job.pricePerEpoch = newServicePrice;
+                emit DeprecatedJobMigrated(
+                    jobId,
+                    oldJobType,
+                    JOB_TYPE_SERVICE_ENTRY,
+                    newServicePrice
+                );
+            }
+
+            /*
             Verify if lastExecutionEpoch is consistent with startTimestamp and
             requestTimestamp, and correct it if necessary.
             */
@@ -713,6 +745,18 @@ contract CspEscrow is Initializable {
         return false;
     }
 
+    function _isDeprecatedServiceJobType(
+        uint256 jobType
+    ) private pure returns (bool) {
+        return
+            jobType == JOB_TYPE_PGSQL_LOW ||
+            jobType == JOB_TYPE_PGSQL_MED ||
+            jobType == JOB_TYPE_MYSQL_LOW ||
+            jobType == JOB_TYPE_MYSQL_MED ||
+            jobType == JOB_TYPE_NOSQL_LOW ||
+            jobType == JOB_TYPE_NOSQL_MED;
+    }
+
     function swapRemoveActiveJob(uint256 jobId) internal {
         // Remove jobId from activeJobs array
         for (uint256 i = 0; i < activeJobs.length; i++) {
@@ -726,6 +770,7 @@ contract CspEscrow is Initializable {
 
     // Get price for job type (pure function, no storage) - prices in USDC (6 decimals)
     function getPriceForJobType(uint256 jobType) public pure returns (uint256) {
+        require(!_isDeprecatedServiceJobType(jobType), "Deprecated job type");
         if (jobType == JOB_TYPE_ENTRY) return 375_000; // $11.25/month
         if (jobType == JOB_TYPE_LOW1) return 750_000; // $22.5/month
         if (jobType == JOB_TYPE_LOW2) return 1_000_000; // $30/month
@@ -737,12 +782,9 @@ contract CspEscrow is Initializable {
         if (jobType == JOB_TYPE_ULTRA2) return 12_500_000; // $375/month
 
         // Services
-        if (jobType == JOB_TYPE_PGSQL_LOW) return 1_000_000; // $30/month
-        if (jobType == JOB_TYPE_PGSQL_MED) return 2_166_666; // $65/month
-        if (jobType == JOB_TYPE_MYSQL_LOW) return 1_000_000; // $30/month
-        if (jobType == JOB_TYPE_MYSQL_MED) return 2_166_666; // $65/month
-        if (jobType == JOB_TYPE_NOSQL_LOW) return 1_000_000; // $30/month
-        if (jobType == JOB_TYPE_NOSQL_MED) return 2_166_666; // $65/month
+        if (jobType == JOB_TYPE_SERVICE_ENTRY) return 450_000; // $13.5/month
+        if (jobType == JOB_TYPE_SERVICE_MED1) return 2_300_000; // $69/month
+        if (jobType == JOB_TYPE_SERVICE_HIGH1) return 4_500_000; // $135/month
 
         // Native Apps
         if (jobType == JOB_TYPE_N_ENTRY) return 2_500_000; // $75/month
