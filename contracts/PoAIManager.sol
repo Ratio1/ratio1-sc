@@ -500,6 +500,14 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         hasReconciled = true;
     }
 
+    function reconcileAllJobsAcrossEscrows() external onlyOwner {
+        uint256 escrowCount = allEscrows.length;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            address escrowAddress = allEscrows[i];
+            CspEscrow(escrowAddress).reconcileAllJobs();
+        }
+    }
+
     // Remove a node from the rewards list when rewards are claimed
     function removeNodeFromRewardsList(
         address nodeAddress
