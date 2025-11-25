@@ -217,7 +217,7 @@ contract CspEscrow is Initializable {
         uint256[] memory jobIds = new uint256[](jobCreationRequests.length);
         for (uint256 i = 0; i < jobCreationRequests.length; i++) {
             require(
-                !_isDeprecatedServiceJobType(jobCreationRequests[i].jobType),
+                !_isDeprecatedJobType(jobCreationRequests[i].jobType),
                 "Deprecated job type"
             );
             require(
@@ -569,7 +569,7 @@ contract CspEscrow is Initializable {
             /*
             Migrate deprecated service job types to JOB_TYPE_SERVICE_ENTRY
             */
-            if (_isDeprecatedServiceJobType(job.jobType)) {
+            if (_isDeprecatedJobType(job.jobType)) {
                 uint256 oldJobType = job.jobType;
                 uint256 newServicePrice = getPriceForJobType(
                     JOB_TYPE_SERVICE_ENTRY
@@ -745,9 +745,7 @@ contract CspEscrow is Initializable {
         return false;
     }
 
-    function _isDeprecatedServiceJobType(
-        uint256 jobType
-    ) private pure returns (bool) {
+    function _isDeprecatedJobType(uint256 jobType) private pure returns (bool) {
         return
             jobType == JOB_TYPE_PGSQL_LOW ||
             jobType == JOB_TYPE_PGSQL_MED ||
@@ -770,7 +768,7 @@ contract CspEscrow is Initializable {
 
     // Get price for job type (pure function, no storage) - prices in USDC (6 decimals)
     function getPriceForJobType(uint256 jobType) public pure returns (uint256) {
-        require(!_isDeprecatedServiceJobType(jobType), "Deprecated job type");
+        require(!_isDeprecatedJobType(jobType), "Deprecated job type");
         if (jobType == JOB_TYPE_ENTRY) return 375_000; // $11.25/month
         if (jobType == JOB_TYPE_LOW1) return 750_000; // $22.5/month
         if (jobType == JOB_TYPE_LOW2) return 1_000_000; // $30/month
