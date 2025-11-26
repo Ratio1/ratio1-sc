@@ -156,6 +156,11 @@ contract CspEscrow is Initializable {
         address owner,
         uint256 refundAmount
     );
+    event JobLastExecutionEpochReconciled(
+        uint256 indexed jobId,
+        uint256 oldLastExecutionEpoch,
+        uint256 newLastExecutionEpoch
+    );
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -358,8 +363,14 @@ contract CspEscrow is Initializable {
         job.activeNodes = newActiveNodes;
         job.lastNodesChangeTimestamp = currentTimestamp;
         if (job.startTimestamp == 0) {
+            uint256 currentEpoch = getCurrentEpoch();
+            uint256 requestEpoch = _calculateEpoch(job.requestTimestamp);
+            if (currentEpoch > requestEpoch) {
+                uint256 purchasedEpochs = job.lastExecutionEpoch - requestEpoch;
+                job.lastExecutionEpoch = currentEpoch + purchasedEpochs;
+            }
             job.startTimestamp = currentTimestamp;
-            job.lastAllocatedEpoch = getCurrentEpoch() - 1;
+            job.lastAllocatedEpoch = currentEpoch - 1;
             emit JobStarted(jobId, currentTimestamp);
         }
         if (newActiveNodes.length == 0) {
@@ -533,6 +544,39 @@ contract CspEscrow is Initializable {
 
             job.balance -= int256(burnCorrection);
             emit JobBalanceReconciled(jobId, burnCorrection);
+        }
+    }
+
+    function reconcileAllJobs() external onlyPoAIManager {
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            uint256 jobId = activeJobs[i];
+            JobDetails storage job = jobDetails[jobId];
+
+            /*
+            Verify if lastExecutionEpoch is consistent with startTimestamp and
+            requestTimestamp, and correct it if necessary.
+            */
+            if (job.startTimestamp == 0) {
+                continue;
+            }
+            uint256 requestEpoch = _calculateEpoch(job.requestTimestamp);
+            uint256 startEpoch = _calculateEpoch(job.startTimestamp);
+
+            uint256 purchasedEpochsFromRequest = job.lastExecutionEpoch -
+                requestEpoch;
+            uint256 purchasedEpochsFromStart = job.lastExecutionEpoch -
+                startEpoch;
+            if (purchasedEpochsFromStart < purchasedEpochsFromRequest) {
+                uint256 oldLastExecutionEpoch = job.lastExecutionEpoch;
+                uint256 newLastExecutionEpoch = startEpoch +
+                    purchasedEpochsFromRequest;
+                job.lastExecutionEpoch = newLastExecutionEpoch;
+                emit JobLastExecutionEpochReconciled(
+                    jobId,
+                    oldLastExecutionEpoch,
+                    newLastExecutionEpoch
+                );
+            }
         }
     }
 

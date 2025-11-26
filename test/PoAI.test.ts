@@ -217,11 +217,8 @@ describe("PoAIManager", function () {
     const jobType = 1;
     const userAddress = await user.getAddress();
     const pricePerEpoch = await cspEscrow.getPriceForJobType(jobType);
-    const totalCost =
-      pricePerEpoch * numberOfNodesRequested * jobDuration;
-    const projectHash = ethers.keccak256(
-      ethers.toUtf8Bytes("pending-job")
-    );
+    const totalCost = pricePerEpoch * numberOfNodesRequested * jobDuration;
+    const projectHash = ethers.keccak256(ethers.toUtf8Bytes("pending-job"));
 
     await mockUsdc.mint(userAddress, totalCost);
     await mockUsdc.connect(user).approve(escrowAddress, totalCost);
@@ -248,6 +245,25 @@ describe("PoAIManager", function () {
   async function advanceEpochs(count: number = 1) {
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * count]);
     await ethers.provider.send("evm_mine", []);
+  }
+
+  function getJobStructSlot(
+    jobId: bigint,
+    mappingSlot: number,
+    fieldOffset: number
+  ): string {
+    const baseSlot = BigInt(
+      ethers.keccak256(
+        ethers.concat([
+          ethers.zeroPadValue(ethers.toBeHex(jobId), 32),
+          ethers.zeroPadValue(ethers.toBeHex(mappingSlot), 32),
+        ])
+      )
+    );
+    return ethers.zeroPadValue(
+      ethers.toBeHex(baseSlot + BigInt(fieldOffset)),
+      32
+    );
   }
 
   it("should return empty array when there are no active jobs", async function () {
@@ -448,9 +464,7 @@ describe("PoAIManager", function () {
 
       const balanceBefore = await mockUsdc.balanceOf(userAddress);
 
-      await expect(
-        cspEscrow.connect(user).redeemUnusedJob(jobId)
-      )
+      await expect(cspEscrow.connect(user).redeemUnusedJob(jobId))
         .to.emit(cspEscrow, "JobRedeemed")
         .withArgs(jobId, userAddress, totalCost);
 
@@ -460,7 +474,9 @@ describe("PoAIManager", function () {
       const jobDetails = await cspEscrow.getJobDetails(jobId);
       expect(jobDetails.id).to.equal(0n);
       expect(await cspEscrow.getActiveJobsCount()).to.equal(0n);
-      expect(await poaiManager.jobIdToEscrow(jobId)).to.equal(ethers.ZeroAddress);
+      expect(await poaiManager.jobIdToEscrow(jobId)).to.equal(
+        ethers.ZeroAddress
+      );
     });
 
     it("reverts if redemption is attempted before the cooldown has elapsed", async function () {
@@ -477,9 +493,7 @@ describe("PoAIManager", function () {
 
       await ethers.provider.send("evm_increaseTime", [3600]);
       await ethers.provider.send("evm_mine", []);
-      await poaiManager
-        .connect(oracle)
-        .submitNodeUpdate(jobId, [nodeAddress]);
+      await poaiManager.connect(oracle).submitNodeUpdate(jobId, [nodeAddress]);
 
       await expect(
         cspEscrow.connect(user).redeemUnusedJob(jobId)
@@ -942,6 +956,132 @@ describe("PoAIManager", function () {
     const jobDetailsAfter = await cspEscrow.getJobDetails(1);
     expect(jobDetailsAfter.startTimestamp).to.be.gt(0); // Job should be started
     expect(jobDetailsAfter.activeNodes).to.deep.equal(activeNodes); // Active nodes should be set
+  });
+
+  it("extends lastExecutionEpoch when the job starts in a later epoch", async function () {
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+    const paymentEpoch = await poaiManager.getCurrentEpoch();
+    const jobDuration = 35n;
+    const lastExecutionEpoch = paymentEpoch + jobDuration;
+    const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
+    const totalCost = pricePerEpoch * jobDuration;
+
+    await mockUsdc.mint(await user.getAddress(), totalCost);
+    await mockUsdc.connect(user).approve(escrowAddress, totalCost);
+
+    await cspEscrow.connect(user).createJobs([
+      {
+        jobType: 1,
+        projectHash: ethers.keccak256(
+          ethers.toUtf8Bytes("delayed-start-project")
+        ),
+        lastExecutionEpoch,
+        numberOfNodesRequested: 1,
+      },
+    ]);
+    const jobDetailsBefore = await cspEscrow.getJobDetails(1);
+    expect(jobDetailsBefore.startTimestamp).to.equal(0);
+    expect(jobDetailsBefore.lastExecutionEpoch).to.equal(lastExecutionEpoch);
+
+    const epochsBeforeEffectiveStart = 3;
+    await advanceEpochs(epochsBeforeEffectiveStart);
+    const startEpoch = await poaiManager.getCurrentEpoch();
+    const activeNodes = [await oracle.getAddress()];
+    await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
+
+    const jobDetailsAfter = await cspEscrow.getJobDetails(1);
+    const purchasedEpochs = lastExecutionEpoch - paymentEpoch;
+    const expectedLastExecutionEpoch = startEpoch + purchasedEpochs;
+    expect(jobDetailsAfter.startTimestamp).to.be.gt(0);
+    expect(jobDetailsAfter.lastExecutionEpoch).to.equal(
+      expectedLastExecutionEpoch
+    );
+    expect(jobDetailsAfter.lastExecutionEpoch).to.equal(
+      lastExecutionEpoch + BigInt(epochsBeforeEffectiveStart)
+    );
+  });
+
+  it("reconciles lastExecutionEpoch across all escrows", async function () {
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+    const creationEpoch = await poaiManager.getCurrentEpoch();
+    const jobDuration = 35n;
+    const lastExecutionEpoch = creationEpoch + jobDuration;
+    const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
+    const totalCost = pricePerEpoch * jobDuration;
+
+    await mockUsdc.mint(await user.getAddress(), totalCost);
+    await mockUsdc.connect(user).approve(escrowAddress, totalCost);
+
+    await cspEscrow.connect(user).createJobs([
+      {
+        jobType: 1,
+        projectHash: ethers.keccak256(ethers.toUtf8Bytes("reconcile-project")),
+        lastExecutionEpoch,
+        numberOfNodesRequested: 1,
+      },
+    ]);
+
+    await advanceEpochs(1);
+    const startEpoch = await poaiManager.getCurrentEpoch();
+    const activeNodes = [await oracle.getAddress()];
+    await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
+
+    const jobAfterStart = await cspEscrow.getJobDetails(1);
+    const expectedCorrectLastExecutionEpoch = startEpoch + jobDuration;
+    expect(jobAfterStart.lastExecutionEpoch).to.equal(
+      expectedCorrectLastExecutionEpoch
+    );
+
+    const mappingSlot = 7;
+    const lastExecutionEpochSlot = getJobStructSlot(1n, mappingSlot, 7);
+    const legacyLastExecutionEpoch = creationEpoch + jobDuration;
+    await ethers.provider.send("hardhat_setStorageAt", [
+      escrowAddress,
+      lastExecutionEpochSlot,
+      ethers.zeroPadValue(ethers.toBeHex(legacyLastExecutionEpoch), 32),
+    ]);
+
+    const jobWithLegacyValue = await cspEscrow.getJobDetails(1);
+    expect(jobWithLegacyValue.lastExecutionEpoch).to.equal(
+      legacyLastExecutionEpoch
+    );
+
+    const tx = await poaiManager.reconcileAllJobsAcrossEscrows();
+    const receipt = await tx.wait();
+    const parsedEvents = receipt?.logs
+      .filter((log) => log.address === escrowAddress)
+      .map((log) => {
+        try {
+          return cspEscrow.interface.parseLog(log);
+        } catch {
+          return null;
+        }
+      })
+      .filter(
+        (event): event is ReturnType<typeof cspEscrow.interface.parseLog> =>
+          !!event
+      );
+
+    const reconciliationEvents = (parsedEvents ?? []).filter(
+      (event) => event?.name === "JobLastExecutionEpochReconciled"
+    );
+    expect(reconciliationEvents.length).to.equal(1);
+    expect(reconciliationEvents[0]?.args[0]).to.equal(1n);
+    expect(reconciliationEvents[0]?.args[1]).to.equal(legacyLastExecutionEpoch);
+    expect(reconciliationEvents[0]?.args[2]).to.equal(
+      expectedCorrectLastExecutionEpoch
+    );
+
+    const reconciledJob = await cspEscrow.getJobDetails(1);
+    expect(reconciledJob.lastExecutionEpoch).to.equal(
+      expectedCorrectLastExecutionEpoch
+    );
   });
 
   it("should not allow non-oracle to submit node updates", async function () {
