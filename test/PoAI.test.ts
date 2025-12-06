@@ -45,7 +45,7 @@ describe("PoAIManager", function () {
   let mockUniswapPair: UniswapMockPair;
 
   const BURN_PERCENTAGE = 15n;
-  const PERMISSION_CREATE_JOBS = 1n;
+  const PERMISSION_CREATE_JOBS = 1n << 0n;
   const PERMISSION_EXTEND_DURATION = 1n << 1n;
   const PERMISSION_EXTEND_NODES = 1n << 2n;
   const PERMISSION_REDEEM_UNUSED_JOB = 1n << 3n;
@@ -761,6 +761,111 @@ describe("PoAIManager", function () {
       const jobDetails = await cspEscrow.getJobDetails(1);
       expect(jobDetails.id).to.equal(1n);
       expect(await mockUsdc.balanceOf(delegateAddress)).to.equal(0);
+    });
+
+    it("allows the owner to create a job after adding a delegate", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+      const delegateAddress = await other.getAddress();
+      const ownerAddress = await user.getAddress();
+
+      await cspEscrow
+        .connect(user)
+        .setDelegatePermissions(delegateAddress, PERMISSION_CREATE_JOBS);
+
+      const currentEpoch = await poaiManager.getCurrentEpoch();
+      const jobDuration = 31n;
+      const lastExecutionEpoch = currentEpoch + jobDuration;
+      const numberOfNodesRequested = 1n;
+      const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
+      const totalCost = pricePerEpoch * numberOfNodesRequested * jobDuration;
+
+      await mockUsdc.mint(ownerAddress, totalCost);
+      await mockUsdc.connect(user).approve(escrowAddress, totalCost);
+
+      await expect(
+        cspEscrow.connect(user).createJobs([
+          {
+            jobType: 1,
+            projectHash: ethers.keccak256(
+              ethers.toUtf8Bytes("owner-delegate-job")
+            ),
+            lastExecutionEpoch,
+            numberOfNodesRequested,
+          },
+        ])
+      )
+        .to.emit(cspEscrow, "JobCreated")
+        .withArgs(1, ownerAddress, 1, pricePerEpoch);
+
+      const jobDetails = await cspEscrow.getJobDetails(1);
+      expect(jobDetails.id).to.equal(1n);
+      expect(jobDetails.numberOfNodesRequested).to.equal(
+        numberOfNodesRequested
+      );
+      expect(await mockUsdc.balanceOf(escrowAddress)).to.equal(totalCost);
+    });
+
+    it("allows a second delegate with permissions to create jobs", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+      const delegateA = await other.getAddress();
+      const delegateB = await oracle2.getAddress();
+      const ownerAddress = await user.getAddress();
+
+      await cspEscrow
+        .connect(user)
+        .setDelegatePermissions(delegateA, PERMISSION_CREATE_JOBS);
+      await cspEscrow
+        .connect(user)
+        .setDelegatePermissions(delegateB, PERMISSION_CREATE_JOBS);
+
+      const [delegatedAddresses, delegatedPermissions] =
+        await cspEscrow.getDelegatedAddresses();
+      expect(delegatedAddresses).to.deep.equal([delegateA, delegateB]);
+      expect(delegatedPermissions).to.deep.equal([
+        PERMISSION_CREATE_JOBS,
+        PERMISSION_CREATE_JOBS,
+      ]);
+
+      const delegateBRegistration = await poaiManager.getAddressRegistration(
+        delegateB
+      );
+      expect(delegateBRegistration.isActive).to.equal(true);
+      expect(delegateBRegistration.escrowAddress).to.equal(escrowAddress);
+
+      const currentEpoch = await poaiManager.getCurrentEpoch();
+      const jobDuration = 31n;
+      const lastExecutionEpoch = currentEpoch + jobDuration;
+      const numberOfNodesRequested = 1n;
+      const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
+      const totalCost = pricePerEpoch * numberOfNodesRequested * jobDuration;
+
+      await mockUsdc.mint(delegateB, totalCost);
+      await mockUsdc.connect(oracle2).approve(escrowAddress, totalCost);
+
+      await expect(
+        cspEscrow.connect(oracle2).createJobs([
+          {
+            jobType: 1,
+            projectHash: ethers.keccak256(
+              ethers.toUtf8Bytes("second-delegate-job")
+            ),
+            lastExecutionEpoch,
+            numberOfNodesRequested,
+          },
+        ])
+      )
+        .to.emit(cspEscrow, "JobCreated")
+        .withArgs(1, ownerAddress, 1, pricePerEpoch);
+
+      const jobDetails = await cspEscrow.getJobDetails(1);
+      expect(jobDetails.id).to.equal(1n);
+      expect(await mockUsdc.balanceOf(delegateB)).to.equal(0);
     });
 
     it("reverts when setting zero permissions", async function () {
