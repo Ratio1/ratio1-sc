@@ -739,9 +739,10 @@ describe("PoAIManager", function () {
       );
       expect(registration.isActive).to.equal(true);
       expect(registration.escrowAddress).to.equal(escrowAddress);
-      expect(await cspEscrow.getDelegatedAddresses()).to.deep.equal([
-        delegateAddress,
-      ]);
+      const [delegatedAddresses, delegatedPermissions] =
+        await cspEscrow.getDelegatedAddresses();
+      expect(delegatedAddresses).to.deep.equal([delegateAddress]);
+      expect(delegatedPermissions).to.deep.equal([PERMISSION_CREATE_JOBS]);
       expect(await cspEscrow.getDelegatePermissions(delegateAddress)).to.equal(
         PERMISSION_CREATE_JOBS
       );
@@ -835,7 +836,10 @@ describe("PoAIManager", function () {
       );
 
       await cspEscrow.connect(user).removeDelegate(delegateAddress);
-      expect(await cspEscrow.getDelegatedAddresses()).to.deep.equal([]);
+      const [delegatedAddresses, delegatedPermissions] =
+        await cspEscrow.getDelegatedAddresses();
+      expect(delegatedAddresses).to.deep.equal([]);
+      expect(delegatedPermissions).to.deep.equal([]);
       const registration = await poaiManager.getAddressRegistration(
         delegateAddress
       );

@@ -871,8 +871,19 @@ contract CspEscrow is Initializable {
         revert("Delegate not found in array");
     }
 
-    function getDelegatedAddresses() external view returns (address[] memory) {
-        return delegatedAddresses;
+    function getDelegatedAddresses()
+        external
+        view
+        returns (address[] memory, uint256[] memory)
+    {
+        address[] memory delegates = delegatedAddresses;
+        uint256[] memory permissions = new uint256[](delegates.length);
+
+        for (uint256 i = 0; i < delegates.length; i++) {
+            permissions[i] = delegatesPermissions[delegates[i]];
+        }
+
+        return (delegates, permissions);
     }
 
     function getDelegatePermissions(
