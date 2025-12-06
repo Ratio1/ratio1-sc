@@ -62,11 +62,18 @@ uint256 constant JOB_TYPE_G_ULTRA_ULTRA1 = 38;
 uint256 constant JOB_TYPE_G_ULTRA_ULTRA2 = 39;
 uint256 constant JOB_TYPE_G_ULTRA_N_ULTRA = 40;
 
+uint256 constant PERMISSION_CREATE_JOBS = 1 << 0;
+uint256 constant PERMISSION_EXTEND_DURATION = 1 << 1;
+uint256 constant PERMISSION_EXTEND_NODES = 1 << 2;
+uint256 constant PERMISSION_REDEEM_UNUSED_JOB = 1 << 3;
+
 interface IPoAIManager {
     function getNewJobId() external returns (uint256);
     function registerNodeWithRewards(address nodeAddress) external;
     function removeNodeFromRewardsList(address nodeAddress) external;
     function removeJob(uint256 jobId) external;
+    function registerDelegatedAddress(address delegatedAddress) external;
+    function unregisterDelegatedAddress(address delegatedAddress) external;
 }
 
 struct JobDetails {
@@ -114,6 +121,8 @@ contract CspEscrow is Initializable {
 
     uint256[] public activeJobs;
     uint256[] public closedJobs;
+    mapping(address => uint256) private delegatesPermissions;
+    address[] private delegatedAddresses;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -171,6 +180,11 @@ contract CspEscrow is Initializable {
         uint256 oldLastExecutionEpoch,
         uint256 newLastExecutionEpoch
     );
+    event DelegatePermissionsUpdated(
+        address indexed delegate,
+        uint256 permissions
+    );
+    event DelegateRemoved(address indexed delegate);
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -212,7 +226,7 @@ contract CspEscrow is Initializable {
 
     function createJobs(
         JobCreationRequest[] memory jobCreationRequests
-    ) external onlyCspOwner returns (uint256[] memory) {
+    ) external onlyAllowed(PERMISSION_CREATE_JOBS) returns (uint256[] memory) {
         uint256 currentEpoch = getCurrentEpoch();
         uint256[] memory jobIds = new uint256[](jobCreationRequests.length);
         for (uint256 i = 0; i < jobCreationRequests.length; i++) {
@@ -283,7 +297,7 @@ contract CspEscrow is Initializable {
     function extendJobDuration(
         uint256 jobId,
         uint256 newLastExecutionEpoch
-    ) external onlyCspOwner {
+    ) external onlyAllowed(PERMISSION_EXTEND_DURATION) {
         JobDetails storage job = jobDetails[jobId];
         require(job.id != 0, "Job does not exist");
         require(
@@ -328,7 +342,7 @@ contract CspEscrow is Initializable {
     function extendJobNodes(
         uint256 jobId,
         uint256 newNumberOfNodesRequested
-    ) external onlyCspOwner {
+    ) external onlyAllowed(PERMISSION_EXTEND_NODES) {
         JobDetails storage job = jobDetails[jobId];
         require(job.id != 0, "Job does not exist");
         require(
@@ -497,7 +511,9 @@ contract CspEscrow is Initializable {
         }
     }
 
-    function redeemUnusedJob(uint256 jobId) external onlyCspOwner {
+    function redeemUnusedJob(
+        uint256 jobId
+    ) external onlyAllowed(PERMISSION_REDEEM_UNUSED_JOB) {
         JobDetails storage job = jobDetails[jobId];
         require(job.id != 0, "Job does not exist");
         require(job.startTimestamp == 0, "Job already started");
@@ -765,6 +781,15 @@ contract CspEscrow is Initializable {
         _;
     }
 
+    modifier onlyAllowed(uint256 permission) {
+        require(
+            msg.sender == cspOwner ||
+                (delegatesPermissions[msg.sender] & permission) != 0,
+            "Not authorized"
+        );
+        _;
+    }
+
     modifier onlyOracle() {
         address[] memory oracles = controller.getOracles();
         require(_isOracle(msg.sender, oracles), "Not an oracle");
@@ -803,6 +828,68 @@ contract CspEscrow is Initializable {
                 break;
             }
         }
+    }
+
+    function setDelegatePermissions(
+        address delegate,
+        uint256 permissions
+    ) external onlyCspOwner {
+        require(delegate != address(0), "Delegate cannot be zero");
+        require(delegate != cspOwner, "Cannot delegate to owner");
+        require(permissions != 0, "Permissions cannot be zero");
+
+        uint256 currentPermissions = delegatesPermissions[delegate];
+        if (currentPermissions == 0) {
+            poaiManager.registerDelegatedAddress(delegate);
+            delegatedAddresses.push(delegate);
+        }
+
+        delegatesPermissions[delegate] = permissions;
+        emit DelegatePermissionsUpdated(delegate, permissions);
+    }
+
+    function removeDelegate(address delegate) external onlyCspOwner {
+        uint256 currentPermissions = delegatesPermissions[delegate];
+        require(currentPermissions != 0, "Delegate not found");
+
+        delete delegatesPermissions[delegate];
+
+        uint256 length = delegatedAddresses.length;
+        for (uint256 i = 0; i < length; i++) {
+            if (delegatedAddresses[i] == delegate) {
+                uint256 lastIndex = length - 1;
+                if (i != lastIndex) {
+                    delegatedAddresses[i] = delegatedAddresses[lastIndex];
+                }
+                delegatedAddresses.pop();
+                poaiManager.unregisterDelegatedAddress(delegate);
+                emit DelegateRemoved(delegate);
+                return;
+            }
+        }
+
+        revert("Delegate not found in array");
+    }
+
+    function getDelegatedAddresses()
+        external
+        view
+        returns (address[] memory, uint256[] memory)
+    {
+        address[] memory delegates = delegatedAddresses;
+        uint256[] memory permissions = new uint256[](delegates.length);
+
+        for (uint256 i = 0; i < delegates.length; i++) {
+            permissions[i] = delegatesPermissions[delegates[i]];
+        }
+
+        return (delegates, permissions);
+    }
+
+    function getDelegatePermissions(
+        address delegate
+    ) external view returns (uint256) {
+        return delegatesPermissions[delegate];
     }
 
     // Get price for job type (pure function, no storage) - prices in USDC (6 decimals)
