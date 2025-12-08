@@ -136,6 +136,8 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     /// jobId => epochId => proposals
     mapping(uint256 => mapping(uint256 => NodesTransitionProposal[]))
         public nodesTransactionProposals;
+    // Mapping from delegated address to CSP Escrow address
+    mapping(address => address) public delegatedAddressToEscrow;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -476,6 +478,35 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         emit JobDeregistered(jobId, escrowAddress);
     }
 
+    function registerDelegatedAddress(
+        address delegatedAddress
+    ) external onlyCspEscrow {
+        require(delegatedAddress != address(0), "Invalid delegated address");
+        require(
+            ownerToEscrow[delegatedAddress] == address(0),
+            "Address already owns an escrow"
+        );
+        address existingEscrow = delegatedAddressToEscrow[delegatedAddress];
+        if (existingEscrow != address(0)) {
+            require(
+                existingEscrow == msg.sender,
+                "Address delegated to another escrow"
+            );
+            return;
+        }
+        delegatedAddressToEscrow[delegatedAddress] = msg.sender;
+    }
+
+    function unregisterDelegatedAddress(
+        address delegatedAddress
+    ) external onlyCspEscrow {
+        require(
+            delegatedAddressToEscrow[delegatedAddress] == msg.sender,
+            "Delegate not registered"
+        );
+        delete delegatedAddressToEscrow[delegatedAddress];
+    }
+
     // Register a node that has rewards to claim in a specific escrow
     function registerNodeWithRewards(
         address nodeAddress
@@ -702,6 +733,20 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         address nodeAddress
     ) external view returns (address[] memory) {
         return nodeToEscrowsWithRewards[nodeAddress];
+    }
+
+    function getAddressRegistration(
+        address account
+    ) external view returns (bool isActive, address escrowAddress) {
+        address ownedEscrow = ownerToEscrow[account];
+        if (ownedEscrow != address(0)) {
+            return (true, ownedEscrow);
+        }
+        address delegatedEscrow = delegatedAddressToEscrow[account];
+        if (delegatedEscrow != address(0)) {
+            return (true, delegatedEscrow);
+        }
+        return (false, address(0));
     }
 
     // Get all job IDs that have node updates submitted but no consensus reached yet that a specific oracle has not submitted yet
