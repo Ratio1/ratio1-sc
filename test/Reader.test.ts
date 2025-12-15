@@ -311,7 +311,7 @@ describe("Reader contract", function () {
     return {
       isActive: details[0],
       escrowAddress: details[1],
-      owner: details[2],
+      escrowOwner: details[2],
       permissions: details[3],
     };
   }
@@ -795,7 +795,7 @@ describe("Reader contract", function () {
       expect(mapped).to.deep.equal({
         isActive: false,
         escrowAddress: NULL_ADDRESS,
-        owner: NULL_ADDRESS,
+        escrowOwner: NULL_ADDRESS,
         permissions: 0n,
       });
     });
@@ -828,7 +828,7 @@ describe("Reader contract", function () {
       expect(mapped).to.deep.equal({
         isActive: true,
         escrowAddress,
-        owner: await owner.getAddress(),
+        escrowOwner: await owner.getAddress(),
         permissions: OWNER_ESCROW_PERMISSIONS,
       });
     });
@@ -870,7 +870,7 @@ describe("Reader contract", function () {
       expect(mapped).to.deep.equal({
         isActive: true,
         escrowAddress,
-        owner: await owner.getAddress(),
+        escrowOwner: await owner.getAddress(),
         permissions,
       });
     });
