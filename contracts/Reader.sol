@@ -88,6 +88,13 @@ struct EscrowDetails {
     uint256 activeJobsCount;
 }
 
+struct UserEscrowDetails {
+    bool isActive;
+    address escrowAddress;
+    address escrowOwner;
+    uint256 permissions;
+}
+
 interface IBaseDeed {
     function nodeToLicenseId(address node) external view returns (uint256);
 
@@ -127,11 +134,18 @@ interface IPoAIManager {
         view
         returns (CspWithOwner[] memory);
     function ownerToEscrow(address owner) external view returns (address);
+    function escrowToOwner(address escrow) external view returns (address);
+    function getAddressRegistration(
+        address account
+    ) external view returns (bool isActive, address escrowAddress);
 }
 
 interface ICspEscrow {
     function getTotalJobsBalance() external view returns (int256);
     function getActiveJobsCount() external view returns (uint256);
+    function getDelegatePermissions(
+        address delegate
+    ) external view returns (uint256);
 }
 
 contract Reader is Initializable {
@@ -143,6 +157,7 @@ contract Reader is Initializable {
 
     uint256 constant ND_LICENSE_ASSIGNED_TOKENS = 1575_188843457943924200;
     uint256 constant GENESIS_TOKEN_ID = 1;
+    uint256 constant ESCROW_OWNER_PERMISSIONS = type(uint256).max;
 
     function initialize(
         address _ndContract,
@@ -406,10 +421,7 @@ contract Reader is Initializable {
             if (ndContract.nodeToLicenseId(nodeAddr) != 0) {
                 owner = ndContract.getNodeOwner(nodeAddr);
             }
-            nodesOwners[i] = NdNodeOwner({
-                nodeAddress: nodeAddr,
-                owner: owner
-            });
+            nodesOwners[i] = NdNodeOwner({nodeAddress: nodeAddr, owner: owner});
         }
         return nodesOwners;
     }
@@ -459,6 +471,35 @@ contract Reader is Initializable {
             }
         }
         return false;
+    }
+
+    function getUserEscrowDetails(
+        address user
+    ) external view returns (UserEscrowDetails memory) {
+        (bool isActive, address escrowAddress) = poaiManager
+            .getAddressRegistration(user);
+        if (!isActive) {
+            return
+                UserEscrowDetails({
+                    isActive: false,
+                    escrowAddress: address(0),
+                    escrowOwner: address(0),
+                    permissions: 0
+                });
+        }
+
+        address escrowOwner = poaiManager.escrowToOwner(escrowAddress);
+        uint256 permissions = escrowOwner == user
+            ? ESCROW_OWNER_PERMISSIONS
+            : ICspEscrow(escrowAddress).getDelegatePermissions(user);
+
+        return
+            UserEscrowDetails({
+                isActive: true,
+                escrowAddress: escrowAddress,
+                escrowOwner: escrowOwner,
+                permissions: permissions
+            });
     }
 
     function _isOracle(
