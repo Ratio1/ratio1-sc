@@ -24,6 +24,7 @@ import {
   Reader,
   MNDContract,
   PoAIManager,
+  CspEscrow,
 } from "../typechain-types";
 
 /*
@@ -39,6 +40,9 @@ const invoiceUuid = Buffer.from("d18ac3989ae74da398c8ab26de41bb7c");
 const newCompanyWallet = "0x0000000000000000000000000000000000000009";
 const newVatWallet = "0x0000000000000000000000000000000000000009";
 const newLpWallet = "0x0000000000000000000000000000000000000001";
+const PERMISSION_CREATE_JOBS = 1n << 0n;
+const PERMISSION_EXTEND_NODES = 1n << 2n;
+const OWNER_ESCROW_PERMISSIONS = (1n << 256n) - 1n;
 
 describe("Reader contract", function () {
   /*
@@ -266,6 +270,9 @@ describe("Reader contract", function () {
   type NdNodeOwnerOutput = Awaited<
     ReturnType<Reader["getNdNodesOwners"]>
   >[number];
+  type UserEscrowDetailsOutput = Awaited<
+    ReturnType<Reader["getUserEscrowDetails"]>
+  >;
 
   function formatOracleDetails(oracle: OracleDetailsOutput) {
     return {
@@ -297,6 +304,15 @@ describe("Reader contract", function () {
     return {
       nodeAddress: nodeOwner[0],
       owner: nodeOwner[1],
+    };
+  }
+
+  function formatUserEscrowDetails(details: UserEscrowDetailsOutput) {
+    return {
+      isActive: details[0],
+      escrowAddress: details[1],
+      escrowOwner: details[2],
+      permissions: details[3],
     };
   }
 
@@ -765,6 +781,97 @@ describe("Reader contract", function () {
         owner: await owner.getAddress(),
         tvl: 0n,
         activeJobsCount: 0n,
+      });
+    });
+  });
+
+  describe("getUserEscrowDetails", function () {
+    it("returns inactive details for unregistered users", async function () {
+      const result = await reader.getUserEscrowDetails(
+        await firstUser.getAddress()
+      );
+      const mapped = formatUserEscrowDetails(result);
+
+      expect(mapped).to.deep.equal({
+        isActive: false,
+        escrowAddress: NULL_ADDRESS,
+        escrowOwner: NULL_ADDRESS,
+        permissions: 0n,
+      });
+    });
+
+    it("returns owner permissions for escrow owners", async function () {
+      await buyLicenseWithMintAndAllowance(
+        r1Contract,
+        ndContract,
+        owner,
+        owner,
+        await ndContract.getLicenseTokenPrice(),
+        1,
+        1,
+        10000,
+        20,
+        await createLicenseSignature(backend, owner, invoiceUuid, 10000)
+      );
+      await linkNode(ndContract, owner, 1, await backend.getAddress());
+
+      await poaiManager.connect(owner).deployCspEscrow();
+      const escrowAddress = await poaiManager.ownerToEscrow(
+        await owner.getAddress()
+      );
+
+      const result = await reader.getUserEscrowDetails(
+        await owner.getAddress()
+      );
+      const mapped = formatUserEscrowDetails(result);
+
+      expect(mapped).to.deep.equal({
+        isActive: true,
+        escrowAddress,
+        escrowOwner: await owner.getAddress(),
+        permissions: OWNER_ESCROW_PERMISSIONS,
+      });
+    });
+
+    it("returns delegate permissions for delegated addresses", async function () {
+      await buyLicenseWithMintAndAllowance(
+        r1Contract,
+        ndContract,
+        owner,
+        owner,
+        await ndContract.getLicenseTokenPrice(),
+        1,
+        1,
+        10000,
+        20,
+        await createLicenseSignature(backend, owner, invoiceUuid, 10000)
+      );
+      await linkNode(ndContract, owner, 1, await backend.getAddress());
+
+      await poaiManager.connect(owner).deployCspEscrow();
+      const escrowAddress = await poaiManager.ownerToEscrow(
+        await owner.getAddress()
+      );
+
+      const cspEscrow = (await ethers.getContractAt(
+        "CspEscrow",
+        escrowAddress
+      )) as unknown as CspEscrow;
+      const delegateAddress = await firstUser.getAddress();
+      const permissions = PERMISSION_CREATE_JOBS | PERMISSION_EXTEND_NODES;
+
+      await cspEscrow
+        .connect(owner)
+        .setDelegatePermissions(delegateAddress, permissions);
+
+      const result = await reader.getUserEscrowDetails(delegateAddress);
+      const mapped = formatUserEscrowDetails(result);
+
+      expect(mapped).to.deep.equal({
+        isActive: true,
+        escrowAddress,
+        escrowOwner: await owner.getAddress(),
+        permissions,
       });
     });
   });
