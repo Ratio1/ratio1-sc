@@ -20,13 +20,17 @@ uint256 constant JOB_TYPE_HIGH1 = 6;
 uint256 constant JOB_TYPE_HIGH2 = 7;
 uint256 constant JOB_TYPE_ULTRA1 = 8;
 uint256 constant JOB_TYPE_ULTRA2 = 9;
-// Service job types
+// Deprecated service job types
 uint256 constant JOB_TYPE_PGSQL_LOW = 10;
 uint256 constant JOB_TYPE_PGSQL_MED = 11;
 uint256 constant JOB_TYPE_MYSQL_LOW = 12;
 uint256 constant JOB_TYPE_MYSQL_MED = 13;
 uint256 constant JOB_TYPE_NOSQL_LOW = 14;
 uint256 constant JOB_TYPE_NOSQL_MED = 15;
+// Service job types
+uint256 constant JOB_TYPE_SERVICE_ENTRY = 50;
+uint256 constant JOB_TYPE_SERVICE_MED1 = 51;
+uint256 constant JOB_TYPE_SERVICE_HIGH1 = 52;
 // Native app job types
 uint256 constant JOB_TYPE_N_ENTRY = 16;
 uint256 constant JOB_TYPE_N_MED1 = 17;
@@ -57,12 +61,22 @@ uint256 constant JOB_TYPE_G_HIGH_N_ULTRA = 37;
 uint256 constant JOB_TYPE_G_ULTRA_ULTRA1 = 38;
 uint256 constant JOB_TYPE_G_ULTRA_ULTRA2 = 39;
 uint256 constant JOB_TYPE_G_ULTRA_N_ULTRA = 40;
+// New job types
+uint256 constant JOB_TYPE_MICRO = 53;
+uint256 constant JOB_TYPE_LITE = 54;
+
+uint256 constant PERMISSION_CREATE_JOBS = 1 << 0;
+uint256 constant PERMISSION_EXTEND_DURATION = 1 << 1;
+uint256 constant PERMISSION_EXTEND_NODES = 1 << 2;
+uint256 constant PERMISSION_REDEEM_UNUSED_JOB = 1 << 3;
 
 interface IPoAIManager {
     function getNewJobId() external returns (uint256);
     function registerNodeWithRewards(address nodeAddress) external;
     function removeNodeFromRewardsList(address nodeAddress) external;
     function removeJob(uint256 jobId) external;
+    function registerDelegatedAddress(address delegatedAddress) external;
+    function unregisterDelegatedAddress(address delegatedAddress) external;
 }
 
 struct JobDetails {
@@ -110,6 +124,8 @@ contract CspEscrow is Initializable {
 
     uint256[] public activeJobs;
     uint256[] public closedJobs;
+    mapping(address => uint256) private delegatesPermissions;
+    address[] private delegatedAddresses;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -146,6 +162,12 @@ contract CspEscrow is Initializable {
         uint256 newLastExecutionEpoch,
         uint256 additionalAmount
     );
+    event DeprecatedJobMigrated(
+        uint256 indexed jobId,
+        uint256 oldJobType,
+        uint256 newJobType,
+        uint256 newPricePerEpoch
+    );
     event JobNodesExtended(
         uint256 indexed jobId,
         uint256 newNumberOfNodesRequested,
@@ -156,6 +178,16 @@ contract CspEscrow is Initializable {
         address owner,
         uint256 refundAmount
     );
+    event JobLastExecutionEpochReconciled(
+        uint256 indexed jobId,
+        uint256 oldLastExecutionEpoch,
+        uint256 newLastExecutionEpoch
+    );
+    event DelegatePermissionsUpdated(
+        address indexed delegate,
+        uint256 permissions
+    );
+    event DelegateRemoved(address indexed delegate);
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -197,10 +229,14 @@ contract CspEscrow is Initializable {
 
     function createJobs(
         JobCreationRequest[] memory jobCreationRequests
-    ) external onlyCspOwner returns (uint256[] memory) {
+    ) external onlyAllowed(PERMISSION_CREATE_JOBS) returns (uint256[] memory) {
         uint256 currentEpoch = getCurrentEpoch();
         uint256[] memory jobIds = new uint256[](jobCreationRequests.length);
         for (uint256 i = 0; i < jobCreationRequests.length; i++) {
+            require(
+                !_isDeprecatedJobType(jobCreationRequests[i].jobType),
+                "Deprecated job type"
+            );
             require(
                 jobCreationRequests[i].lastExecutionEpoch > currentEpoch,
                 "Last execution epoch must be in the future"
@@ -264,7 +300,7 @@ contract CspEscrow is Initializable {
     function extendJobDuration(
         uint256 jobId,
         uint256 newLastExecutionEpoch
-    ) external onlyCspOwner {
+    ) external onlyAllowed(PERMISSION_EXTEND_DURATION) {
         JobDetails storage job = jobDetails[jobId];
         require(job.id != 0, "Job does not exist");
         require(
@@ -309,7 +345,7 @@ contract CspEscrow is Initializable {
     function extendJobNodes(
         uint256 jobId,
         uint256 newNumberOfNodesRequested
-    ) external onlyCspOwner {
+    ) external onlyAllowed(PERMISSION_EXTEND_NODES) {
         JobDetails storage job = jobDetails[jobId];
         require(job.id != 0, "Job does not exist");
         require(
@@ -358,8 +394,14 @@ contract CspEscrow is Initializable {
         job.activeNodes = newActiveNodes;
         job.lastNodesChangeTimestamp = currentTimestamp;
         if (job.startTimestamp == 0) {
+            uint256 currentEpoch = getCurrentEpoch();
+            uint256 requestEpoch = _calculateEpoch(job.requestTimestamp);
+            if (currentEpoch > requestEpoch) {
+                uint256 purchasedEpochs = job.lastExecutionEpoch - requestEpoch;
+                job.lastExecutionEpoch = currentEpoch + purchasedEpochs;
+            }
             job.startTimestamp = currentTimestamp;
-            job.lastAllocatedEpoch = getCurrentEpoch() - 1;
+            job.lastAllocatedEpoch = currentEpoch - 1;
             emit JobStarted(jobId, currentTimestamp);
         }
         if (newActiveNodes.length == 0) {
@@ -472,7 +514,9 @@ contract CspEscrow is Initializable {
         }
     }
 
-    function redeemUnusedJob(uint256 jobId) external onlyCspOwner {
+    function redeemUnusedJob(
+        uint256 jobId
+    ) external onlyAllowed(PERMISSION_REDEEM_UNUSED_JOB) {
         JobDetails storage job = jobDetails[jobId];
         require(job.id != 0, "Job does not exist");
         require(job.startTimestamp == 0, "Job already started");
@@ -533,6 +577,96 @@ contract CspEscrow is Initializable {
 
             job.balance -= int256(burnCorrection);
             emit JobBalanceReconciled(jobId, burnCorrection);
+        }
+    }
+
+    function reconcileAllJobs() external onlyPoAIManager {
+        for (uint256 i = 0; i < activeJobs.length; i++) {
+            uint256 jobId = activeJobs[i];
+            JobDetails storage job = jobDetails[jobId];
+
+            /*
+            Verify if lastExecutionEpoch is consistent with startTimestamp and
+            requestTimestamp, and correct it if necessary.
+            */
+            if (job.startTimestamp != 0) {
+                uint256 requestEpoch = _calculateEpoch(job.requestTimestamp);
+                uint256 startEpoch = _calculateEpoch(job.startTimestamp);
+
+                uint256 purchasedEpochsFromRequest = job.lastExecutionEpoch -
+                    requestEpoch;
+                uint256 purchasedEpochsFromStart = job.lastExecutionEpoch -
+                    startEpoch;
+                if (purchasedEpochsFromStart < purchasedEpochsFromRequest) {
+                    uint256 oldLastExecutionEpoch = job.lastExecutionEpoch;
+                    uint256 newLastExecutionEpoch = startEpoch +
+                        purchasedEpochsFromRequest;
+                    job.lastExecutionEpoch = newLastExecutionEpoch;
+                    emit JobLastExecutionEpochReconciled(
+                        jobId,
+                        oldLastExecutionEpoch,
+                        newLastExecutionEpoch
+                    );
+                }
+            }
+
+            /*
+            Migrate deprecated service job types to JOB_TYPE_SERVICE_ENTRY
+            */
+            if (_isDeprecatedJobType(job.jobType)) {
+                uint256 oldJobType = job.jobType;
+                uint256 oldPricePerEpoch = job.pricePerEpoch;
+                uint256 newPricePerEpoch = getPriceForJobType(
+                    JOB_TYPE_SERVICE_ENTRY
+                );
+                if (newPricePerEpoch < oldPricePerEpoch) {
+                    // The user paid more than the new price, refund the difference for the remaining epochs
+                    uint256 currentEpoch = getCurrentEpoch();
+                    uint256 remainingEpochs = job.lastExecutionEpoch >
+                        currentEpoch
+                        ? job.lastExecutionEpoch - currentEpoch
+                        : 0;
+                    if (remainingEpochs > 0) {
+                        uint256 refundAmount = (oldPricePerEpoch -
+                            newPricePerEpoch) *
+                            job.numberOfNodesRequested *
+                            remainingEpochs;
+                        require(
+                            IERC20(usdcToken).transfer(cspOwner, refundAmount),
+                            "USDC refund transfer failed"
+                        );
+                        job.balance -= int256(refundAmount);
+                    }
+                } else if (newPricePerEpoch > oldPricePerEpoch) {
+                    // The user paid less than the new price, update the lastExecutionEpoch accordingly
+                    uint256 currentEpoch = getCurrentEpoch();
+                    uint256 costPerEpoch = newPricePerEpoch *
+                        job.numberOfNodesRequested;
+                    if (job.balance < int256(costPerEpoch)) {
+                        uint256 refundAmount = uint256(job.balance);
+                        job.balance = 0;
+                        job.lastExecutionEpoch = currentEpoch;
+                        require(
+                            IERC20(usdcToken).transfer(cspOwner, refundAmount),
+                            "USDC refund transfer failed"
+                        );
+                    } else {
+                        uint256 affordableEpochs = uint256(job.balance) /
+                            costPerEpoch;
+                        job.lastExecutionEpoch =
+                            currentEpoch +
+                            affordableEpochs;
+                    }
+                }
+                job.jobType = JOB_TYPE_SERVICE_ENTRY;
+                job.pricePerEpoch = newPricePerEpoch;
+                emit DeprecatedJobMigrated(
+                    jobId,
+                    oldJobType,
+                    JOB_TYPE_SERVICE_ENTRY,
+                    newPricePerEpoch
+                );
+            }
         }
     }
 
@@ -650,6 +784,15 @@ contract CspEscrow is Initializable {
         _;
     }
 
+    modifier onlyAllowed(uint256 permission) {
+        require(
+            msg.sender == cspOwner ||
+                (delegatesPermissions[msg.sender] & permission) != 0,
+            "Not authorized"
+        );
+        _;
+    }
+
     modifier onlyOracle() {
         address[] memory oracles = controller.getOracles();
         require(_isOracle(msg.sender, oracles), "Not an oracle");
@@ -669,6 +812,16 @@ contract CspEscrow is Initializable {
         return false;
     }
 
+    function _isDeprecatedJobType(uint256 jobType) private pure returns (bool) {
+        return
+            jobType == JOB_TYPE_PGSQL_LOW ||
+            jobType == JOB_TYPE_PGSQL_MED ||
+            jobType == JOB_TYPE_MYSQL_LOW ||
+            jobType == JOB_TYPE_MYSQL_MED ||
+            jobType == JOB_TYPE_NOSQL_LOW ||
+            jobType == JOB_TYPE_NOSQL_MED;
+    }
+
     function swapRemoveActiveJob(uint256 jobId) internal {
         // Remove jobId from activeJobs array
         for (uint256 i = 0; i < activeJobs.length; i++) {
@@ -680,8 +833,73 @@ contract CspEscrow is Initializable {
         }
     }
 
+    function setDelegatePermissions(
+        address delegate,
+        uint256 permissions
+    ) external onlyCspOwner {
+        require(delegate != address(0), "Delegate cannot be zero");
+        require(delegate != cspOwner, "Cannot delegate to owner");
+        require(permissions != 0, "Permissions cannot be zero");
+
+        uint256 currentPermissions = delegatesPermissions[delegate];
+        if (currentPermissions == 0) {
+            poaiManager.registerDelegatedAddress(delegate);
+            delegatedAddresses.push(delegate);
+        }
+
+        delegatesPermissions[delegate] = permissions;
+        emit DelegatePermissionsUpdated(delegate, permissions);
+    }
+
+    function removeDelegate(address delegate) external onlyCspOwner {
+        uint256 currentPermissions = delegatesPermissions[delegate];
+        require(currentPermissions != 0, "Delegate not found");
+
+        delete delegatesPermissions[delegate];
+
+        uint256 length = delegatedAddresses.length;
+        for (uint256 i = 0; i < length; i++) {
+            if (delegatedAddresses[i] == delegate) {
+                uint256 lastIndex = length - 1;
+                if (i != lastIndex) {
+                    delegatedAddresses[i] = delegatedAddresses[lastIndex];
+                }
+                delegatedAddresses.pop();
+                poaiManager.unregisterDelegatedAddress(delegate);
+                emit DelegateRemoved(delegate);
+                return;
+            }
+        }
+
+        revert("Delegate not found in array");
+    }
+
+    function getDelegatedAddresses()
+        external
+        view
+        returns (address[] memory, uint256[] memory)
+    {
+        address[] memory delegates = delegatedAddresses;
+        uint256[] memory permissions = new uint256[](delegates.length);
+
+        for (uint256 i = 0; i < delegates.length; i++) {
+            permissions[i] = delegatesPermissions[delegates[i]];
+        }
+
+        return (delegates, permissions);
+    }
+
+    function getDelegatePermissions(
+        address delegate
+    ) external view returns (uint256) {
+        return delegatesPermissions[delegate];
+    }
+
     // Get price for job type (pure function, no storage) - prices in USDC (6 decimals)
     function getPriceForJobType(uint256 jobType) public pure returns (uint256) {
+        require(!_isDeprecatedJobType(jobType), "Deprecated job type");
+        if (jobType == JOB_TYPE_MICRO) return 100_000; // $3/month
+        if (jobType == JOB_TYPE_LITE) return 166_666; // $5/month
         if (jobType == JOB_TYPE_ENTRY) return 375_000; // $11.25/month
         if (jobType == JOB_TYPE_LOW1) return 750_000; // $22.5/month
         if (jobType == JOB_TYPE_LOW2) return 1_000_000; // $30/month
@@ -693,12 +911,9 @@ contract CspEscrow is Initializable {
         if (jobType == JOB_TYPE_ULTRA2) return 12_500_000; // $375/month
 
         // Services
-        if (jobType == JOB_TYPE_PGSQL_LOW) return 1_000_000; // $30/month
-        if (jobType == JOB_TYPE_PGSQL_MED) return 2_166_666; // $65/month
-        if (jobType == JOB_TYPE_MYSQL_LOW) return 1_000_000; // $30/month
-        if (jobType == JOB_TYPE_MYSQL_MED) return 2_166_666; // $65/month
-        if (jobType == JOB_TYPE_NOSQL_LOW) return 1_000_000; // $30/month
-        if (jobType == JOB_TYPE_NOSQL_MED) return 2_166_666; // $65/month
+        if (jobType == JOB_TYPE_SERVICE_ENTRY) return 450_000; // $13.5/month
+        if (jobType == JOB_TYPE_SERVICE_MED1) return 2_300_000; // $69/month
+        if (jobType == JOB_TYPE_SERVICE_HIGH1) return 4_500_000; // $135/month
 
         // Native Apps
         if (jobType == JOB_TYPE_N_ENTRY) return 2_500_000; // $75/month
