@@ -24997,7 +24997,7 @@
             "label": "ndContract",
             "offset": 0,
             "slot": "0",
-            "type": "t_contract(IND)2523",
+            "type": "t_contract(IND)29579",
             "contract": "Reader",
             "src": "contracts/Reader.sol:152"
           },
@@ -25005,7 +25005,7 @@
             "label": "mndContract",
             "offset": 0,
             "slot": "1",
-            "type": "t_contract(IMND)2534",
+            "type": "t_contract(IMND)29590",
             "contract": "Reader",
             "src": "contracts/Reader.sol:153"
           },
@@ -25013,7 +25013,7 @@
             "label": "controller",
             "offset": 0,
             "slot": "2",
-            "type": "t_contract(Controller)2115",
+            "type": "t_contract(Controller)19028",
             "contract": "Reader",
             "src": "contracts/Reader.sol:154"
           },
@@ -25021,7 +25021,7 @@
             "label": "r1Contract",
             "offset": 0,
             "slot": "3",
-            "type": "t_contract(R1)2335",
+            "type": "t_contract(R1)29391",
             "contract": "Reader",
             "src": "contracts/Reader.sol:155"
           },
@@ -25029,7 +25029,7 @@
             "label": "poaiManager",
             "offset": 0,
             "slot": "4",
-            "type": "t_contract(IPoAIManager)2574",
+            "type": "t_contract(IPoAIManager)29630",
             "contract": "Reader",
             "src": "contracts/Reader.sol:156"
           }
@@ -25039,7 +25039,7 @@
             "label": "bool",
             "numberOfBytes": "1"
           },
-          "t_struct(InitializableStorage)7_storage": {
+          "t_struct(InitializableStorage)73_storage": {
             "label": "struct Initializable.InitializableStorage",
             "members": [
               {
@@ -25061,23 +25061,23 @@
             "label": "uint64",
             "numberOfBytes": "8"
           },
-          "t_contract(Controller)2115": {
+          "t_contract(Controller)19028": {
             "label": "contract Controller",
             "numberOfBytes": "20"
           },
-          "t_contract(IMND)2534": {
+          "t_contract(IMND)29590": {
             "label": "contract IMND",
             "numberOfBytes": "20"
           },
-          "t_contract(IND)2523": {
+          "t_contract(IND)29579": {
             "label": "contract IND",
             "numberOfBytes": "20"
           },
-          "t_contract(IPoAIManager)2574": {
+          "t_contract(IPoAIManager)29630": {
             "label": "contract IPoAIManager",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)2335": {
+          "t_contract(R1)29391": {
             "label": "contract R1",
             "numberOfBytes": "20"
           }
