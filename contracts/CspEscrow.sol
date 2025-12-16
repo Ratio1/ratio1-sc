@@ -61,6 +61,9 @@ uint256 constant JOB_TYPE_G_HIGH_N_ULTRA = 37;
 uint256 constant JOB_TYPE_G_ULTRA_ULTRA1 = 38;
 uint256 constant JOB_TYPE_G_ULTRA_ULTRA2 = 39;
 uint256 constant JOB_TYPE_G_ULTRA_N_ULTRA = 40;
+// New job types
+uint256 constant JOB_TYPE_MICRO = 53;
+uint256 constant JOB_TYPE_LITE = 54;
 
 uint256 constant PERMISSION_CREATE_JOBS = 1 << 0;
 uint256 constant PERMISSION_EXTEND_DURATION = 1 << 1;
@@ -895,6 +898,8 @@ contract CspEscrow is Initializable {
     // Get price for job type (pure function, no storage) - prices in USDC (6 decimals)
     function getPriceForJobType(uint256 jobType) public pure returns (uint256) {
         require(!_isDeprecatedJobType(jobType), "Deprecated job type");
+        if (jobType == JOB_TYPE_MICRO) return 100_000; // $3/month
+        if (jobType == JOB_TYPE_LITE) return 166_666; // $5/month
         if (jobType == JOB_TYPE_ENTRY) return 375_000; // $11.25/month
         if (jobType == JOB_TYPE_LOW1) return 750_000; // $22.5/month
         if (jobType == JOB_TYPE_LOW2) return 1_000_000; // $30/month
