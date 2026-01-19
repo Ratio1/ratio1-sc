@@ -40,23 +40,23 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
 
     function recordLicenseSales(
         uint256 epoch,
-        uint256 licensesSold
+        uint256 newLicensesSold
     ) external onlyND {
-        if (licensesSold == 0) {
+        if (newLicensesSold == 0) {
             return;
         }
-        totalLicensesSold += licensesSold;
+        totalLicensesSold += newLicensesSold;
         _recordLicensesSold(epoch);
     }
 
     function recordPoaiVolume(
         uint256 epoch,
-        uint256 volume
+        uint256 newPoaiVolume
     ) external onlyPoAIManager {
-        if (volume == 0) {
+        if (newPoaiVolume == 0) {
             return;
         }
-        totalPoaiVolume += volume;
+        totalPoaiVolume += newPoaiVolume;
         _recordPoaiVolume(epoch);
     }
 
@@ -64,7 +64,10 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
         uint256[] calldata epochs,
         uint256[] calldata totals
     ) external onlyOwner {
-        require(poaiVolumeEpochs.length == 0, "PoAI volumes already set");
+        require(
+            poaiVolumeEpochs.length == 0 && totalPoaiVolume == 0,
+            "PoAI volumes already set"
+        );
         require(epochs.length == totals.length, "Length mismatch");
         for (uint256 i = 0; i < epochs.length; i++) {
             if (i > 0) {
@@ -83,7 +86,10 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
         uint256[] calldata epochs,
         uint256[] calldata totals
     ) external onlyOwner {
-        require(licensesSoldEpochs.length == 0, "License totals already set");
+        require(
+            licensesSoldEpochs.length == 0 && totalLicensesSold == 0,
+            "License sales already set"
+        );
         require(epochs.length == totals.length, "Length mismatch");
         for (uint256 i = 0; i < epochs.length; i++) {
             if (i > 0) {
