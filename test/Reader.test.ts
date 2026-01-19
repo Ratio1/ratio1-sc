@@ -27,6 +27,7 @@ import {
   PoAIManager,
   CspEscrow,
   ERC20Mock,
+  AdoptionOracle,
 } from "../typechain-types";
 
 /*
@@ -65,6 +66,7 @@ describe("Reader contract", function () {
   let ndContract: NDContract;
   let mndContract: MNDContract;
   let poaiManager: PoAIManager;
+  let adoptionOracle: AdoptionOracle;
   let firstUser: HardhatEthersSigner;
   let oracle_assignation_timestamp: number;
   let usdcContract: ERC20Mock;
@@ -156,6 +158,21 @@ describe("Reader contract", function () {
     await ndContract
       .connect(owner)
       .setPoAIManager(await poaiManager.getAddress());
+    const AdoptionOracleFactory = await ethers.getContractFactory(
+      "AdoptionOracle"
+    );
+    adoptionOracle = (await upgrades.deployProxy(
+      AdoptionOracleFactory,
+      [
+        await owner.getAddress(),
+        await ndContract.getAddress(),
+        await poaiManager.getAddress(),
+      ],
+      { initializer: "initialize" }
+    )) as AdoptionOracle;
+    await adoptionOracle.waitForDeployment();
+    await ndContract.setAdoptionOracle(await adoptionOracle.getAddress());
+    await poaiManager.setAdoptionOracle(await adoptionOracle.getAddress());
 
     const ReaderContract = await ethers.getContractFactory("Reader");
     reader = await ReaderContract.deploy();
