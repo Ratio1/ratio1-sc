@@ -105,7 +105,6 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     address public r1Token;
     address public uniswapV2Router;
     address public uniswapV2Pair;
-    IAdoptionOracle public adoptionOracle;
 
     uint256 public nextJobId;
     uint256 public lastAllocatedEpoch;
@@ -144,6 +143,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     // Mapping from delegated address to CSP Escrow address
     mapping(address => address) public delegatedAddressToEscrow;
     address public burnContract;
+    IAdoptionOracle public adoptionOracle;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
