@@ -5,10 +5,11 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 contract AdoptionOracle is Initializable, OwnableUpgradeable {
-    uint256 public totalLicensesSold;
-    uint256 public totalPoaiVolume;
     address public ndContract;
     address public poaiManager;
+
+    uint256 public totalLicensesSold;
+    uint256 public totalPoaiVolume;
 
     uint256[] private licensesSoldEpochs;
     uint256[] private licensesSoldTotals;
@@ -37,7 +38,6 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
         _;
     }
 
-
     function recordLicenseSales(
         uint256 epoch,
         uint256 licensesSold
@@ -58,6 +58,44 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
         }
         totalPoaiVolume += volume;
         _recordPoaiVolume(epoch);
+    }
+
+    function initializePoaiVolumes(
+        uint256[] calldata epochs,
+        uint256[] calldata totals
+    ) external onlyOwner {
+        require(poaiVolumeEpochs.length == 0, "PoAI volumes already set");
+        require(epochs.length == totals.length, "Length mismatch");
+        for (uint256 i = 0; i < epochs.length; i++) {
+            if (i > 0) {
+                require(epochs[i] > epochs[i - 1], "Epochs not increasing");
+                require(totals[i] >= totals[i - 1], "Totals not increasing");
+            }
+            poaiVolumeEpochs.push(epochs[i]);
+            poaiVolumeTotals.push(totals[i]);
+        }
+        if (totals.length > 0) {
+            totalPoaiVolume = totals[totals.length - 1];
+        }
+    }
+
+    function initializeLicenseSales(
+        uint256[] calldata epochs,
+        uint256[] calldata totals
+    ) external onlyOwner {
+        require(licensesSoldEpochs.length == 0, "License totals already set");
+        require(epochs.length == totals.length, "Length mismatch");
+        for (uint256 i = 0; i < epochs.length; i++) {
+            if (i > 0) {
+                require(epochs[i] > epochs[i - 1], "Epochs not increasing");
+                require(totals[i] >= totals[i - 1], "Totals not increasing");
+            }
+            licensesSoldEpochs.push(epochs[i]);
+            licensesSoldTotals.push(totals[i]);
+        }
+        if (totals.length > 0) {
+            totalLicensesSold = totals[totals.length - 1];
+        }
     }
 
     function getLicensesSoldRange(
