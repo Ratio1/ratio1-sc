@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import {
   deployController,
@@ -19,7 +19,13 @@ import {
   START_EPOCH_TIMESTAMP,
   takeSnapshot,
 } from "./helpers";
-import { Controller, MNDContract, NDContract, R1 } from "../typechain-types";
+import {
+  AdoptionOracle,
+  Controller,
+  MNDContract,
+  NDContract,
+  R1,
+} from "../typechain-types";
 
 // npx hardhat test     ---- for gas usage
 // npx hardhat coverage ---- for test coverage
@@ -47,6 +53,8 @@ const REWARDS_AMOUNT = 106362840848417488913n;
 const LICENSE_POWER = 485410n * ONE_TOKEN;
 const CLIFF_PERIOD = 223n;
 const MND_MAX_MINTING_DURATION = 30 * 30;
+const ND_FULL_RELEASE_THRESHOLD = 1;
+const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 1;
 
 const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: 2n,
@@ -78,8 +86,10 @@ describe("MNDContract", function () {
     */
 
   let mndContract: MNDContract;
+  let ndContract: NDContract;
   let r1Contract: R1;
   let controllerContract: Controller;
+  let adoptionOracle: AdoptionOracle;
   let owner: HardhatEthersSigner;
   let firstUser: HardhatEthersSigner;
   let secondUser: HardhatEthersSigner;
@@ -118,13 +128,30 @@ describe("MNDContract", function () {
       controller: controllerContract,
       owner,
     });
-    const ndContract = await deployNDContract({
+    ndContract = await deployNDContract({
       r1: r1Contract,
       controller: controllerContract,
       owner,
     });
 
     await mndContract.setNDContract(await ndContract.getAddress());
+
+    const AdoptionOracleFactory =
+      await ethers.getContractFactory("AdoptionOracle");
+    adoptionOracle = (await upgrades.deployProxy(
+      AdoptionOracleFactory,
+      [
+        await owner.getAddress(),
+        await ndContract.getAddress(),
+        await owner.getAddress(),
+        ND_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+      ],
+      { initializer: "initialize" }
+    )) as AdoptionOracle;
+    await adoptionOracle.waitForDeployment();
+    await adoptionOracle.initializeLicenseSales([0], [2]);
+    await mndContract.setAdoptionOracle(await adoptionOracle.getAddress());
 
     await r1Contract.setNdContract(await owner.getAddress());
     await r1Contract.setMndContract(await mndContract.getAddress());
@@ -200,6 +227,28 @@ describe("MNDContract", function () {
     await setTimestampAndMine(todayCliffEpochPassed);
   }
 
+  async function deployAdoptionOracleWithSales(
+    epochs: number[],
+    totals: number[]
+  ) {
+    const AdoptionOracleFactory =
+      await ethers.getContractFactory("AdoptionOracle");
+    const oracle = (await upgrades.deployProxy(
+      AdoptionOracleFactory,
+      [
+        await owner.getAddress(),
+        await ndContract.getAddress(),
+        await owner.getAddress(),
+        ND_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+      ],
+      { initializer: "initialize" }
+    )) as AdoptionOracle;
+    await oracle.waitForDeployment();
+    await oracle.initializeLicenseSales(epochs, totals);
+    return oracle;
+  }
+
   /*
     .########.########..######..########..######.
     ....##....##.......##....##....##....##....##
@@ -244,6 +293,34 @@ describe("MNDContract", function () {
       mndContract
         .connect(firstUser)
         .setNDContract(await secondUser.getAddress())
+    ).to.be.revertedWithCustomError(mndContract, "OwnableUnauthorizedAccount");
+  });
+
+  it("Set adoption oracle - should work", async function () {
+    const oracle = await deployAdoptionOracleWithSales([0], [2]);
+    await mndContract.setAdoptionOracle(await oracle.getAddress());
+  });
+
+  it("Set adoption oracle - invalid address", async function () {
+    await expect(
+      mndContract.setAdoptionOracle(NULL_ADDRESS)
+    ).to.be.revertedWith("Invalid adoption oracle");
+  });
+
+  it("Set adoption oracle - OwnableUnauthorizedAccount", async function () {
+    await expect(
+      mndContract.connect(firstUser).setAdoptionOracle(await owner.getAddress())
+    ).to.be.revertedWithCustomError(mndContract, "OwnableUnauthorizedAccount");
+  });
+
+  it("Set max carryover release factor - should work", async function () {
+    await mndContract.setMaxCarryoverReleaseFactor(200);
+    expect(await mndContract.maxCarryoverReleaseFactor()).to.equal(200);
+  });
+
+  it("Set max carryover release factor - OwnableUnauthorizedAccount", async function () {
+    await expect(
+      mndContract.connect(firstUser).setMaxCarryoverReleaseFactor(200)
     ).to.be.revertedWithCustomError(mndContract, "OwnableUnauthorizedAccount");
   });
 
@@ -786,6 +863,93 @@ describe("MNDContract", function () {
       licenseId: 2n,
       rewardsAmount: 9754316031215612969n,
     });
+  });
+
+  it("Adoption gating - withholds rewards into AWB when adoption is zero", async function () {
+    const adoptionOracleOverride = await deployAdoptionOracleWithSales([0], [0]);
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 1),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const zeroAdoptionParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [Number(CLIFF_PERIOD)],
+      availabilies: [255],
+    };
+    const zeroAdoptionSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: zeroAdoptionParams.nodeAddress,
+      epochs: zeroAdoptionParams.epochs,
+      availabilities: zeroAdoptionParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards(
+        [zeroAdoptionParams],
+        [[ethers.getBytes(zeroAdoptionSignature)]]
+      );
+
+    const awbBalance = await mndContract.awbBalances(2);
+    const license = await mndContract.licenses(2);
+    expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
+      0n
+    );
+    expect(awbBalance).to.be.gt(0n);
+    expect(license.totalClaimedAmount).to.equal(awbBalance);
+  });
+
+  it("Adoption gating - releases carryover when adoption increases", async function () {
+    const adoptionOracleOverride = await deployAdoptionOracleWithSales(
+      [0, Number(CLIFF_PERIOD) + 1],
+      [0, 2]
+    );
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 2),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const params = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [Number(CLIFF_PERIOD), Number(CLIFF_PERIOD) + 1],
+      availabilies: [255, 255],
+    };
+    const paramsSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: params.nodeAddress,
+      epochs: params.epochs,
+      availabilities: params.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([params], [[ethers.getBytes(paramsSignature)]]);
+
+    const awbBalance = await mndContract.awbBalances(2);
+    const license = await mndContract.licenses(2);
+    const minted = await r1Contract.balanceOf(await firstUser.getAddress());
+    expect(awbBalance).to.equal(0n);
+    expect(minted).to.equal(license.totalClaimedAmount);
+    expect(minted).to.be.gt(0n);
   });
 
   it("Claim rewards - should work", async function () {
