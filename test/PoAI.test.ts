@@ -28,6 +28,8 @@ import {
 } from "../typechain-types";
 
 describe("PoAIManager", function () {
+  const ND_FULL_RELEASE_THRESHOLD = 7_500;
+  const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 2_500_000;
   let poaiManager: PoAIManager;
   let ndContract: NDContract;
   let mndContract: MNDContract;
@@ -145,6 +147,8 @@ describe("PoAIManager", function () {
         await owner.getAddress(),
         await ndContract.getAddress(),
         await poaiManager.getAddress(),
+        ND_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_FULL_RELEASE_THRESHOLD,
       ],
       { initializer: "initialize" }
     )) as AdoptionOracle;

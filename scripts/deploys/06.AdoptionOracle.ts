@@ -3,6 +3,8 @@ import {
   SAFE_ADDR,
   ND_SC_ADDR,
   POAI_MANAGER_ADDR,
+  ND_FULL_RELEASE_THRESHOLD,
+  POAI_VOLUME_FULL_RELEASE_THRESHOLD,
 } from "../configs/constants";
 
 async function main() {
@@ -15,7 +17,13 @@ async function main() {
   );
   const adoptionOracle = await upgrades.deployProxy(
     AdoptionOracleFactory,
-    [SAFE_ADDR, ND_SC_ADDR, POAI_MANAGER_ADDR],
+    [
+      SAFE_ADDR,
+      ND_SC_ADDR,
+      POAI_MANAGER_ADDR,
+      ND_FULL_RELEASE_THRESHOLD,
+      POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+    ],
     { initializer: "initialize" }
   );
   await adoptionOracle.deployed();

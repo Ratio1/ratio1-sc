@@ -48,6 +48,8 @@ const PERMISSION_EXTEND_NODES = 1n << 2n;
 const OWNER_ESCROW_PERMISSIONS = (1n << 256n) - 1n;
 
 describe("Reader contract", function () {
+  const ND_FULL_RELEASE_THRESHOLD = 7_500;
+  const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 2_500_000;
   /*
     .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
     .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -167,6 +169,8 @@ describe("Reader contract", function () {
         await owner.getAddress(),
         await ndContract.getAddress(),
         await poaiManager.getAddress(),
+        ND_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_FULL_RELEASE_THRESHOLD,
       ],
       { initializer: "initialize" }
     )) as AdoptionOracle;

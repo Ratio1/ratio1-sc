@@ -4,6 +4,8 @@ import { ethers, upgrades } from "hardhat";
 import { AdoptionOracle } from "../typechain-types";
 
 describe("AdoptionOracle", function () {
+  const ND_FULL_RELEASE_THRESHOLD = 7_500;
+  const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 2_500_000;
   let owner: Signer;
   let other: Signer;
   let nd: Signer;
@@ -21,6 +23,8 @@ describe("AdoptionOracle", function () {
         await owner.getAddress(),
         await nd.getAddress(),
         await poai.getAddress(),
+        ND_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_FULL_RELEASE_THRESHOLD,
       ],
       { initializer: "initialize" }
     );
@@ -94,6 +98,15 @@ describe("AdoptionOracle", function () {
       await expect(
         adoptionOracle.initializePoaiVolumes([2], [20n])
       ).to.be.revertedWith("PoAI volumes already set");
+    });
+
+    it("sets initial thresholds", async function () {
+      expect(await adoptionOracle.ndFullReleaseThreshold()).to.equal(
+        ND_FULL_RELEASE_THRESHOLD
+      );
+      expect(await adoptionOracle.poaiVolumeFullReleaseThreshold()).to.equal(
+        POAI_VOLUME_FULL_RELEASE_THRESHOLD
+      );
     });
   });
 
@@ -212,6 +225,67 @@ describe("AdoptionOracle", function () {
       await expect(
         adoptionOracle.getLicensesSoldRange(3, 1)
       ).to.be.revertedWith("Invalid epoch range");
+    });
+  });
+
+  describe("adoption percentage", function () {
+    it("computes adoption percentage at an epoch", async function () {
+      await adoptionOracle.connect(nd).recordLicenseSales(1, 3_750);
+      await adoptionOracle.connect(poai).recordPoaiVolume(1, 1_250_000);
+
+      const percentage = await adoptionOracle.getAdoptionPercentageAtEpoch(1);
+      expect(percentage).to.equal(127n);
+    });
+
+    it("caps adoption percentage at 100%", async function () {
+      await adoptionOracle.connect(nd).recordLicenseSales(2, 7_500);
+      await adoptionOracle.connect(poai).recordPoaiVolume(2, 2_500_000);
+
+      const percentage = await adoptionOracle.getAdoptionPercentageAtEpoch(2);
+      expect(percentage).to.equal(255n);
+    });
+
+    it("adoption percentage reaches 100% with only one metric", async function () {
+      await adoptionOracle.connect(nd).recordLicenseSales(2, 0);
+      await adoptionOracle.connect(poai).recordPoaiVolume(2, 6_000_000);
+
+      const percentage = await adoptionOracle.getAdoptionPercentageAtEpoch(2);
+      expect(percentage).to.equal(255n);
+    });
+
+    it("returns adoption percentages over a range", async function () {
+      await adoptionOracle.connect(nd).recordLicenseSales(2, 3_750);
+      await adoptionOracle.connect(poai).recordPoaiVolume(3, 2_500_000);
+
+      const range = await adoptionOracle.getAdoptionPercentagesRange(1, 3);
+      expect(range).to.deep.equal([0n, 63n, 191n]);
+    });
+  });
+
+  describe("threshold updates", function () {
+    it("updates thresholds as owner", async function () {
+      await adoptionOracle.setNdFullReleaseThreshold(1_000);
+      await adoptionOracle.setPoaiVolumeFullReleaseThreshold(2_000_000);
+
+      expect(await adoptionOracle.ndFullReleaseThreshold()).to.equal(1_000n);
+      expect(await adoptionOracle.poaiVolumeFullReleaseThreshold()).to.equal(
+        2_000_000n
+      );
+    });
+
+    it("reverts when non-owner updates thresholds", async function () {
+      await expect(adoptionOracle.connect(other).setNdFullReleaseThreshold(1))
+        .to.be.revertedWithCustomError(
+          adoptionOracle,
+          "OwnableUnauthorizedAccount"
+        )
+        .withArgs(await other.getAddress());
+    });
+
+    it("reverts on zero threshold", async function () {
+      await expect(
+        adoptionOracle.setNdFullReleaseThreshold(0)
+      ).to.be.revertedWith("ND threshold cannot be zero");
     });
   });
 });

@@ -3,8 +3,9 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-
 contract AdoptionOracle is Initializable, OwnableUpgradeable {
+    uint256 private constant MAX_ADOPTION_PERCENTAGE = 255;
+
     address public ndContract;
     address public poaiManager;
 
@@ -16,16 +17,31 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
     uint256[] private poaiVolumeEpochs;
     uint256[] private poaiVolumeTotals;
 
+    uint256 public ndFullReleaseThreshold;
+    uint256 public poaiVolumeFullReleaseThreshold;
+
+    event NdFullReleaseThresholdUpdated(uint256 newThreshold);
+    event PoaiVolumeFullReleaseThresholdUpdated(uint256 newThreshold);
+
     function initialize(
         address newOwner,
         address ndContract_,
-        address poaiManager_
+        address poaiManager_,
+        uint256 ndFullReleaseThreshold_,
+        uint256 poaiVolumeFullReleaseThreshold_
     ) public initializer {
         require(ndContract_ != address(0), "ND contract cannot be zero");
         require(poaiManager_ != address(0), "PoAI Manager cannot be zero");
+        require(ndFullReleaseThreshold_ != 0, "ND threshold cannot be zero");
+        require(
+            poaiVolumeFullReleaseThreshold_ != 0,
+            "PoAI threshold cannot be zero"
+        );
         __Ownable_init(newOwner);
         ndContract = ndContract_;
         poaiManager = poaiManager_;
+        ndFullReleaseThreshold = ndFullReleaseThreshold_;
+        poaiVolumeFullReleaseThreshold = poaiVolumeFullReleaseThreshold_;
     }
 
     modifier onlyND() {
@@ -58,6 +74,20 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
         }
         totalPoaiVolume += newPoaiVolume;
         _recordPoaiVolume(epoch);
+    }
+
+    function setNdFullReleaseThreshold(uint256 newThreshold) external onlyOwner {
+        require(newThreshold != 0, "ND threshold cannot be zero");
+        ndFullReleaseThreshold = newThreshold;
+        emit NdFullReleaseThresholdUpdated(newThreshold);
+    }
+
+    function setPoaiVolumeFullReleaseThreshold(
+        uint256 newThreshold
+    ) external onlyOwner {
+        require(newThreshold != 0, "PoAI threshold cannot be zero");
+        poaiVolumeFullReleaseThreshold = newThreshold;
+        emit PoaiVolumeFullReleaseThresholdUpdated(newThreshold);
     }
 
     function initializePoaiVolumes(
@@ -143,6 +173,60 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
         return found ? licensesSoldTotals[index] : 0;
     }
 
+    function getAdoptionPercentageAtEpoch(
+        uint256 epoch
+    ) public view returns (uint8) {
+        return
+            _calculateAdoptionPercentage(
+                getLicensesSoldAtEpoch(epoch),
+                getPoaiVolumeAtEpoch(epoch)
+            );
+    }
+
+    function getAdoptionPercentagesRange(
+        uint256 fromEpoch,
+        uint256 toEpoch
+    ) public view returns (uint8[] memory) {
+        require(fromEpoch <= toEpoch, "Invalid epoch range");
+        uint256 length = toEpoch - fromEpoch + 1;
+        uint8[] memory percentages = new uint8[](length);
+
+        (uint256 ndIndex, bool ndFound) = _findLicensesSoldCheckpoint(
+            fromEpoch
+        );
+        uint256 currentNdTotal = ndFound ? licensesSoldTotals[ndIndex] : 0;
+        uint256 nextNdIndex = ndFound ? ndIndex + 1 : 0;
+
+        (uint256 poaiIndex, bool poaiFound) = _findPoaiVolumeCheckpoint(
+            fromEpoch
+        );
+        uint256 currentPoaiTotal = poaiFound ? poaiVolumeTotals[poaiIndex] : 0;
+        uint256 nextPoaiIndex = poaiFound ? poaiIndex + 1 : 0;
+
+        for (uint256 i = 0; i < length; i++) {
+            uint256 epoch = fromEpoch + i;
+            while (
+                nextNdIndex < licensesSoldEpochs.length &&
+                licensesSoldEpochs[nextNdIndex] <= epoch
+            ) {
+                currentNdTotal = licensesSoldTotals[nextNdIndex];
+                nextNdIndex++;
+            }
+            while (
+                nextPoaiIndex < poaiVolumeEpochs.length &&
+                poaiVolumeEpochs[nextPoaiIndex] <= epoch
+            ) {
+                currentPoaiTotal = poaiVolumeTotals[nextPoaiIndex];
+                nextPoaiIndex++;
+            }
+            percentages[i] = _calculateAdoptionPercentage(
+                currentNdTotal,
+                currentPoaiTotal
+            );
+        }
+        return percentages;
+    }
+
     function getPoaiVolumeRange(
         uint256 fromEpoch,
         uint256 toEpoch
@@ -178,6 +262,23 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
         }
         (uint256 index, bool found) = _findPoaiVolumeCheckpoint(epoch);
         return found ? poaiVolumeTotals[index] : 0;
+    }
+
+    function _calculateAdoptionPercentage(
+        uint256 totalLicensesSold_,
+        uint256 totalPoaiVolume_
+    ) private view returns (uint8) {
+        uint256 ndScore =
+            (totalLicensesSold_ * MAX_ADOPTION_PERCENTAGE) /
+            ndFullReleaseThreshold;
+        uint256 poaiScore =
+            (totalPoaiVolume_ * MAX_ADOPTION_PERCENTAGE) /
+            poaiVolumeFullReleaseThreshold;
+        uint256 combined = (ndScore + poaiScore) / 2;
+        if (combined > MAX_ADOPTION_PERCENTAGE) {
+            combined = MAX_ADOPTION_PERCENTAGE;
+        }
+        return uint8(combined);
     }
 
     function _recordLicensesSold(uint256 epoch) private {

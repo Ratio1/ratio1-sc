@@ -125,6 +125,8 @@ const EXPECTED_PRICE_TIERS = [
 ];
 
 describe("NDContract", function () {
+  const ND_FULL_RELEASE_THRESHOLD = 7_500;
+  const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 2_500_000;
   /*
   .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
   .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -244,6 +246,8 @@ describe("NDContract", function () {
         await owner.getAddress(),
         await ndContract.getAddress(),
         await poaiManager.getAddress(),
+        ND_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_FULL_RELEASE_THRESHOLD,
       ],
       { initializer: "initialize" }
     )) as AdoptionOracle;
