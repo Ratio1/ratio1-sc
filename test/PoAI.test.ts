@@ -58,9 +58,7 @@ describe("PoAIManager", function () {
 
     r1 = await deployR1(owner);
     const BurnContractFactory = await ethers.getContractFactory("BurnContract");
-    burnContract = (await BurnContractFactory.deploy(
-      await r1.getAddress()
-    )) as BurnContract;
+    burnContract = await BurnContractFactory.deploy(await r1.getAddress());
     await burnContract.waitForDeployment();
     await r1.connect(owner).addBurner(await burnContract.getAddress());
     controller = await deployController({
@@ -260,7 +258,7 @@ describe("PoAIManager", function () {
     slotOffset: bigint,
     value: bigint
   ) {
-    const mappingSlot = 8;
+    const mappingSlot = 7;
     const baseSlot = ethers.keccak256(
       AbiCoder.defaultAbiCoder().encode(
         ["uint256", "uint256"],
@@ -304,16 +302,19 @@ describe("PoAIManager", function () {
       const BurnContractFactory = await ethers.getContractFactory(
         "BurnContract"
       );
-      const newBurnContract = (await BurnContractFactory.deploy(
+      const newBurnContract = await BurnContractFactory.deploy(
         await r1.getAddress()
-      )) as BurnContract;
+      );
       await newBurnContract.waitForDeployment();
 
       await expect(
-        poaiManager.connect(user).setBurnContract(
-          await newBurnContract.getAddress()
-        )
-      ).to.be.revertedWithCustomError(poaiManager, "OwnableUnauthorizedAccount");
+        poaiManager
+          .connect(user)
+          .setBurnContract(await newBurnContract.getAddress())
+      ).to.be.revertedWithCustomError(
+        poaiManager,
+        "OwnableUnauthorizedAccount"
+      );
     });
 
     it("sets burn contract and updates existing escrows", async function () {
@@ -324,9 +325,9 @@ describe("PoAIManager", function () {
       const BurnContractFactory = await ethers.getContractFactory(
         "BurnContract"
       );
-      const newBurnContract = (await BurnContractFactory.deploy(
+      const newBurnContract = await BurnContractFactory.deploy(
         await r1.getAddress()
-      )) as BurnContract;
+      );
       await newBurnContract.waitForDeployment();
 
       await poaiManager
@@ -347,9 +348,7 @@ describe("PoAIManager", function () {
       const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
 
       await expect(
-        cspEscrow
-          .connect(user)
-          .setBurnContract(await burnContract.getAddress())
+        cspEscrow.connect(user).setBurnContract(await burnContract.getAddress())
       ).to.be.revertedWith("Not PoAI Manager");
     });
   });
@@ -1644,7 +1643,7 @@ describe("PoAIManager", function () {
       expectedCorrectLastExecutionEpoch
     );
 
-    const mappingSlot = 8;
+    const mappingSlot = 7;
     const lastExecutionEpochSlot = getJobStructSlot(1n, mappingSlot, 7);
     const legacyLastExecutionEpoch = creationEpoch + jobDuration;
     await ethers.provider.send("hardhat_setStorageAt", [
@@ -2620,7 +2619,7 @@ describe("PoAIManager", function () {
 
       const legacyBalance = correctBalance + burnDebt;
 
-      const mappingSlot = 8;
+      const mappingSlot = 7;
       const baseSlot = ethers.keccak256(
         AbiCoder.defaultAbiCoder().encode(
           ["uint256", "uint256"],

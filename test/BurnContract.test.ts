@@ -26,9 +26,7 @@ describe("BurnContract", function () {
 
     r1Contract = await deployR1(owner);
     const factory = await ethers.getContractFactory("BurnContract");
-    burnContract = (await factory.deploy(
-      await r1Contract.getAddress()
-    )) as BurnContract;
+    burnContract = await factory.deploy(await r1Contract.getAddress());
     await burnContract.waitForDeployment();
 
     snapshotId = await takeSnapshot();
@@ -78,5 +76,18 @@ describe("BurnContract", function () {
     await expect(
       burnContract.connect(firstUser).burn(ONE_TOKEN * 2n)
     ).to.be.revertedWithCustomError(r1Contract, "ERC20InsufficientBalance");
+  });
+
+  it("burn- works after renouncing ownership", async function () {
+    await r1Contract.setNdContract(owner.getAddress());
+    await r1Contract.addBurner(await burnContract.getAddress());
+    await r1Contract.mint(firstUser.getAddress(), ONE_TOKEN * 3n);
+
+    await r1Contract.renounceOwnership();
+
+    await burnContract.connect(firstUser).burn(ONE_TOKEN);
+    expect(await r1Contract.balanceOf(firstUser.getAddress())).to.equal(
+      ONE_TOKEN * 2n
+    );
   });
 });
