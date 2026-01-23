@@ -99,7 +99,6 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     Controller public controller;
     address public usdcToken;
     address public r1Token;
-    address public burnContract;
     address public uniswapV2Router;
     address public uniswapV2Pair;
 
@@ -139,6 +138,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         public nodesTransactionProposals;
     // Mapping from delegated address to CSP Escrow address
     mapping(address => address) public delegatedAddressToEscrow;
+    address public burnContract;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -209,10 +209,6 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         controller = Controller(_controller);
         usdcToken = _usdcToken;
         r1Token = _r1Token;
-        require(
-            _burnContract != address(0),
-            "Burn contract cannot be zero address"
-        );
         burnContract = _burnContract;
         uniswapV2Router = _uniswapV2Router;
         uniswapV2Pair = _uniswapV2Pair;

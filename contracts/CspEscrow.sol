@@ -119,7 +119,6 @@ contract CspEscrow is Initializable {
     address public cspOwner;
     address public usdcToken;
     R1 public r1Token;
-    IBurnContract public burnContract;
     Controller public controller;
     IUniswapV2Router02 public uniswapV2Router;
     IUniswapV2Pair public uniswapV2Pair;
@@ -131,6 +130,7 @@ contract CspEscrow is Initializable {
     uint256[] public closedJobs;
     mapping(address => uint256) private delegatesPermissions;
     address[] private delegatedAddresses;
+    IBurnContract public burnContract;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
