@@ -10,6 +10,7 @@ import {
   deployUniswapMocks,
   NODE_ADDRESS,
   NULL_ADDRESS,
+  ONE_DAY_IN_SECS,
   revertSnapshotAndCapture,
   setTimestampAndMine,
   signBuyLicense,
@@ -25,6 +26,7 @@ import {
   MNDContract,
   PoAIManager,
   CspEscrow,
+  ERC20Mock,
 } from "../typechain-types";
 
 /*
@@ -65,6 +67,7 @@ describe("Reader contract", function () {
   let poaiManager: PoAIManager;
   let firstUser: HardhatEthersSigner;
   let oracle_assignation_timestamp: number;
+  let usdcContract: ERC20Mock;
 
   before(async function () {
     await network.provider.request({ method: "hardhat_reset", params: [] });
@@ -106,11 +109,8 @@ describe("Reader contract", function () {
     await r1Contract.setNdContract(await ndContract.getAddress());
     await r1Contract.setMndContract(await owner.getAddress()); // just for test to be able to mint R1
 
-    const {
-      usdc: usdcContract,
-      router,
-      pair,
-    } = await deployUniswapMocks(r1Contract);
+    const { usdc, router, pair } = await deployUniswapMocks(r1Contract);
+    usdcContract = usdc;
 
     await ndContract.setUniswapParams(
       await router.getAddress(),
@@ -936,6 +936,95 @@ describe("Reader contract", function () {
           owner: NULL_ADDRESS,
         },
       ]);
+    });
+  });
+
+  describe("getJobsByLastExecutionEpochDelta", function () {
+    async function setupEscrowWithJobs() {
+      await buyLicenseWithMintAndAllowance(
+        r1Contract,
+        ndContract,
+        owner,
+        owner,
+        await ndContract.getLicenseTokenPrice(),
+        1,
+        1,
+        10000,
+        20,
+        await createLicenseSignature(backend, owner, invoiceUuid, 10000)
+      );
+      await linkNode(ndContract, owner, 1, await backend.getAddress());
+
+      await poaiManager.connect(owner).deployCspEscrow();
+      const escrowAddress = await poaiManager.ownerToEscrow(
+        await owner.getAddress()
+      );
+      const cspEscrow = (await ethers.getContractAt(
+        "CspEscrow",
+        escrowAddress
+      )) as unknown as CspEscrow;
+
+      const currentEpoch = await poaiManager.getCurrentEpoch();
+      const jobDurationA = 30n;
+      const jobDurationB = 31n;
+      const jobDurationC = 40n;
+      const lastExecutionEpochA = currentEpoch + jobDurationA;
+      const lastExecutionEpochB = currentEpoch + jobDurationB;
+      const lastExecutionEpochC = currentEpoch + jobDurationC;
+      const numberOfNodesRequested = 1n;
+      const jobType = 1;
+      const pricePerEpoch = await cspEscrow.getPriceForJobType(jobType);
+      const totalCost =
+        pricePerEpoch *
+        numberOfNodesRequested *
+        (jobDurationA + jobDurationB + jobDurationC);
+
+      await usdcContract.mint(await owner.getAddress(), totalCost);
+      await usdcContract.connect(owner).approve(escrowAddress, totalCost);
+
+      await cspEscrow.connect(owner).createJobs([
+        {
+          jobType,
+          projectHash: ethers.keccak256(ethers.toUtf8Bytes("reader-job-a")),
+          lastExecutionEpoch: lastExecutionEpochA,
+          numberOfNodesRequested,
+        },
+        {
+          jobType,
+          projectHash: ethers.keccak256(ethers.toUtf8Bytes("reader-job-b")),
+          lastExecutionEpoch: lastExecutionEpochB,
+          numberOfNodesRequested,
+        },
+        {
+          jobType,
+          projectHash: ethers.keccak256(ethers.toUtf8Bytes("reader-job-c")),
+          lastExecutionEpoch: lastExecutionEpochC,
+          numberOfNodesRequested,
+        },
+      ]);
+
+      return { escrowAddress };
+    }
+
+    it("filters jobs by epoch delta", async function () {
+      await setupEscrowWithJobs();
+
+      await setTimestampAndMine(START_EPOCH_TIMESTAMP + ONE_DAY_IN_SECS * 31);
+
+      const deltaOne = await reader.getJobsByLastExecutionEpochDelta(1);
+      expect(deltaOne.map((job) => job.id)).to.deep.equal([1n]);
+
+      const deltaZero = await reader.getJobsByLastExecutionEpochDelta(0);
+      expect(deltaZero.map((job) => job.id)).to.deep.equal([2n]);
+    });
+
+    it("returns empty array when no jobs match", async function () {
+      await setupEscrowWithJobs();
+
+      await setTimestampAndMine(START_EPOCH_TIMESTAMP + ONE_DAY_IN_SECS * 31);
+
+      const result = await reader.getJobsByLastExecutionEpochDelta(5);
+      expect(result).to.deep.equal([]);
     });
   });
 

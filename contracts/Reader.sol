@@ -81,6 +81,23 @@ struct CspWithOwner {
     address cspOwner;
 }
 
+struct JobWithAllDetails {
+    uint256 id;
+    bytes32 projectHash;
+    uint256 requestTimestamp;
+    uint256 startTimestamp;
+    uint256 lastNodesChangeTimestamp;
+    uint256 jobType;
+    uint256 pricePerEpoch;
+    uint256 lastExecutionEpoch;
+    uint256 numberOfNodesRequested;
+    int256 balance;
+    uint256 lastAllocatedEpoch;
+    address[] activeNodes;
+    address escrowAddress;
+    address escrowOwner;
+}
+
 struct EscrowDetails {
     address escrowAddress;
     address owner;
@@ -133,6 +150,11 @@ interface IPoAIManager {
         external
         view
         returns (CspWithOwner[] memory);
+    function getAllActiveJobs()
+        external
+        view
+        returns (JobWithAllDetails[] memory);
+    function getCurrentEpoch() external view returns (uint256);
     function ownerToEscrow(address owner) external view returns (address);
     function escrowToOwner(address escrow) external view returns (address);
     function getAddressRegistration(
@@ -409,6 +431,39 @@ contract Reader is Initializable {
             });
         }
         return details;
+    }
+
+    function getJobsByLastExecutionEpochDelta(
+        uint256 epochDelta
+    ) external view returns (JobWithAllDetails[] memory) {
+        JobWithAllDetails[] memory jobs = poaiManager.getAllActiveJobs();
+        uint256 currentEpoch = poaiManager.getCurrentEpoch();
+        uint256 count = 0;
+
+        for (uint256 i = 0; i < jobs.length; i++) {
+            uint256 lastExecutionEpoch = jobs[i].lastExecutionEpoch;
+            if (
+                lastExecutionEpoch <= currentEpoch &&
+                currentEpoch - lastExecutionEpoch == epochDelta
+            ) {
+                count++;
+            }
+        }
+
+        JobWithAllDetails[] memory filtered = new JobWithAllDetails[](count);
+        uint256 index = 0;
+        for (uint256 i = 0; i < jobs.length; i++) {
+            uint256 lastExecutionEpoch = jobs[i].lastExecutionEpoch;
+            if (
+                lastExecutionEpoch <= currentEpoch &&
+                currentEpoch - lastExecutionEpoch == epochDelta
+            ) {
+                filtered[index] = jobs[i];
+                index++;
+            }
+        }
+
+        return filtered;
     }
 
     function getNdNodesOwners(
