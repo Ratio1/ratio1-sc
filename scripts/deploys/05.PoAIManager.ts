@@ -9,6 +9,7 @@ import {
   UNISWAP_V2_PAIR_ADDR,
   USDC_TOKEN_ADDR,
   CSP_ESCROW_IMPLEMENTATION_ADDR,
+  BURN_CONTRACT_ADDR,
 } from "../configs/constants";
 
 async function main() {
@@ -29,6 +30,7 @@ async function main() {
       CONTROLLER_ADDR, // _controller
       USDC_TOKEN_ADDR, // _usdcToken
       R1_TOKEN_ADDR, // _r1Token
+      BURN_CONTRACT_ADDR, // _burnContract
       UNISWAP_V2_ROUTER_ADDR, // _uniswapV2Router
       UNISWAP_V2_PAIR_ADDR, // _uniswapV2Pair
       SAFE_ADDR, // newOwner

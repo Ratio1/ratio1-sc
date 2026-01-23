@@ -99,6 +99,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     Controller public controller;
     address public usdcToken;
     address public r1Token;
+    address public burnContract;
     address public uniswapV2Router;
     address public uniswapV2Pair;
 
@@ -193,6 +194,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         address _controller,
         address _usdcToken,
         address _r1Token,
+        address _burnContract,
         address _uniswapV2Router,
         address _uniswapV2Pair,
         address newOwner
@@ -207,6 +209,11 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         controller = Controller(_controller);
         usdcToken = _usdcToken;
         r1Token = _r1Token;
+        require(
+            _burnContract != address(0),
+            "Burn contract cannot be zero address"
+        );
+        burnContract = _burnContract;
         uniswapV2Router = _uniswapV2Router;
         uniswapV2Pair = _uniswapV2Pair;
         nextJobId = 1;
@@ -219,11 +226,12 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         require(_hasOracleNode(sender), "No oracle node owned");
         // Deploy BeaconProxy for the new CSP Escrow
         bytes memory data = abi.encodeWithSignature(
-            "initialize(address,address,address,address,address,address,address)",
+            "initialize(address,address,address,address,address,address,address,address)",
             sender,
             address(this),
             usdcToken,
             r1Token,
+            burnContract,
             address(controller),
             uniswapV2Router,
             uniswapV2Pair
@@ -234,6 +242,18 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         ownerToEscrow[sender] = escrowAddr;
         escrowToOwner[escrowAddr] = sender;
         emit EscrowDeployed(sender, escrowAddr);
+    }
+
+    function setBurnContract(address newBurnContract) external onlyOwner {
+        require(
+            newBurnContract != address(0),
+            "Burn contract cannot be zero address"
+        );
+        burnContract = newBurnContract;
+        uint256 escrowCount = allEscrows.length;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            CspEscrow(allEscrows[i]).setBurnContract(newBurnContract);
+        }
     }
 
     // Internal function to check if user owns at least one ND or MND with a linked node address that is an oracle

@@ -157,6 +157,12 @@ describe("NDContract", function () {
     maxUnits = 100;
 
     r1Contract = await deployR1(owner);
+    const BurnContractFactory = await ethers.getContractFactory("BurnContract");
+    const burnContract = await BurnContractFactory.deploy(
+      await r1Contract.getAddress()
+    );
+    await burnContract.waitForDeployment();
+    await r1Contract.addBurner(await burnContract.getAddress());
     controllerContract = await deployController({
       owner,
       oracleSigners: [backend],
@@ -214,6 +220,7 @@ describe("NDContract", function () {
         await controllerContract.getAddress(),
         await usdcContract.getAddress(),
         await r1Contract.getAddress(),
+        await burnContract.getAddress(),
         await uniswapMockRouterContract.getAddress(),
         await uniswapMockPairContract.getAddress(),
         await owner.getAddress(),
