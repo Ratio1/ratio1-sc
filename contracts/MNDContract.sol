@@ -489,16 +489,14 @@ contract MNDContract is
             "Invalid epochs"
         );
 
-        uint256 totalAssignedAmount = license.totalAssignedAmount;
         if (computeParam.licenseId == GENESIS_TOKEN_ID) {
-            uint256 maxRewardsPerEpoch = totalAssignedAmount /
-                _controller.GND_MINING_EPOCHS();
-            for (uint256 i = 0; i < epochsToClaim; i++) {
-                //TODO calculate correctly
-                state.licenseRewards +=
-                    (maxRewardsPerEpoch * computeParam.availabilies[i]) /
-                    MAX_PERCENTAGE_UINT8;
-            }
+            return
+                calculateGndRewards(
+                    license,
+                    computeParam,
+                    adoptionPercentages,
+                    state
+                );
         } else {
             return
                 calculateMndRewards(
@@ -508,6 +506,52 @@ contract MNDContract is
                     state
                 );
         }
+    }
+
+    function calculateGndRewards(
+        License memory license,
+        ComputeRewardsParams memory computeParam,
+        uint8[] memory adoptionPercentages,
+        MndRewardsState memory state
+    ) internal view returns (MndRewardsState memory) {
+        uint256 maxRewardsPerEpoch = license.totalAssignedAmount /
+            _controller.GND_MINING_EPOCHS();
+        for (uint256 i = 0; i < computeParam.epochs.length; i++) {
+            // Calculate adoption rewards for the epoch
+            (
+                uint256 adoptionRelease,
+                uint256 withheldRelease
+            ) = calculateAdoptionRelease(
+                    state.totalClaimedAmount,
+                    state.totalAssignedAmount,
+                    maxRewardsPerEpoch,
+                    computeParam.availabilies[i],
+                    adoptionPercentages[i]
+                );
+
+            // Calculate AWB carryover adjustments
+            uint256 targetWithheldBuffer = (state.totalClaimedAmount *
+                (MAX_PERCENTAGE_UINT8 - adoptionPercentages[i])) /
+                MAX_PERCENTAGE_UINT8;
+            if (state.awbBalance > targetWithheldBuffer) {
+                uint256 excessAWB = state.awbBalance - targetWithheldBuffer;
+                uint256 maxCarryoverRelease = (maxRewardsPerEpoch *
+                    maxCarryoverReleaseFactor) / MAX_PERCENTAGE_UINT8;
+                if (excessAWB > maxCarryoverRelease) {
+                    state.licenseCarryover += maxCarryoverRelease;
+                    state.awbBalance -= maxCarryoverRelease;
+                } else {
+                    state.licenseCarryover += excessAWB;
+                    state.awbBalance -= excessAWB;
+                }
+            }
+
+            state.licenseRewards += adoptionRelease;
+            state.awbBalance += withheldRelease;
+            state.withheldAmount += withheldRelease;
+            state.totalClaimedAmount += adoptionRelease + withheldRelease;
+        }
+        return state;
     }
 
     function calculateMndRewards(
@@ -635,14 +679,14 @@ contract MNDContract is
     function calculateAdoptionRelease(
         uint256 totalClaimedAmount,
         uint256 totalAssignedAmount,
-        uint256 curveMaxRelease,
+        uint256 maxRewardsPerEpoch,
         uint8 availabilityPercentage,
         uint8 adoptionPercentage
     ) internal pure returns (uint256 adoptionRelease, uint256 withheldRelease) {
         if (totalClaimedAmount >= totalAssignedAmount) {
             return (0, 0);
         }
-        uint256 availabilityMaxRelease = (curveMaxRelease *
+        uint256 availabilityMaxRelease = (maxRewardsPerEpoch *
             availabilityPercentage) / MAX_PERCENTAGE_UINT8;
         adoptionRelease =
             (availabilityMaxRelease * adoptionPercentage) /
