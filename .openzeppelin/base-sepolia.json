@@ -25445,7 +25445,7 @@
             "label": "_R1Token",
             "offset": 0,
             "slot": "5",
-            "type": "t_contract(R1)29391",
+            "type": "t_contract(R1)29545",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:96"
           },
@@ -25453,7 +25453,7 @@
             "label": "_controller",
             "offset": 0,
             "slot": "6",
-            "type": "t_contract(Controller)19028",
+            "type": "t_contract(Controller)19078",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:97"
           },
@@ -25461,7 +25461,7 @@
             "label": "_ndContract",
             "offset": 0,
             "slot": "7",
-            "type": "t_contract(IND)22024",
+            "type": "t_contract(IND)22121",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:98"
           },
@@ -25517,7 +25517,7 @@
             "label": "licenses",
             "offset": 0,
             "slot": "14",
-            "type": "t_mapping(t_uint256,t_struct(License)22055_storage)",
+            "type": "t_mapping(t_uint256,t_struct(License)22152_storage)",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:106"
           },
@@ -25745,15 +25745,15 @@
             "label": "uint64",
             "numberOfBytes": "8"
           },
-          "t_contract(Controller)19028": {
+          "t_contract(Controller)19078": {
             "label": "contract Controller",
             "numberOfBytes": "20"
           },
-          "t_contract(IND)22024": {
+          "t_contract(IND)22121": {
             "label": "contract IND",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)29391": {
+          "t_contract(R1)29545": {
             "label": "contract R1",
             "numberOfBytes": "20"
           },
@@ -25761,11 +25761,11 @@
             "label": "mapping(address => address)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_struct(License)22055_storage)": {
+          "t_mapping(t_uint256,t_struct(License)22152_storage)": {
             "label": "mapping(uint256 => struct License)",
             "numberOfBytes": "32"
           },
-          "t_struct(License)22055_storage": {
+          "t_struct(License)22152_storage": {
             "label": "struct License",
             "members": [
               {
@@ -26002,7 +26002,7 @@
             "label": "_R1Token",
             "offset": 1,
             "slot": "2",
-            "type": "t_contract(R1)29391",
+            "type": "t_contract(R1)29545",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:108"
           },
@@ -26010,7 +26010,7 @@
             "label": "_controller",
             "offset": 0,
             "slot": "3",
-            "type": "t_contract(Controller)19028",
+            "type": "t_contract(Controller)19078",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:109"
           },
@@ -26042,7 +26042,7 @@
             "label": "_mndContract",
             "offset": 0,
             "slot": "7",
-            "type": "t_contract(IMND)24014",
+            "type": "t_contract(IMND)24111",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:113"
           },
@@ -26074,7 +26074,7 @@
             "label": "_priceTiers",
             "offset": 0,
             "slot": "11",
-            "type": "t_mapping(t_uint8,t_struct(PriceTier)24047_storage)",
+            "type": "t_mapping(t_uint8,t_struct(PriceTier)24144_storage)",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:118"
           },
@@ -26082,7 +26082,7 @@
             "label": "licenses",
             "offset": 0,
             "slot": "12",
-            "type": "t_mapping(t_uint256,t_struct(License)24060_storage)",
+            "type": "t_mapping(t_uint256,t_struct(License)24157_storage)",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:119"
           },
@@ -26162,7 +26162,7 @@
             "label": "poaiManager",
             "offset": 0,
             "slot": "22",
-            "type": "t_contract(IPoAIManager)24024",
+            "type": "t_contract(IPoAIManager)24121",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:131"
           }
@@ -26362,15 +26362,15 @@
             "label": "bytes32",
             "numberOfBytes": "32"
           },
-          "t_contract(Controller)19028": {
+          "t_contract(Controller)19078": {
             "label": "contract Controller",
             "numberOfBytes": "20"
           },
-          "t_contract(IMND)24014": {
+          "t_contract(IMND)24111": {
             "label": "contract IMND",
             "numberOfBytes": "20"
           },
-          "t_contract(IPoAIManager)24024": {
+          "t_contract(IPoAIManager)24121": {
             "label": "contract IPoAIManager",
             "numberOfBytes": "20"
           },
@@ -26382,7 +26382,7 @@
             "label": "contract IUniswapV2Router02",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)29391": {
+          "t_contract(R1)29545": {
             "label": "contract R1",
             "numberOfBytes": "20"
           },
@@ -26390,15 +26390,15 @@
             "label": "mapping(bytes32 => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_struct(License)24060_storage)": {
+          "t_mapping(t_uint256,t_struct(License)24157_storage)": {
             "label": "mapping(uint256 => struct License)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint8,t_struct(PriceTier)24047_storage)": {
+          "t_mapping(t_uint8,t_struct(PriceTier)24144_storage)": {
             "label": "mapping(uint8 => struct PriceTier)",
             "numberOfBytes": "32"
           },
-          "t_struct(License)24060_storage": {
+          "t_struct(License)24157_storage": {
             "label": "struct License",
             "members": [
               {
@@ -26440,7 +26440,7 @@
             ],
             "numberOfBytes": "160"
           },
-          "t_struct(PriceTier)24047_storage": {
+          "t_struct(PriceTier)24144_storage": {
             "label": "struct PriceTier",
             "members": [
               {
