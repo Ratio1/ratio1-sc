@@ -464,23 +464,15 @@ contract CspEscrow is Initializable {
             if (job.activeNodes.length == 0) {
                 continue;
             }
+            uint256 lastPayableEpoch = job.lastExecutionEpoch - 1;
+            uint256 effectiveLastEpoch = lastEpoch < lastPayableEpoch
+                ? lastEpoch
+                : lastPayableEpoch;
             // Skip if we've already allocated for this epoch
-            if (lastAllocatedEpoch >= lastEpoch) {
+            if (lastAllocatedEpoch >= effectiveLastEpoch) {
                 continue;
             }
-            uint256 epochsToAllocate = lastEpoch - lastAllocatedEpoch;
-            // Skip if job has ended
-            if (
-                lastAllocatedEpoch + epochsToAllocate > job.lastExecutionEpoch
-            ) {
-                if (job.lastExecutionEpoch < lastAllocatedEpoch) {
-                    epochsToAllocate = 0;
-                } else {
-                    epochsToAllocate =
-                        job.lastExecutionEpoch -
-                        lastAllocatedEpoch;
-                }
-            }
+            uint256 epochsToAllocate = effectiveLastEpoch - lastAllocatedEpoch;
             if (epochsToAllocate == 0) {
                 continue;
             }
@@ -511,7 +503,7 @@ contract CspEscrow is Initializable {
             totalAmountToBurn += jobAmountToBurn;
             // Update job balance and last allocated epoch
             job.balance -= int256(totalRewardsToNodes + jobAmountToBurn);
-            job.lastAllocatedEpoch = lastEpoch;
+            job.lastAllocatedEpoch = effectiveLastEpoch;
 
             require(job.balance >= 0, "No balance left"); //TODO will change in V2
         }

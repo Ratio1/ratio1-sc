@@ -2682,6 +2682,53 @@ describe("PoAIManager", function () {
       );
     });
 
+    it("treats lastExecutionEpoch as exclusive when allocating rewards", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+      const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
+      const currentEpoch = await poaiManager.getCurrentEpoch();
+      const numberOfEpochs = 31n;
+      const lastExecutionEpoch = currentEpoch + numberOfEpochs;
+      const totalCost = pricePerEpoch * numberOfEpochs;
+
+      await mockUsdc.mint(await user.getAddress(), totalCost);
+      await mockUsdc.connect(user).approve(escrowAddress, totalCost);
+
+      await cspEscrow.connect(user).createJobs([
+        {
+          jobType: 1,
+          projectHash: ethers.keccak256(ethers.toUtf8Bytes("exclusive-test")),
+          lastExecutionEpoch,
+          numberOfNodesRequested: 1,
+        },
+      ]);
+
+      const nodeAddress = await oracle.getAddress();
+      await poaiManager.connect(oracle).submitNodeUpdate(1, [nodeAddress]);
+
+      await r1.mint(
+        await mockUniswapRouter.getAddress(),
+        ethers.parseEther("1000")
+      );
+      await advanceEpochs(Number(numberOfEpochs + 3n));
+
+      await poaiManager.allocateRewardsAcrossAllEscrows();
+
+      const burnPerNode = (pricePerEpoch * BURN_PERCENTAGE) / 100n;
+      const rewardPerNode = pricePerEpoch - burnPerNode;
+      const expectedRewards = rewardPerNode * numberOfEpochs;
+
+      expect(await cspEscrow.virtualWalletBalance(nodeAddress)).to.equal(
+        expectedRewards
+      );
+
+      const jobDetails = await cspEscrow.getJobDetails(1);
+      expect(jobDetails.lastAllocatedEpoch).to.equal(lastExecutionEpoch - 1n);
+      expect(jobDetails.balance).to.equal(0);
+    });
+
     it("should handle multiple epochs of reward allocation", async function () {
       await controller.addOracle(await oracle2.getAddress());
 
