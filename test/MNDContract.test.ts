@@ -136,9 +136,10 @@ describe("MNDContract", function () {
 
     await mndContract.setNDContract(await ndContract.getAddress());
 
-    const AdoptionOracleFactory =
-      await ethers.getContractFactory("AdoptionOracle");
-    adoptionOracle = (await upgrades.deployProxy(
+    const AdoptionOracleFactory = await ethers.getContractFactory(
+      "AdoptionOracle"
+    );
+    adoptionOracle = await upgrades.deployProxy(
       AdoptionOracleFactory,
       [
         await owner.getAddress(),
@@ -148,7 +149,7 @@ describe("MNDContract", function () {
         POAI_VOLUME_FULL_RELEASE_THRESHOLD,
       ],
       { initializer: "initialize" }
-    )) as AdoptionOracle;
+    );
     await adoptionOracle.waitForDeployment();
     await adoptionOracle.initializeLicenseSales([0], [2]);
     await mndContract.setAdoptionOracle(await adoptionOracle.getAddress());
@@ -231,9 +232,10 @@ describe("MNDContract", function () {
     epochs: number[],
     totals: number[]
   ) {
-    const AdoptionOracleFactory =
-      await ethers.getContractFactory("AdoptionOracle");
-    const oracle = (await upgrades.deployProxy(
+    const AdoptionOracleFactory = await ethers.getContractFactory(
+      "AdoptionOracle"
+    );
+    const oracle = await upgrades.deployProxy(
       AdoptionOracleFactory,
       [
         await owner.getAddress(),
@@ -243,7 +245,7 @@ describe("MNDContract", function () {
         POAI_VOLUME_FULL_RELEASE_THRESHOLD,
       ],
       { initializer: "initialize" }
-    )) as AdoptionOracle;
+    );
     await oracle.waitForDeployment();
     await oracle.initializeLicenseSales(epochs, totals);
     return oracle;
@@ -866,7 +868,10 @@ describe("MNDContract", function () {
   });
 
   it("Adoption gating - withholds rewards into AWB when adoption is zero", async function () {
-    const adoptionOracleOverride = await deployAdoptionOracleWithSales([0], [0]);
+    const adoptionOracleOverride = await deployAdoptionOracleWithSales(
+      [0],
+      [0]
+    );
     await mndContract.setAdoptionOracle(
       await adoptionOracleOverride.getAddress()
     );
