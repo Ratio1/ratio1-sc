@@ -1740,6 +1740,33 @@ describe("PoAIManager", function () {
       ]);
       await ethers.provider.send("evm_mine", []);
 
+      await r1.mint(
+        await mockUniswapRouter.getAddress(),
+        ethers.parseEther("1000")
+      );
+      await poaiManager.allocateRewardsAcrossAllEscrows();
+
+      expect(await cspEscrow.getFirstClosableJobId()).to.eq(1);
+      expect(await poaiManager.getFirstClosableJobId()).to.eq(1);
+    });
+
+    it("returns a job as closable only after rewards are allocated", async function () {
+      const { cspEscrow, numberOfEpochs } = await setupJobWithActiveNodes();
+
+      await ethers.provider.send("evm_increaseTime", [
+        Number(numberOfEpochs) * ONE_DAY_IN_SECS,
+      ]);
+      await ethers.provider.send("evm_mine", []);
+
+      expect(await cspEscrow.getFirstClosableJobId()).to.eq(0);
+      expect(await poaiManager.getFirstClosableJobId()).to.eq(0);
+
+      await r1.mint(
+        await mockUniswapRouter.getAddress(),
+        ethers.parseEther("1000")
+      );
+      await poaiManager.allocateRewardsAcrossAllEscrows();
+
       expect(await cspEscrow.getFirstClosableJobId()).to.eq(1);
       expect(await poaiManager.getFirstClosableJobId()).to.eq(1);
     });
@@ -1751,6 +1778,12 @@ describe("PoAIManager", function () {
         Number(numberOfEpochs) * ONE_DAY_IN_SECS,
       ]);
       await ethers.provider.send("evm_mine", []);
+
+      await r1.mint(
+        await mockUniswapRouter.getAddress(),
+        ethers.parseEther("1000")
+      );
+      await poaiManager.allocateRewardsAcrossAllEscrows();
 
       expect(await cspEscrow.getFirstClosableJobId()).to.eq(1);
 

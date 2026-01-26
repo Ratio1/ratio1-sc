@@ -751,10 +751,14 @@ contract CspEscrow is Initializable {
         for (uint256 i = 0; i < activeJobs.length; i++) {
             uint256 jobId = activeJobs[i];
             JobDetails storage job = jobDetails[jobId];
+            // Ensure job has ended and rewards have been allocated
+            // through the last payable epoch before reporting a job as closable.
             if (
                 job.id != 0 &&
                 job.activeNodes.length > 0 &&
-                job.lastExecutionEpoch <= currentEpoch
+                job.lastExecutionEpoch > 0 &&
+                job.lastExecutionEpoch <= currentEpoch &&
+                job.lastAllocatedEpoch >= job.lastExecutionEpoch - 1
             ) {
                 return jobId;
             }
