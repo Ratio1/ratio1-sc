@@ -75,6 +75,12 @@ describe("Reader contract", function () {
     backend = backendSigner;
 
     r1Contract = await deployR1(owner);
+    const BurnContractFactory = await ethers.getContractFactory("BurnContract");
+    const burnContract = await BurnContractFactory.deploy(
+      await r1Contract.getAddress()
+    );
+    await burnContract.waitForDeployment();
+    await r1Contract.addBurner(await burnContract.getAddress());
     controllerContract = await deployController({
       owner,
     });
@@ -138,6 +144,7 @@ describe("Reader contract", function () {
         await controllerContract.getAddress(),
         await usdcContract.getAddress(),
         await r1Contract.getAddress(),
+        await burnContract.getAddress(),
         await router.getAddress(),
         await pair.getAddress(),
         await owner.getAddress(),

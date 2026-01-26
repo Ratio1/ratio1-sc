@@ -19,6 +19,7 @@ import {
   Controller,
   PoAIManager,
   MNDContract,
+  BurnContract,
   ERC20Mock,
   UniswapMockPair,
   UniswapMockRouter,
@@ -31,6 +32,7 @@ describe("PoAIManager", function () {
   let mndContract: MNDContract;
   let controller: Controller;
   let r1: R1;
+  let burnContract: BurnContract;
   let owner: Signer;
   let user: Signer;
   let oracle: Signer;
@@ -55,6 +57,10 @@ describe("PoAIManager", function () {
       await ethers.getSigners();
 
     r1 = await deployR1(owner);
+    const BurnContractFactory = await ethers.getContractFactory("BurnContract");
+    burnContract = await BurnContractFactory.deploy(await r1.getAddress());
+    await burnContract.waitForDeployment();
+    await r1.connect(owner).addBurner(await burnContract.getAddress());
     controller = await deployController({
       owner,
       oracleSigners: [oracle],
@@ -119,6 +125,7 @@ describe("PoAIManager", function () {
         await controller.getAddress(),
         await mockUsdc.getAddress(),
         await r1.getAddress(),
+        await burnContract.getAddress(),
         await mockUniswapRouter.getAddress(),
         await mockUniswapPair.getAddress(),
         await owner.getAddress(),
@@ -173,7 +180,6 @@ describe("PoAIManager", function () {
     const escrowAddress = await poaiManager.ownerToEscrow(
       await userSigner.getAddress()
     );
-    await r1.connect(owner).addBurner(escrowAddress);
     return escrowAddress;
   }
 
@@ -291,6 +297,62 @@ describe("PoAIManager", function () {
     );
   }
 
+  describe("Burn contract", function () {
+    it("only owner can set burn contract", async function () {
+      const BurnContractFactory = await ethers.getContractFactory(
+        "BurnContract"
+      );
+      const newBurnContract = await BurnContractFactory.deploy(
+        await r1.getAddress()
+      );
+      await newBurnContract.waitForDeployment();
+
+      await expect(
+        poaiManager
+          .connect(user)
+          .setBurnContract(await newBurnContract.getAddress())
+      ).to.be.revertedWithCustomError(
+        poaiManager,
+        "OwnableUnauthorizedAccount"
+      );
+    });
+
+    it("sets burn contract and updates existing escrows", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+      const BurnContractFactory = await ethers.getContractFactory(
+        "BurnContract"
+      );
+      const newBurnContract = await BurnContractFactory.deploy(
+        await r1.getAddress()
+      );
+      await newBurnContract.waitForDeployment();
+
+      await poaiManager
+        .connect(owner)
+        .setBurnContract(await newBurnContract.getAddress());
+
+      expect(await poaiManager.burnContract()).to.equal(
+        await newBurnContract.getAddress()
+      );
+      expect(await cspEscrow.burnContract()).to.equal(
+        await newBurnContract.getAddress()
+      );
+    });
+
+    it("csp escrow burn contract can only be set by PoAI Manager", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+      await expect(
+        cspEscrow.connect(user).setBurnContract(await burnContract.getAddress())
+      ).to.be.revertedWith("Not PoAI Manager");
+    });
+  });
+
   it("should return empty array when there are no active jobs", async function () {
     const jobs = await poaiManager.getAllActiveJobs();
     expect(jobs.length).to.equal(0);
@@ -336,7 +398,7 @@ describe("PoAIManager", function () {
   it("should deploy a new CSP Escrow for a user with an oracle node (MND path)", async function () {
     await setupUserWithOracleNode(user, oracle);
 
-    // Now user has a node that is an oracle, should succeed and register escrow as burner
+    // Now user has a node that is an oracle, should succeed and register escrow
     await poaiManager.connect(user).deployCspEscrow();
     const escrowAddress = await poaiManager.ownerToEscrow(
       await user.getAddress()
