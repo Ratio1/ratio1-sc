@@ -12,9 +12,9 @@ async function main() {
     deployer
   );
   const burnContract = await BurnContractFactory.deploy(R1_TOKEN_ADDR);
-  await burnContract.deployed();
+  await burnContract.waitForDeployment();
 
-  console.log("BurnContract deployed to:", burnContract.address);
+  console.log("BurnContract deployed to:", await burnContract.getAddress());
 }
 
 main()

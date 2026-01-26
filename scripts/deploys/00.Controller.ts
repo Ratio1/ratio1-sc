@@ -13,8 +13,9 @@ async function main() {
     86400,
     SAFE_ADDR
   );
-  await controllerContract.deployed();
-  console.log("Controller deployed to:", controllerContract.address);
+  await controllerContract.waitForDeployment();
+  const controllerAddress = await controllerContract.getAddress();
+  console.log("Controller deployed to:", controllerAddress);
 }
 
 main()

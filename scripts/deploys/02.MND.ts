@@ -17,14 +17,15 @@ async function main() {
     [R1_TOKEN_ADDR, CONTROLLER_ADDR, SAFE_ADDR],
     { initializer: "initialize" }
   );
-  await mndContract.deployed();
-  console.log("MND deployed to:", mndContract.address);
+  await mndContract.waitForDeployment();
+  const proxyAddress = await mndContract.getAddress();
+  console.log("MND deployed to:", proxyAddress);
   const implAddress = await upgrades.erc1967.getImplementationAddress(
-    mndContract.address
+    proxyAddress
   );
   console.log("Implementation:", implAddress);
   const adminAddress = await upgrades.erc1967.getAdminAddress(
-    mndContract.address
+    proxyAddress
   );
   console.log("Proxy Admin:", adminAddress);
 }

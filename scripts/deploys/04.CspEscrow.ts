@@ -13,10 +13,11 @@ async function main() {
 
   // Deploy the implementation contract
   const cspEscrowImplementation = await CspEscrowFactory.deploy();
-  await cspEscrowImplementation.deployed();
+  await cspEscrowImplementation.waitForDeployment();
+  const implementationAddress = await cspEscrowImplementation.getAddress();
   console.log(
     "CspEscrow implementation deployed to:",
-    cspEscrowImplementation.address
+    implementationAddress
   );
 
   // Verify the implementation is safe to upgrade
@@ -28,7 +29,7 @@ async function main() {
   }
 
   console.log("\n=== DEPLOYMENT SUMMARY ===");
-  console.log("CspEscrow Implementation:", cspEscrowImplementation.address);
+  console.log("CspEscrow Implementation:", implementationAddress);
   console.log("==========================\n");
 }
 

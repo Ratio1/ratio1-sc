@@ -37,15 +37,16 @@ async function main() {
     ],
     { initializer: "initialize" }
   );
-  await poaiManager.deployed();
-  console.log("PoAIManager deployed to:", poaiManager.address);
+  await poaiManager.waitForDeployment();
+  const proxyAddress = await poaiManager.getAddress();
+  console.log("PoAIManager deployed to:", proxyAddress);
 
   const implAddress = await upgrades.erc1967.getImplementationAddress(
-    poaiManager.address
+    proxyAddress
   );
   console.log("PoAIManager Implementation:", implAddress);
   const adminAddress = await upgrades.erc1967.getAdminAddress(
-    poaiManager.address
+    proxyAddress
   );
   console.log("PoAIManager Proxy Admin:", adminAddress);
 
@@ -54,7 +55,7 @@ async function main() {
   console.log("CspEscrow Beacon deployed to:", beaconAddress);
 
   console.log("\n=== DEPLOYMENT SUMMARY ===");
-  console.log("PoAIManager Proxy:", poaiManager.address);
+  console.log("PoAIManager Proxy:", proxyAddress);
   console.log("PoAIManager Implementation:", implAddress);
   console.log("PoAIManager Proxy Admin:", adminAddress);
   console.log("CspEscrow Beacon:", beaconAddress);
