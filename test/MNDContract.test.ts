@@ -811,19 +811,22 @@ describe("MNDContract", function () {
       .addLicense(await firstUser.getAddress(), LICENSE_POWER);
     await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [
-      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + MND_MAX_MINTING_DURATION),
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 1),
     ]);
     await ethers.provider.send("evm_mine", []);
 
-    for (let i = 0; i < MND_MAX_MINTING_DURATION; i++) {
-      COMPUTE_PARAMS.epochs[i] = Number(CLIFF_PERIOD) + i;
-      COMPUTE_PARAMS.availabilies[i] = 255;
-    }
-
     //DO TEST
-    await mndContract
-      .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]]);
+    for (let i = 0; i < MND_MAX_MINTING_DURATION; i++) {
+      COMPUTE_PARAMS.epochs = [Number(CLIFF_PERIOD) + i];
+      COMPUTE_PARAMS.availabilies = [255];
+      await mndContract
+        .connect(firstUser)
+        .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]]);
+      if (i < MND_MAX_MINTING_DURATION - 1) {
+        await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+        await ethers.provider.send("evm_mine", []);
+      }
+    }
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       LICENSE_POWER
     );
