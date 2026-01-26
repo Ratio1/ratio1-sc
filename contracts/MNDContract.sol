@@ -68,7 +68,7 @@ struct LicenseInfo {
     address lastClaimOracle;
 }
 
-struct MndRewardsState {
+struct RewardsState {
     uint256 totalAssignedAmount;
     uint256 totalClaimedAmount;
     uint256 awbBalance;
@@ -352,7 +352,7 @@ contract MNDContract is
             );
 
             License storage license = licenses[computeParams[i].licenseId];
-            MndRewardsState memory state = calculateLicenseRewards(
+            RewardsState memory state = calculateLicenseRewards(
                 license,
                 computeParams[i]
             );
@@ -419,7 +419,7 @@ contract MNDContract is
         for (uint256 i = 0; i < computeParams.length; i++) {
             ComputeRewardsParams memory params = computeParams[i];
             License memory license = licenses[params.licenseId];
-            MndRewardsState memory state = calculateLicenseRewards(
+            RewardsState memory state = calculateLicenseRewards(
                 license,
                 params
             );
@@ -435,8 +435,8 @@ contract MNDContract is
     function calculateLicenseRewards(
         License memory license,
         ComputeRewardsParams memory computeParam
-    ) internal view returns (MndRewardsState memory state) {
-        state = MndRewardsState({
+    ) internal view returns (RewardsState memory state) {
+        state = RewardsState({
             totalAssignedAmount: license.totalAssignedAmount,
             totalClaimedAmount: license.totalClaimedAmount,
             awbBalance: awbBalances[computeParam.licenseId],
