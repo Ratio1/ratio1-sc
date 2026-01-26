@@ -996,6 +996,224 @@ describe("MNDContract", function () {
     expect(minted).to.be.gt(0n);
   });
 
+  it("Adoption gating - increasing thresholds lowers adoption after a claim", async function () {
+    const epochOne = Number(CLIFF_PERIOD);
+    const epochTwo = epochOne + 1;
+    const initialThreshold = 1000;
+    const higherThreshold = 2000;
+    const totals = 1000;
+
+    const adoptionOracleOverride = await deployAdoptionOracleWithData({
+      ndThreshold: initialThreshold,
+      poaiThreshold: initialThreshold,
+      licenseEpochs: [epochOne, epochTwo],
+      licenseTotals: [totals, totals],
+      poaiEpochs: [epochOne, epochTwo],
+      poaiTotals: [totals, totals],
+    });
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 1),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochOneParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochOne],
+      availabilies: [255],
+    };
+    const epochOneSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochOneParams.nodeAddress,
+      epochs: epochOneParams.epochs,
+      availabilities: epochOneParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochOneParams], [[ethers.getBytes(epochOneSignature)]]);
+
+    const awbAfterFirst = await mndContract.awbBalances(2);
+    expect(awbAfterFirst).to.equal(0n);
+
+    await adoptionOracleOverride
+      .connect(owner)
+      .setNdFullReleaseThreshold(higherThreshold);
+    await adoptionOracleOverride
+      .connect(owner)
+      .setPoaiVolumeFullReleaseThreshold(higherThreshold);
+
+    const adoptionPercentEpochTwo =
+      await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochTwo);
+    expect(adoptionPercentEpochTwo).to.be.lt(255n);
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochTwoParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochTwo],
+      availabilies: [255],
+    };
+    const epochTwoSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochTwoParams.nodeAddress,
+      epochs: epochTwoParams.epochs,
+      availabilities: epochTwoParams.availabilies,
+    });
+    const mintedBeforeSecond = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const licenseBeforeSecond = await mndContract.licenses(2);
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochTwoParams], [[ethers.getBytes(epochTwoSignature)]]);
+    const mintedAfterSecond = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const mintedSecond = mintedAfterSecond - mintedBeforeSecond;
+    const licenseAfterSecond = await mndContract.licenses(2);
+    const awbAfterSecond = await mndContract.awbBalances(2);
+    const curveMaxReleaseSecond =
+      licenseAfterSecond.totalClaimedAmount -
+      licenseBeforeSecond.totalClaimedAmount;
+    const expectedAdoptionSecond =
+      (curveMaxReleaseSecond * adoptionPercentEpochTwo) / 255n;
+    const expectedWithheldSecond =
+      curveMaxReleaseSecond - expectedAdoptionSecond;
+
+    expect(mintedSecond).to.equal(expectedAdoptionSecond);
+    expect(awbAfterSecond).to.equal(expectedWithheldSecond);
+    expect(awbAfterSecond).to.be.gt(0n);
+  });
+
+  it("Adoption gating - decreasing thresholds raises adoption after a claim", async function () {
+    const epochOne = Number(CLIFF_PERIOD);
+    const epochTwo = epochOne + 1;
+    const higherThreshold = 2000;
+    const lowerThreshold = 1000;
+    const totals = 1000;
+
+    const adoptionOracleOverride = await deployAdoptionOracleWithData({
+      ndThreshold: higherThreshold,
+      poaiThreshold: higherThreshold,
+      licenseEpochs: [epochOne, epochTwo],
+      licenseTotals: [totals, totals],
+      poaiEpochs: [epochOne, epochTwo],
+      poaiTotals: [totals, totals],
+    });
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 1),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochOneParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochOne],
+      availabilies: [255],
+    };
+    const epochOneSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochOneParams.nodeAddress,
+      epochs: epochOneParams.epochs,
+      availabilities: epochOneParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochOneParams], [[ethers.getBytes(epochOneSignature)]]);
+
+    const adoptionPercentEpochOne =
+      await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochOne);
+    const awbAfterFirst = await mndContract.awbBalances(2);
+    expect(awbAfterFirst).to.be.gt(0n);
+
+    await adoptionOracleOverride
+      .connect(owner)
+      .setNdFullReleaseThreshold(lowerThreshold);
+    await adoptionOracleOverride
+      .connect(owner)
+      .setPoaiVolumeFullReleaseThreshold(lowerThreshold);
+
+    const adoptionPercentEpochTwo =
+      await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochTwo);
+    expect(adoptionPercentEpochTwo).to.be.gt(adoptionPercentEpochOne);
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochTwoParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochTwo],
+      availabilies: [255],
+    };
+    const epochTwoSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochTwoParams.nodeAddress,
+      epochs: epochTwoParams.epochs,
+      availabilities: epochTwoParams.availabilies,
+    });
+    const mintedBeforeSecond = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const licenseBeforeSecond = await mndContract.licenses(2);
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochTwoParams], [[ethers.getBytes(epochTwoSignature)]]);
+    const mintedAfterSecond = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const mintedSecond = mintedAfterSecond - mintedBeforeSecond;
+    const licenseAfterSecond = await mndContract.licenses(2);
+    const awbAfterSecond = await mndContract.awbBalances(2);
+    const curveMaxReleaseSecond =
+      licenseAfterSecond.totalClaimedAmount -
+      licenseBeforeSecond.totalClaimedAmount;
+    const expectedAdoptionSecond =
+      (curveMaxReleaseSecond * adoptionPercentEpochTwo) / 255n;
+    const expectedWithheldSecond =
+      curveMaxReleaseSecond - expectedAdoptionSecond;
+    const targetWithheldBuffer =
+      (licenseBeforeSecond.totalClaimedAmount *
+        (255n - adoptionPercentEpochTwo)) /
+      255n;
+    const excessAwb =
+      awbAfterFirst > targetWithheldBuffer
+        ? awbAfterFirst - targetWithheldBuffer
+        : 0n;
+    const maxCarryoverRelease =
+      (curveMaxReleaseSecond *
+        (await mndContract.maxCarryoverReleaseFactor())) /
+      255n;
+    const expectedCarryover =
+      excessAwb > maxCarryoverRelease ? maxCarryoverRelease : excessAwb;
+
+    expect(mintedSecond).to.equal(expectedAdoptionSecond + expectedCarryover);
+    expect(awbAfterSecond).to.equal(
+      awbAfterFirst - expectedCarryover + expectedWithheldSecond
+    );
+    expect(mintedSecond).to.be.gt(expectedAdoptionSecond);
+  });
+
   it("Adoption gating - adoption 0% withholds all rewards", async function () {
     const adoptionOracleOverride = await deployAdoptionOracleWithData({});
     await mndContract.setAdoptionOracle(
