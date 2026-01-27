@@ -402,11 +402,9 @@ contract NDContract is
         address[] memory newNodeAddresses,
         bytes memory signature
     ) public whenNotPaused {
-        require(
-            //TODO put error
-            licenseIds.length == newNodeAddresses.length,
-            "Mismatched input arrays length"
-        );
+        if (licenseIds.length != newNodeAddresses.length) {
+            revert MismatchedInputArraysLength();
+        }
 
         verifyLinkMultiNodeSignature(msg.sender, newNodeAddresses, signature);
 
@@ -445,22 +443,19 @@ contract NDContract is
         uint256 licenseId,
         address newNodeAddress
     ) private {
-        require(
-            ownerOf(licenseId) == msg.sender,
-            "Not the owner of the license"
-        );
-        require(newNodeAddress != address(0), "Invalid node address");
-        require(
-            !isNodeAlreadyLinked(newNodeAddress),
-            "Node address already registered"
-        );
+        _requireLicenseOwner(licenseId);
+        if (newNodeAddress == address(0)) {
+            revert InvalidNodeAddress();
+        }
+        if (isNodeAlreadyLinked(newNodeAddress)) {
+            revert NodeAddressAlreadyRegistered();
+        }
 
         License storage license = licenses[licenseId];
-        require(!license.isBanned, "License is banned, cannot perform action");
-        require(
-            license.assignTimestamp + 24 hours < block.timestamp,
-            "Cannot reassign within 24 hours"
-        );
+        _requireNotBanned(license);
+        if (license.assignTimestamp + 24 hours >= block.timestamp) {
+            revert CannotReassignWithin24Hours();
+        }
 
         _removeNodeAddress(license, licenseId);
         license.nodeAddress = newNodeAddress;
