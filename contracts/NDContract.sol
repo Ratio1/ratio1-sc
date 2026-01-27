@@ -184,22 +184,41 @@ contract NDContract is
     }
 
     function initializePriceTiers() private {
-        _priceTiers[1] = PriceTier(500, 89, 0);
-        _priceTiers[2] = PriceTier(750, 144, 0);
-        _priceTiers[3] = PriceTier(1000, 233, 0);
-        _priceTiers[4] = PriceTier(1500, 377, 0);
-        _priceTiers[5] = PriceTier(2000, 610, 0);
-        _priceTiers[6] = PriceTier(2500, 987, 0);
-        _priceTiers[7] = PriceTier(3000, 1597, 0);
-        _priceTiers[8] = PriceTier(3500, 2584, 0);
-        _priceTiers[9] = PriceTier(4000, 4181, 0);
-        _priceTiers[10] = PriceTier(5000, 6765, 0);
-        _priceTiers[11] = PriceTier(7000, 10946, 0);
-        _priceTiers[12] = PriceTier(9500, 17711, 0);
+        uint256[12] memory prices = [
+            uint256(500),
+            750,
+            1000,
+            1500,
+            2000,
+            2500,
+            3000,
+            3500,
+            4000,
+            5000,
+            7000,
+            9500
+        ];
+        uint256[12] memory units = [
+            uint256(89),
+            144,
+            233,
+            377,
+            610,
+            987,
+            1597,
+            2584,
+            4181,
+            6765,
+            10946,
+            17711
+        ];
 
         uint256 ndSupply = 0;
-        for (uint8 i = 1; i <= LAST_PRICE_TIER; i++) {
-            ndSupply += _priceTiers[i].totalUnits;
+        for (uint8 i = 0; i < LAST_PRICE_TIER; i++) {
+            uint8 tier = i + 1;
+            uint256 tierUnits = units[i];
+            _priceTiers[tier] = PriceTier(prices[i], tierUnits, 0);
+            ndSupply += tierUnits;
         }
         require(
             ndSupply == _controller.ND_MAX_LICENSE_SUPPLY(),
@@ -335,10 +354,7 @@ contract NDContract is
         address newNodeAddress,
         bytes memory signature
     ) public whenNotPaused {
-        require(
-            ownerOf(licenseId) == msg.sender,
-            "Not the owner of the license"
-        );
+        _requireLicenseOwner(licenseId);
         require(newNodeAddress != address(0), "Invalid node address");
         require(
             !isNodeAlreadyLinked(newNodeAddress),
@@ -346,7 +362,7 @@ contract NDContract is
         );
 
         License storage license = licenses[licenseId];
-        require(!license.isBanned, "License is banned, cannot perform action");
+        _requireNotBanned(license);
         require(
             license.assignTimestamp + 24 hours < block.timestamp,
             "Cannot reassign within 24 hours"
@@ -364,10 +380,7 @@ contract NDContract is
     }
 
     function unlinkNode(uint256 licenseId) public whenNotPaused {
-        require(
-            ownerOf(licenseId) == msg.sender,
-            "Not the owner of the license"
-        );
+        _requireLicenseOwner(licenseId);
         License storage license = licenses[licenseId];
         _removeNodeAddress(license, licenseId);
     }
@@ -379,7 +392,7 @@ contract NDContract is
         if (license.nodeAddress == address(0)) {
             return;
         }
-        require(!license.isBanned, "License is banned, cannot perform action");
+        _requireNotBanned(license);
         require(
             license.lastClaimEpoch == getCurrentEpoch(),
             "Cannot unlink before claiming rewards"
@@ -414,10 +427,7 @@ contract NDContract is
             );
 
             License storage license = licenses[computeParams[i].licenseId];
-            require(
-                !license.isBanned,
-                "License is banned, cannot perform action"
-            );
+            _requireNotBanned(license);
             uint256 rewardsAmount = calculateLicenseRewards(
                 license,
                 computeParams[i]
@@ -549,7 +559,7 @@ contract NDContract is
         // Swap the VAT and company amounts for USDC before sending
         uint256 amountToSwap = companyAmount + vatAmount;
         uint256 totalUsdcAmount = swapR1ForUsdc(amountToSwap);
-        require(totalUsdcAmount > 0, "Swap failed");
+        _requireSwapSuccess(totalUsdcAmount);
         uint256 vatUsdcAmount = 0;
         if (vatAmount > 0) {
             vatUsdcAmount = (totalUsdcAmount * vatAmount) / amountToSwap;
@@ -581,7 +591,7 @@ contract NDContract is
         uint256 halfR1Amount = directAddLpAmount / 2;
         uint256 usdcAmount = swapR1ForUsdc(halfR1Amount);
 
-        require(usdcAmount > 0, "Swap failed");
+        _requireSwapSuccess(usdcAmount);
 
         IERC20(_usdcAddr).approve(address(_uniswapV2Router), usdcAmount);
         _R1Token.approve(address(_uniswapV2Router), halfR1Amount);
@@ -611,7 +621,7 @@ contract NDContract is
 
         if (reservedLpAmount > 0) {
             uint256 reservedUsdcAmount = swapR1ForUsdc(reservedLpAmount);
-            require(reservedUsdcAmount > 0, "Swap failed");
+            _requireSwapSuccess(reservedUsdcAmount);
             IERC20(_usdcAddr).transfer(lpWallet, reservedUsdcAmount);
             emit LiquidityReserved(reservedUsdcAmount);
         }
@@ -693,7 +703,7 @@ contract NDContract is
     }
 
     function burn(uint256 tokenId) public whenNotPaused {
-        require(ownerOf(tokenId) == msg.sender, "Not the owner of the license");
+        _requireLicenseOwner(tokenId);
         _burn(tokenId);
     }
 
@@ -708,7 +718,7 @@ contract NDContract is
         returns (address)
     {
         License storage license = licenses[tokenId];
-        require(!license.isBanned, "License is banned, cannot perform action");
+        _requireNotBanned(license);
         _removeNodeAddress(license, tokenId);
         return super._update(to, tokenId, auth);
     }
@@ -729,6 +739,21 @@ contract NDContract is
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
+    }
+
+    function _requireLicenseOwner(uint256 licenseId) internal view {
+        require(
+            ownerOf(licenseId) == msg.sender,
+            "Not the owner of the license"
+        );
+    }
+
+    function _requireNotBanned(License storage license) internal view {
+        require(!license.isBanned, "License is banned, cannot perform action");
+    }
+
+    function _requireSwapSuccess(uint256 amountOut) internal pure {
+        require(amountOut > 0, "Swap failed");
     }
 
     function setCompanyWallets(
