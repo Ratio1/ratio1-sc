@@ -946,6 +946,48 @@ describe("Reader contract", function () {
     });
   });
 
+  describe("isMultiNodeAlreadyLinked", function () {
+    it("returns linkage status for ND, MND, and unlinked nodes", async function () {
+      await buyLicenseWithMintAndAllowance(
+        r1Contract,
+        ndContract,
+        owner,
+        firstUser,
+        await ndContract.getLicenseTokenPrice(),
+        1,
+        1,
+        10000,
+        20,
+        await createLicenseSignature(backend, firstUser, invoiceUuid, 10000)
+      );
+      await linkNode(ndContract, firstUser, 1, NODE_ADDRESS);
+
+      const mndNodeAddress = ethers.Wallet.createRandom().address;
+      await mndContract
+        .connect(owner)
+        .linkNode(
+          1,
+          mndNodeAddress,
+          await signLinkNode(backend, owner, mndNodeAddress)
+        );
+
+      const unlinkedNodeAddress = ethers.Wallet.createRandom().address;
+
+      const result = await reader.isMultiNodeAlreadyLinked([
+        NODE_ADDRESS,
+        mndNodeAddress,
+        unlinkedNodeAddress,
+      ]);
+
+      expect(result).to.deep.equal([true, true, false]);
+    });
+
+    it("returns empty array for empty input", async function () {
+      const result = await reader.isMultiNodeAlreadyLinked([]);
+      expect(result).to.deep.equal([]);
+    });
+  });
+
   describe("getJobsByLastExecutionEpochDelta", function () {
     async function setupEscrowWithJobs() {
       await buyLicenseWithMintAndAllowance(
