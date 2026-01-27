@@ -663,7 +663,7 @@ describe("NDContract", function () {
       .withArgs(currentPriceTier, requestedPriceTier);
   });
 
-  it("Buy license- wrong number of lienses", async function () {
+  it("Buy license- wrong number of licenses", async function () {
     //DO TEST -try buy 1 license in first tier
     await expect(
       buyLicenseWithMintAndAllowance(
