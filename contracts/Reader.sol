@@ -134,6 +134,7 @@ interface IND is IBaseDeed {
         uint256 licenseId
     ) external view returns (NDLicense memory);
     function getNodeOwner(address nodeAddress) external view returns (address);
+    function isNodeAlreadyLinked(address nodeAddress) external view returns (bool);
 }
 
 interface IMND is IBaseDeed {
@@ -479,6 +480,16 @@ contract Reader is Initializable {
             nodesOwners[i] = NdNodeOwner({nodeAddress: nodeAddr, owner: owner});
         }
         return nodesOwners;
+    }
+
+    function isMultiNodeAlreadyLinked(
+        address[] memory nodeAddresses
+    ) public view returns (bool[] memory linked) {
+        linked = new bool[](nodeAddresses.length);
+        for (uint256 i = 0; i < nodeAddresses.length; i++) {
+            linked[i] = ndContract.isNodeAlreadyLinked(nodeAddresses[i]);
+        }
+        return linked;
     }
 
     function getEscrowDetailsByOwner(
