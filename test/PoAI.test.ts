@@ -361,7 +361,7 @@ describe("PoAIManager", function () {
   it("should revert if user does not own an oracle node", async function () {
     await expect(
       poaiManager.connect(user).deployCspEscrow()
-    ).to.be.revertedWith("No oracle node owned");
+    ).to.be.revertedWithCustomError(poaiManager, "NoOracleNodeOwned");
   });
 
   it("should deploy a new CSP Escrow for a user with an oracle node and multiple licenses (ND path)", async function () {
@@ -413,7 +413,7 @@ describe("PoAIManager", function () {
     // Second deploy should revert
     await expect(
       poaiManager.connect(user).deployCspEscrow()
-    ).to.be.revertedWith("Already has escrow");
+    ).to.be.revertedWithCustomError(poaiManager, "AlreadyHasEscrow");
   });
 
   it("should emit EscrowDeployed event with correct params", async function () {
@@ -752,7 +752,10 @@ describe("PoAIManager", function () {
 
       await expect(
         cspEscrow.connect(user).redeemUnusedJob(jobId)
-      ).to.be.revertedWith("Job is unvalidated, cannot remove");
+      ).to.be.revertedWithCustomError(
+        poaiManager,
+        "JobUnvalidatedCannotRemove"
+      );
     });
 
     it("reverts if called by a non-owner", async function () {
@@ -1049,7 +1052,10 @@ describe("PoAIManager", function () {
         secondEscrow
           .connect(other)
           .setDelegatePermissions(delegateAddress, PERMISSION_CREATE_JOBS)
-      ).to.be.revertedWith("Address delegated to another escrow");
+      ).to.be.revertedWithCustomError(
+        poaiManager,
+        "AddressDelegatedToAnotherEscrow"
+      );
 
       const registration = await poaiManager.getAddressRegistration(
         delegateAddress
@@ -1718,7 +1724,7 @@ describe("PoAIManager", function () {
     const activeNodes = [await user.getAddress()];
     await expect(
       poaiManager.connect(user).submitNodeUpdate(1, activeNodes)
-    ).to.be.revertedWith("Not an oracle");
+    ).to.be.revertedWithCustomError(poaiManager, "NotOracle");
   });
 
   describe("Closable job lookup", function () {
@@ -1881,7 +1887,7 @@ describe("PoAIManager", function () {
       // Second submission should fail
       await expect(
         poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes)
-      ).to.be.revertedWith("Already submitted");
+      ).to.be.revertedWithCustomError(poaiManager, "AlreadySubmitted");
     });
 
     it("should not allow submission for non-existent job", async function () {
@@ -1889,7 +1895,7 @@ describe("PoAIManager", function () {
 
       await expect(
         poaiManager.connect(oracle).submitNodeUpdate(999, activeNodes)
-      ).to.be.revertedWith("Job does not exist");
+      ).to.be.revertedWithCustomError(poaiManager, "JobDoesNotExist");
     });
 
     it("should reach consensus when 33%+1 oracles agree", async function () {
@@ -3404,9 +3410,9 @@ describe("PoAIManager", function () {
 
     it("should only allow CSP Escrow to get new job ID", async function () {
       // Non-CSP Escrow should not be able to get new job ID
-      await expect(poaiManager.connect(user).getNewJobId()).to.be.revertedWith(
-        "Not a CSP Escrow"
-      );
+      await expect(
+        poaiManager.connect(user).getNewJobId()
+      ).to.be.revertedWithCustomError(poaiManager, "NotCspEscrow");
     });
   });
 });
