@@ -16,6 +16,7 @@ import {
   setTimestampAndMine,
   signBuyLicense,
   signComputeParams,
+  signLinkMultiNode,
   signLinkNode,
   START_EPOCH_TIMESTAMP,
   takeSnapshot,
@@ -54,6 +55,10 @@ const EXPECTED_LICENSES_INFO = [
   },
 ];
 const EPOCH_IN_A_DAY = 1;
+const MULTI_NODE_ADDRESSES = [
+  "0x0000000000000000000000000000000000000010",
+  "0x0000000000000000000000000000000000000020",
+];
 
 const EXPECTED_PRICE_TIERS = [
   {
@@ -285,6 +290,21 @@ describe("NDContract", function () {
         licenseId,
         NODE_ADDRESS,
         await signLinkNode(backend, user, NODE_ADDRESS)
+      );
+  }
+
+  async function linkMultiNode(
+    ndContract: NDContract,
+    user: HardhatEthersSigner,
+    licenseIds: number[],
+    nodeAddresses: string[]
+  ) {
+    await ndContract
+      .connect(user)
+      .linkMultiNode(
+        licenseIds,
+        nodeAddresses,
+        await signLinkMultiNode(backend, user, nodeAddresses)
       );
   }
 
@@ -736,6 +756,138 @@ describe("NDContract", function () {
     expect((await ndContract.licenses(1)).nodeAddress).to.equal(NODE_ADDRESS);
     expect(await ndContract.registeredNodeAddresses(NODE_ADDRESS)).to.be.true;
     expect(await ndContract.isNodeActive(NODE_ADDRESS)).to.be.true;
+  });
+
+  it("Link multi node - should work", async function () {
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      await ndContract.getLicenseTokenPrice(),
+      2,
+      1,
+      20000,
+      20,
+      await createLicenseSignature(backend, firstUser, 20000)
+    );
+
+    const licenseIds = [1, 2];
+    await linkMultiNode(ndContract, firstUser, licenseIds, MULTI_NODE_ADDRESSES);
+
+    for (let i = 0; i < licenseIds.length; i++) {
+      const licenseId = licenseIds[i];
+      const nodeAddress = MULTI_NODE_ADDRESSES[i];
+      expect((await ndContract.licenses(licenseId)).nodeAddress).to.equal(
+        nodeAddress
+      );
+      expect(await ndContract.registeredNodeAddresses(nodeAddress)).to.be.true;
+      expect(await ndContract.nodeToLicenseId(nodeAddress)).to.equal(licenseId);
+      expect(await ndContract.isNodeActive(nodeAddress)).to.be.true;
+    }
+  });
+
+  it("Link multi node - mismatched arrays length", async function () {
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      await ndContract.getLicenseTokenPrice(),
+      2,
+      1,
+      20000,
+      20,
+      await createLicenseSignature(backend, firstUser, 20000)
+    );
+
+    const licenseIds = [1, 2];
+    const nodeAddresses = [MULTI_NODE_ADDRESSES[0]];
+    await expect(
+      ndContract
+        .connect(firstUser)
+        .linkMultiNode(
+          licenseIds,
+          nodeAddresses,
+          await signLinkMultiNode(backend, firstUser, nodeAddresses)
+        )
+    ).to.be.revertedWithCustomError(ndContract, "MismatchedInputArraysLength");
+  });
+
+  it("Link multi node - not the owner of the license", async function () {
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      await ndContract.getLicenseTokenPrice(),
+      1,
+      1,
+      10000,
+      20,
+      await createLicenseSignature(backend, firstUser, 10000)
+    );
+    invoiceUuid = Buffer.from("e18ac3989ae74da398c8ab26de41bb7c");
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      secondUser,
+      await ndContract.getLicenseTokenPrice(),
+      1,
+      1,
+      10000,
+      20,
+      await createLicenseSignature(backend, secondUser, 10000)
+    );
+
+    const licenseIds = [1, 2];
+    await expect(
+      linkMultiNode(ndContract, firstUser, licenseIds, MULTI_NODE_ADDRESSES)
+    ).to.be.revertedWithCustomError(ndContract, "NotLicenseOwner");
+  });
+
+  it("Link multi node - banned license", async function () {
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      await ndContract.getLicenseTokenPrice(),
+      1,
+      1,
+      10000,
+      20,
+      await createLicenseSignature(backend, firstUser, 10000)
+    );
+
+    await ndContract.connect(owner).banLicense(1);
+
+    await expect(
+      linkMultiNode(ndContract, firstUser, [1], [MULTI_NODE_ADDRESSES[0]])
+    ).to.be.revertedWithCustomError(ndContract, "LicenseBanned");
+  });
+
+  it("Link multi node - link again before 24hrs", async function () {
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      await ndContract.getLicenseTokenPrice(),
+      1,
+      1,
+      10000,
+      20,
+      await createLicenseSignature(backend, firstUser, 10000)
+    );
+
+    await linkNode(ndContract, firstUser, 1);
+    await unlinkNode(ndContract, firstUser, 1);
+
+    await expect(
+      linkMultiNode(ndContract, firstUser, [1], [MULTI_NODE_ADDRESSES[0]])
+    ).to.be.revertedWithCustomError(ndContract, "CannotReassignWithin24Hours");
   });
 
   it("Link node - address already registered", async function () {
