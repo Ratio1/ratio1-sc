@@ -179,9 +179,11 @@ export async function signLinkMultiNode(
   nodeAddresses: string[]
 ): Promise<string> {
   const userAddress = await user.getAddress();
-  const types = ["address", ...nodeAddresses.map(() => "address")];
-  const values = [userAddress, ...nodeAddresses];
-  const messageHash = ethers.solidityPackedKeccak256(types, values);
+  // Must mirror Solidity: keccak256(abi.encodePacked(addr, address[]))
+  const messageHash = ethers.solidityPackedKeccak256(
+    ["address", "address[]"],
+    [userAddress, nodeAddresses]
+  );
   return signer.signMessage(ethers.getBytes(messageHash));
 }
 

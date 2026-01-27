@@ -811,7 +811,7 @@ describe("NDContract", function () {
           nodeAddresses,
           await signLinkMultiNode(backend, firstUser, nodeAddresses)
         )
-    ).to.be.revertedWith("Mismatched input arrays length");
+    ).to.be.revertedWithCustomError(ndContract, "MismatchedInputArraysLength");
   });
 
   it("Link multi node - not the owner of the license", async function () {
@@ -844,7 +844,7 @@ describe("NDContract", function () {
     const licenseIds = [1, 2];
     await expect(
       linkMultiNode(ndContract, firstUser, licenseIds, MULTI_NODE_ADDRESSES)
-    ).to.be.revertedWith("Not the owner of the license");
+    ).to.be.revertedWithCustomError(ndContract, "NotLicenseOwner");
   });
 
   it("Link multi node - banned license", async function () {
@@ -865,7 +865,7 @@ describe("NDContract", function () {
 
     await expect(
       linkMultiNode(ndContract, firstUser, [1], [MULTI_NODE_ADDRESSES[0]])
-    ).to.be.revertedWith("License is banned, cannot perform action");
+    ).to.be.revertedWithCustomError(ndContract, "LicenseBanned");
   });
 
   it("Link multi node - link again before 24hrs", async function () {
@@ -887,7 +887,7 @@ describe("NDContract", function () {
 
     await expect(
       linkMultiNode(ndContract, firstUser, [1], [MULTI_NODE_ADDRESSES[0]])
-    ).to.be.revertedWith("Cannot reassign within 24 hours");
+    ).to.be.revertedWithCustomError(ndContract, "CannotReassignWithin24Hours");
   });
 
   it("Link node - address already registered", async function () {
