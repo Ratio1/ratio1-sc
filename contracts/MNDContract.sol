@@ -220,32 +220,25 @@ contract MNDContract is
         address newNodeAddress,
         bytes memory signature
     ) public whenNotPaused {
-        require(
-            ownerOf(licenseId) == msg.sender,
-            "Not the owner of the license"
-        );
-        require(newNodeAddress != address(0), "Invalid node address");
-        require(
-            !isNodeAlreadyLinked(newNodeAddress),
-            "Node address already registered"
-        );
-
-        // Update the license
-        License storage license = licenses[licenseId];
-        require(
-            license.assignTimestamp + 24 hours < block.timestamp,
-            "Cannot reassign within 24 hours"
-        );
         verifyLinkNodeSignature(msg.sender, newNodeAddress, signature);
+        _linkNodeInternal(licenseId, newNodeAddress);
+    }
 
-        _removeNodeAddress(license, licenseId);
-        license.nodeAddress = newNodeAddress;
-        license.lastClaimEpoch = getCurrentEpoch();
-        license.assignTimestamp = block.timestamp;
-        registeredNodeAddresses[newNodeAddress] = true;
-        nodeToLicenseId[newNodeAddress] = licenseId;
+    function linkMultiNode(
+        uint256[] memory licenseIds,
+        address[] memory newNodeAddresses,
+        bytes memory signature
+    ) public whenNotPaused {
+        require(
+            licenseIds.length == newNodeAddresses.length,
+            "Mismatched input arrays length"
+        );
 
-        emit LinkNode(msg.sender, licenseId, newNodeAddress);
+        verifyLinkMultiNodeSignature(msg.sender, newNodeAddresses, signature);
+
+        for (uint256 i = 0; i < licenseIds.length; i++) {
+            _linkNodeInternal(licenseIds[i], newNodeAddresses[i]);
+        }
     }
 
     function unlinkNode(uint256 licenseId) public whenNotPaused {
@@ -277,6 +270,33 @@ contract MNDContract is
         license.nodeAddress = address(0);
 
         emit UnlinkNode(msg.sender, licenseId, oldNodeAddress);
+    }
+
+    function _linkNodeInternal(uint256 licenseId, address newNodeAddress) private {
+        require(
+            ownerOf(licenseId) == msg.sender,
+            "Not the owner of the license"
+        );
+        require(newNodeAddress != address(0), "Invalid node address");
+        require(
+            !isNodeAlreadyLinked(newNodeAddress),
+            "Node address already registered"
+        );
+
+        License storage license = licenses[licenseId];
+        require(
+            license.assignTimestamp + 24 hours < block.timestamp,
+            "Cannot reassign within 24 hours"
+        );
+
+        _removeNodeAddress(license, licenseId);
+        license.nodeAddress = newNodeAddress;
+        license.lastClaimEpoch = getCurrentEpoch();
+        license.assignTimestamp = block.timestamp;
+        registeredNodeAddresses[newNodeAddress] = true;
+        nodeToLicenseId[newNodeAddress] = licenseId;
+
+        emit LinkNode(msg.sender, licenseId, newNodeAddress);
     }
 
     function claimRewards(
@@ -721,6 +741,25 @@ contract MNDContract is
         bytes memory signature
     ) internal returns (address) {
         bytes32 messageHash = keccak256(abi.encodePacked(addr, nodeAddress));
+        bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(
+            messageHash
+        );
+        bytes[] memory signatures = new bytes[](1);
+        signatures[0] = signature;
+        return
+            _controller.requireVerifySignatures(
+                ethSignedMessageHash,
+                signatures,
+                false
+            );
+    }
+
+    function verifyLinkMultiNodeSignature(
+        address addr,
+        address[] memory nodeAddresses,
+        bytes memory signature
+    ) internal returns (address) {
+        bytes32 messageHash = keccak256(abi.encodePacked(addr, nodeAddresses));
         bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(
             messageHash
         );

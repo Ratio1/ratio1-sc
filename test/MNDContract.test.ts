@@ -14,6 +14,7 @@ import {
   revertSnapshotAndCapture,
   setTimestampAndMine,
   signComputeParams,
+  signLinkMultiNode,
   signLinkNode,
   START_EPOCH_TIMESTAMP,
   takeSnapshot,
@@ -38,6 +39,10 @@ const newExpensesWallet = "0x0000000000000000000000000000000000000002";
 const newMarketingWallet = "0x0000000000000000000000000000000000000003";
 const newGrantsWallet = "0x0000000000000000000000000000000000000004";
 const newCsrWallet = "0x0000000000000000000000000000000000000005";
+const MULTI_NODE_ADDRESSES = [
+  "0x0000000000000000000000000000000000000010",
+  "0x0000000000000000000000000000000000000020",
+];
 const REWARDS_AMOUNT = 106362840848417488913n;
 const LICENSE_POWER = 485410n * ONE_TOKEN;
 const CLIFF_PERIOD = 223n;
@@ -163,6 +168,21 @@ describe("MNDContract", function () {
       nodeAddress: NODE_ADDRESS,
       oracleSigner: oracle,
     });
+  }
+
+  async function linkMultiNode(
+    mndContract: MNDContract,
+    user: HardhatEthersSigner,
+    licenseIds: number[],
+    nodeAddresses: string[]
+  ) {
+    await mndContract
+      .connect(user)
+      .linkMultiNode(
+        licenseIds,
+        nodeAddresses,
+        await signLinkMultiNode(oracle, user, nodeAddresses)
+      );
   }
 
   async function unlinkNode(
@@ -499,6 +519,77 @@ describe("MNDContract", function () {
     expect(await mndContract.registeredNodeAddresses(NODE_ADDRESS)).to.equal(
       true
     );
+  });
+
+  it("Link multi node - should work", async function () {
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+
+    const licenseIds = [2, 3];
+    await linkMultiNode(mndContract, firstUser, licenseIds, MULTI_NODE_ADDRESSES);
+
+    for (let i = 0; i < licenseIds.length; i++) {
+      const licenseId = licenseIds[i];
+      const nodeAddress = MULTI_NODE_ADDRESSES[i];
+      expect((await mndContract.licenses(licenseId)).nodeAddress).to.equal(
+        nodeAddress
+      );
+      expect(await mndContract.registeredNodeAddresses(nodeAddress)).to.equal(
+        true
+      );
+      expect(await mndContract.nodeToLicenseId(nodeAddress)).to.equal(licenseId);
+    }
+  });
+
+  it("Link multi node - mismatched arrays length", async function () {
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+
+    const licenseIds = [2, 3];
+    const nodeAddresses = [MULTI_NODE_ADDRESSES[0]];
+    await expect(
+      mndContract
+        .connect(firstUser)
+        .linkMultiNode(
+          licenseIds,
+          nodeAddresses,
+          await signLinkMultiNode(oracle, firstUser, nodeAddresses)
+        )
+    ).to.be.revertedWith("Mismatched input arrays length");
+  });
+
+  it("Link multi node - not the owner of the license", async function () {
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await mndContract
+      .connect(owner)
+      .addLicense(await secondUser.getAddress(), LICENSE_POWER);
+
+    await expect(
+      linkMultiNode(mndContract, firstUser, [2, 3], MULTI_NODE_ADDRESSES)
+    ).to.be.revertedWith("Not the owner of the license");
+  });
+
+  it("Link multi node - link again before 24hrs", async function () {
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+
+    await linkNode(mndContract, firstUser, 2);
+    await unlinkNode(mndContract, firstUser, 2);
+
+    await expect(
+      linkMultiNode(mndContract, firstUser, [2], [MULTI_NODE_ADDRESSES[0]])
+    ).to.be.revertedWith("Cannot reassign within 24 hours");
   });
 
   it("Link node - address already registered", async function () {
