@@ -26,32 +26,14 @@ async function main() {
     ],
     { initializer: "initialize" }
   );
-  await adoptionOracle.deployed();
-  console.log("AdoptionOracle deployed to:", adoptionOracle.address);
-
-  const ndContract = await ethers.getContractAt(
-    "NDContract",
-    ND_SC_ADDR,
-    deployer
-  );
-  const poaiManager = await ethers.getContractAt(
-    "PoAIManager",
-    POAI_MANAGER_ADDR,
-    deployer
-  );
-
-  await ndContract.setAdoptionOracle(adoptionOracle.address);
-  await poaiManager.setAdoptionOracle(adoptionOracle.address);
-
-  console.log("AdoptionOracle linked to ND and PoAIManager");
-
+  await adoptionOracle.waitForDeployment();
+  const proxyAddress = await adoptionOracle.getAddress();
+  console.log("AdoptionOracle deployed to:", proxyAddress);
   const implAddress = await upgrades.erc1967.getImplementationAddress(
-    adoptionOracle.address
+    proxyAddress
   );
   console.log("Implementation:", implAddress);
-  const adminAddress = await upgrades.erc1967.getAdminAddress(
-    adoptionOracle.address
-  );
+  const adminAddress = await upgrades.erc1967.getAdminAddress(proxyAddress);
   console.log("Proxy Admin:", adminAddress);
 }
 
