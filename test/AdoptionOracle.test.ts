@@ -6,6 +6,7 @@ import { AdoptionOracle } from "../typechain-types";
 describe("AdoptionOracle", function () {
   const ND_FULL_RELEASE_THRESHOLD = 7_500;
   const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 2_500_000;
+  const POAI_VOLUME_WINDOW_SIZE = 30;
   let owner: Signer;
   let other: Signer;
   let nd: Signer;
@@ -25,6 +26,7 @@ describe("AdoptionOracle", function () {
         await poai.getAddress(),
         ND_FULL_RELEASE_THRESHOLD,
         POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_WINDOW_SIZE,
       ],
       { initializer: "initialize" }
     );
@@ -43,7 +45,7 @@ describe("AdoptionOracle", function () {
     });
 
     it("initializes PoAI volume checkpoints and totals", async function () {
-      const epochs = [1, 3, 5];
+      const epochs = [1, 2, 3];
       const totals = [10n, 20n, 30n];
 
       await adoptionOracle.initializePoaiVolumes(epochs, totals);
@@ -51,9 +53,8 @@ describe("AdoptionOracle", function () {
       expect(await adoptionOracle.totalPoaiVolume()).to.equal(30n);
       expect(await adoptionOracle.getPoaiVolumeAtEpoch(0)).to.equal(0n);
       expect(await adoptionOracle.getPoaiVolumeAtEpoch(1)).to.equal(10n);
-      expect(await adoptionOracle.getPoaiVolumeAtEpoch(2)).to.equal(10n);
-      expect(await adoptionOracle.getPoaiVolumeAtEpoch(4)).to.equal(20n);
-      expect(await adoptionOracle.getPoaiVolumeAtEpoch(6)).to.equal(30n);
+      expect(await adoptionOracle.getPoaiVolumeAtEpoch(2)).to.equal(20n);
+      expect(await adoptionOracle.getPoaiVolumeAtEpoch(4)).to.equal(30n);
     });
 
     it("initializes license sales checkpoints and totals", async function () {
@@ -84,6 +85,10 @@ describe("AdoptionOracle", function () {
       ).to.be.revertedWith("Epochs not increasing");
 
       await expect(
+        adoptionOracle.initializePoaiVolumes([1, 3], [1n, 2n])
+      ).to.be.revertedWith("Epochs not contiguous");
+
+      await expect(
         adoptionOracle.initializePoaiVolumes([1], [1n, 2n])
       ).to.be.revertedWith("Length mismatch");
 
@@ -106,6 +111,9 @@ describe("AdoptionOracle", function () {
       );
       expect(await adoptionOracle.poaiVolumeFullReleaseThreshold()).to.equal(
         POAI_VOLUME_FULL_RELEASE_THRESHOLD
+      );
+      expect(await adoptionOracle.poaiVolumeWindowSize()).to.equal(
+        POAI_VOLUME_WINDOW_SIZE
       );
     });
   });
@@ -158,7 +166,7 @@ describe("AdoptionOracle", function () {
   });
 
   describe("recordPoaiVolume", function () {
-    it("requires PoAI manager and ignores zero amounts", async function () {
+    it("requires PoAI manager and records zero amounts", async function () {
       await expect(adoptionOracle.recordPoaiVolume(1, 1)).to.be.revertedWith(
         "Not PoAI Manager"
       );
@@ -167,6 +175,14 @@ describe("AdoptionOracle", function () {
 
       expect(await adoptionOracle.totalPoaiVolume()).to.equal(0n);
       expect(await adoptionOracle.getPoaiVolumeAtEpoch(1)).to.equal(0n);
+    });
+
+    it("backfills missing epochs with previous totals", async function () {
+      await adoptionOracle.connect(poai).recordPoaiVolume(1, 100);
+      await adoptionOracle.connect(poai).recordPoaiVolume(3, 50);
+
+      expect(await adoptionOracle.getPoaiVolumeAtEpoch(2)).to.equal(100n);
+      expect(await adoptionOracle.getPoaiVolumeAtEpoch(3)).to.equal(150n);
     });
 
     it("records totals for new epochs and updates same epoch", async function () {
@@ -260,17 +276,32 @@ describe("AdoptionOracle", function () {
       const range = await adoptionOracle.getAdoptionPercentagesRange(1, 3);
       expect(range).to.deep.equal([0n, 63n, 191n]);
     });
+
+    it("uses windowed PoAI volume for adoption", async function () {
+      await adoptionOracle
+        .connect(owner)
+        .setPoaiVolumeFullReleaseThreshold(200, 2);
+
+      await adoptionOracle.connect(poai).recordPoaiVolume(1, 100);
+      await adoptionOracle.connect(poai).recordPoaiVolume(2, 100);
+      await adoptionOracle.connect(poai).recordPoaiVolume(3, 100);
+      await adoptionOracle.connect(poai).recordPoaiVolume(4, 100);
+
+      const percentage = await adoptionOracle.getAdoptionPercentageAtEpoch(4);
+      expect(percentage).to.equal(127n);
+    });
   });
 
   describe("threshold updates", function () {
     it("updates thresholds as owner", async function () {
       await adoptionOracle.setNdFullReleaseThreshold(1_000);
-      await adoptionOracle.setPoaiVolumeFullReleaseThreshold(2_000_000);
+      await adoptionOracle.setPoaiVolumeFullReleaseThreshold(2_000_000, 25);
 
       expect(await adoptionOracle.ndFullReleaseThreshold()).to.equal(1_000n);
       expect(await adoptionOracle.poaiVolumeFullReleaseThreshold()).to.equal(
         2_000_000n
       );
+      expect(await adoptionOracle.poaiVolumeWindowSize()).to.equal(25n);
     });
 
     it("reverts when non-owner updates thresholds", async function () {
@@ -286,6 +317,10 @@ describe("AdoptionOracle", function () {
       await expect(
         adoptionOracle.setNdFullReleaseThreshold(0)
       ).to.be.revertedWith("ND threshold cannot be zero");
+
+      await expect(
+        adoptionOracle.setPoaiVolumeFullReleaseThreshold(1, 0)
+      ).to.be.revertedWith("PoAI window cannot be zero");
     });
   });
 });

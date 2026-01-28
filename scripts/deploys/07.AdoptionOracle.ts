@@ -5,6 +5,7 @@ import {
   POAI_MANAGER_ADDR,
   ND_FULL_RELEASE_THRESHOLD,
   POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+  POAI_VOLUME_WINDOW_SIZE,
 } from "../configs/constants";
 
 async function main() {
@@ -23,6 +24,7 @@ async function main() {
       POAI_MANAGER_ADDR,
       ND_FULL_RELEASE_THRESHOLD,
       POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+      POAI_VOLUME_WINDOW_SIZE,
     ],
     { initializer: "initialize" }
   );

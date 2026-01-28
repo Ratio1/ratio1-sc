@@ -30,6 +30,7 @@ import {
 describe("PoAIManager", function () {
   const ND_FULL_RELEASE_THRESHOLD = 7_500;
   const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 2_500_000;
+  const POAI_VOLUME_WINDOW_SIZE = 30;
   let poaiManager: PoAIManager;
   let ndContract: NDContract;
   let mndContract: MNDContract;
@@ -149,6 +150,7 @@ describe("PoAIManager", function () {
         await poaiManager.getAddress(),
         ND_FULL_RELEASE_THRESHOLD,
         POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_WINDOW_SIZE,
       ],
       { initializer: "initialize" }
     )) as AdoptionOracle;

@@ -55,6 +55,7 @@ const CLIFF_PERIOD = 223n;
 const MND_MAX_MINTING_DURATION = 30 * 30;
 const ND_FULL_RELEASE_THRESHOLD = 1;
 const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 1;
+const POAI_VOLUME_WINDOW_SIZE = 30;
 
 const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: 2n,
@@ -147,6 +148,7 @@ describe("MNDContract", function () {
         await owner.getAddress(),
         ND_FULL_RELEASE_THRESHOLD,
         POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_WINDOW_SIZE,
       ],
       { initializer: "initialize" }
     );
@@ -243,6 +245,7 @@ describe("MNDContract", function () {
         await owner.getAddress(),
         ND_FULL_RELEASE_THRESHOLD,
         POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_WINDOW_SIZE,
       ],
       { initializer: "initialize" }
     );
@@ -277,6 +280,7 @@ describe("MNDContract", function () {
         await owner.getAddress(),
         ndThreshold,
         poaiThreshold,
+        POAI_VOLUME_WINDOW_SIZE,
       ],
       { initializer: "initialize" }
     );
@@ -1049,7 +1053,10 @@ describe("MNDContract", function () {
       .setNdFullReleaseThreshold(higherThreshold);
     await adoptionOracleOverride
       .connect(owner)
-      .setPoaiVolumeFullReleaseThreshold(higherThreshold);
+      .setPoaiVolumeFullReleaseThreshold(
+        higherThreshold,
+        POAI_VOLUME_WINDOW_SIZE
+      );
 
     const adoptionPercentEpochTwo =
       await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochTwo);
@@ -1151,7 +1158,10 @@ describe("MNDContract", function () {
       .setNdFullReleaseThreshold(lowerThreshold);
     await adoptionOracleOverride
       .connect(owner)
-      .setPoaiVolumeFullReleaseThreshold(lowerThreshold);
+      .setPoaiVolumeFullReleaseThreshold(
+        lowerThreshold,
+        POAI_VOLUME_WINDOW_SIZE
+      );
 
     const adoptionPercentEpochTwo =
       await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochTwo);
@@ -1728,6 +1738,7 @@ describe("MNDContract", function () {
         await owner.getAddress(),
         adoptionThreshold,
         adoptionThreshold,
+        POAI_VOLUME_WINDOW_SIZE,
       ],
       { initializer: "initialize" }
     );
