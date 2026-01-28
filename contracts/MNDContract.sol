@@ -52,6 +52,23 @@ struct LicenseInfo {
     address lastClaimOracle;
 }
 
+error InvalidLicensePower();
+error AssignedAmountExceedsLimit();
+error MaxTotalAssignedTokensReached();
+error MismatchedInputArraysLength();
+error NotLicenseOwner();
+error CannotUnlinkBeforeClaimingRewards();
+error InvalidNodeAddress();
+error NodeAddressAlreadyRegistered();
+error CannotReassignWithin24Hours();
+error InvalidNodeAddressForRewards();
+error IncorrectNumberOfParams();
+error InvalidEpochs();
+error MaxTokenSupplyReached();
+error TimestampBeforeStartEpoch();
+error NonexistentTokenURI();
+error SoulboundNonTransferableToken();
+
 contract MNDContract is
     Initializable,
     ERC721EnumerableUpgradeable,
@@ -178,22 +195,24 @@ contract MNDContract is
         address to,
         uint256 newTotalAssignedAmount
     ) public onlyOwner whenNotPaused {
-        require(
-            newTotalAssignedAmount > 0 &&
-                newTotalAssignedAmount <=
-                _controller.MND_MAX_TOKENS_ASSIGNED_PER_LICENSE(),
-            "Invalid license power"
-        );
-        require(
-            getUserTotalAssignedAmount(to) + newTotalAssignedAmount <=
-                _controller.MND_MAX_TOKENS_ASSIGNED_PER_LICENSE(),
-            "Assigned amount for address exceedes limit"
-        );
-        require(
-            totalLicensesAssignedTokensAmount + newTotalAssignedAmount <=
-                _controller.MND_MAX_TOTAL_ASSIGNED_TOKENS(),
-            "Max total assigned tokens reached"
-        );
+        uint256 maxPerLicense = _controller
+            .MND_MAX_TOKENS_ASSIGNED_PER_LICENSE();
+        if (
+            newTotalAssignedAmount == 0 || newTotalAssignedAmount > maxPerLicense
+        ) {
+            revert InvalidLicensePower();
+        }
+        if (
+            getUserTotalAssignedAmount(to) + newTotalAssignedAmount > maxPerLicense
+        ) {
+            revert AssignedAmountExceedsLimit();
+        }
+        if (
+            totalLicensesAssignedTokensAmount + newTotalAssignedAmount >
+            _controller.MND_MAX_TOTAL_ASSIGNED_TOKENS()
+        ) {
+            revert MaxTotalAssignedTokensReached();
+        }
 
         uint256 tokenId = safeMint(to);
         totalLicensesAssignedTokensAmount += newTotalAssignedAmount;
@@ -229,10 +248,9 @@ contract MNDContract is
         address[] memory newNodeAddresses,
         bytes memory signature
     ) public whenNotPaused {
-        require(
-            licenseIds.length == newNodeAddresses.length,
-            "Mismatched input arrays length"
-        );
+        if (licenseIds.length != newNodeAddresses.length) {
+            revert MismatchedInputArraysLength();
+        }
 
         verifyLinkMultiNodeSignature(msg.sender, newNodeAddresses, signature);
 
@@ -242,10 +260,7 @@ contract MNDContract is
     }
 
     function unlinkNode(uint256 licenseId) public whenNotPaused {
-        require(
-            ownerOf(licenseId) == msg.sender,
-            "Not the owner of the license"
-        );
+        _requireLicenseOwner(licenseId);
         License storage license = licenses[licenseId];
         _removeNodeAddress(license, licenseId);
     }
@@ -258,11 +273,12 @@ contract MNDContract is
             return;
         }
         uint256 currentEpoch = getCurrentEpoch();
-        require(
-            license.lastClaimEpoch == currentEpoch ||
-                currentEpoch < _controller.MND_NO_MINING_EPOCHS(),
-            "Cannot unlink before claiming rewards"
-        );
+        if (
+            license.lastClaimEpoch != currentEpoch &&
+            currentEpoch >= _controller.MND_NO_MINING_EPOCHS()
+        ) {
+            revert CannotUnlinkBeforeClaimingRewards();
+        }
 
         address oldNodeAddress = license.nodeAddress;
         registeredNodeAddresses[license.nodeAddress] = false;
@@ -272,22 +288,22 @@ contract MNDContract is
         emit UnlinkNode(msg.sender, licenseId, oldNodeAddress);
     }
 
-    function _linkNodeInternal(uint256 licenseId, address newNodeAddress) private {
-        require(
-            ownerOf(licenseId) == msg.sender,
-            "Not the owner of the license"
-        );
-        require(newNodeAddress != address(0), "Invalid node address");
-        require(
-            !isNodeAlreadyLinked(newNodeAddress),
-            "Node address already registered"
-        );
+    function _linkNodeInternal(
+        uint256 licenseId,
+        address newNodeAddress
+    ) private {
+        _requireLicenseOwner(licenseId);
+        if (newNodeAddress == address(0)) {
+            revert InvalidNodeAddress();
+        }
+        if (isNodeAlreadyLinked(newNodeAddress)) {
+            revert NodeAddressAlreadyRegistered();
+        }
 
         License storage license = licenses[licenseId];
-        require(
-            license.assignTimestamp + 24 hours < block.timestamp,
-            "Cannot reassign within 24 hours"
-        );
+        if (license.assignTimestamp + 24 hours >= block.timestamp) {
+            revert CannotReassignWithin24Hours();
+        }
 
         _removeNodeAddress(license, licenseId);
         license.nodeAddress = newNodeAddress;
@@ -303,17 +319,13 @@ contract MNDContract is
         ComputeRewardsParams[] memory computeParams,
         bytes[][] memory nodesSignatures
     ) public nonReentrant whenNotPaused {
-        require(
-            computeParams.length == nodesSignatures.length,
-            "Mismatched input arrays length"
-        );
+        if (computeParams.length != nodesSignatures.length) {
+            revert MismatchedInputArraysLength();
+        }
 
         uint256 totalRewards = 0;
         for (uint256 i = 0; i < computeParams.length; i++) {
-            require(
-                ownerOf(computeParams[i].licenseId) == msg.sender,
-                "User does not have the license"
-            );
+            _requireLicenseOwner(computeParams[i].licenseId);
             address firstSigner = verifyRewardsSignatures(
                 computeParams[i],
                 nodesSignatures[i]
@@ -401,10 +413,9 @@ contract MNDContract is
             return 0;
         }
 
-        require(
-            license.nodeAddress == computeParam.nodeAddress,
-            "Invalid node address."
-        );
+        if (license.nodeAddress != computeParam.nodeAddress) {
+            revert InvalidNodeAddressForRewards();
+        }
 
         if (license.totalClaimedAmount == license.totalAssignedAmount) {
             return 0;
@@ -419,16 +430,17 @@ contract MNDContract is
             return 0;
         }
 
-        require(
-            computeParam.epochs.length == epochsToClaim &&
-                computeParam.availabilies.length == epochsToClaim,
-            "Incorrect number of params."
-        );
-        require(
-            computeParam.epochs[computeParam.epochs.length - 1] ==
-                currentEpoch - 1,
-            "Invalid epochs"
-        );
+        if (
+            computeParam.epochs.length != epochsToClaim ||
+            computeParam.availabilies.length != epochsToClaim
+        ) {
+            revert IncorrectNumberOfParams();
+        }
+        if (
+            computeParam.epochs[computeParam.epochs.length - 1] != currentEpoch - 1
+        ) {
+            revert InvalidEpochs();
+        }
 
         if (computeParam.licenseId == GENESIS_TOKEN_ID) {
             uint256 maxRewardsPerEpoch = license.totalAssignedAmount /
@@ -507,10 +519,9 @@ contract MNDContract is
     function safeMint(address to) private returns (uint256) {
         _supply += 1;
         uint256 newTokenId = _supply;
-        require(
-            newTokenId <= _controller.MND_MAX_SUPPLY(),
-            "Maximum token supply reached."
-        );
+        if (newTokenId > _controller.MND_MAX_SUPPLY()) {
+            revert MaxTokenSupplyReached();
+        }
 
         _safeMint(to, newTokenId);
         return newTokenId;
@@ -523,10 +534,9 @@ contract MNDContract is
     function _calculateEpoch(uint256 timestamp) private view returns (uint256) {
         uint256 startEpochTimestamp = _controller.startEpochTimestamp();
         uint256 epochDuration = _controller.epochDuration();
-        require(
-            timestamp >= startEpochTimestamp,
-            "Timestamp is before the start epoch."
-        );
+        if (timestamp < startEpochTimestamp) {
+            revert TimestampBeforeStartEpoch();
+        }
 
         return (timestamp - startEpochTimestamp) / epochDuration;
     }
@@ -543,15 +553,14 @@ contract MNDContract is
         override(ERC721Upgradeable, ERC721URIStorageUpgradeable)
         returns (string memory)
     {
-        require(
-            _ownerOf(tokenId) != address(0),
-            "ERC721Metadata: URI query for nonexistent token"
-        );
+        if (_ownerOf(tokenId) == address(0)) {
+            revert NonexistentTokenURI();
+        }
         return _baseTokenURI;
     }
 
     function burn(uint256 tokenId) public whenNotPaused {
-        require(ownerOf(tokenId) == msg.sender, "Not the owner of the license");
+        _requireLicenseOwner(tokenId);
         _burn(tokenId);
     }
 
@@ -566,12 +575,13 @@ contract MNDContract is
     {
         address from = _ownerOf(tokenId);
 
-        require(
-            from == address(0) ||
-                (to == address(0) && initiatedBurn[from]) ||
-                (to != address(0) && initiatedTransferReceiver[from] == to),
-            "Soulbound: Non-transferable token"
-        );
+        if (
+            from != address(0) &&
+            !(to == address(0) && initiatedBurn[from]) &&
+            !(to != address(0) && initiatedTransferReceiver[from] == to)
+        ) {
+            revert SoulboundNonTransferableToken();
+        }
         delete initiatedTransferReceiver[from];
         delete initiatedBurn[from];
         License memory license = licenses[tokenId];
@@ -583,11 +593,12 @@ contract MNDContract is
             nodeToLicenseId[license.nodeAddress] = 0;
             delete licenses[tokenId];
         } else {
-            require(
-                getUserTotalAssignedAmount(to) + license.totalAssignedAmount <=
-                    _controller.MND_MAX_TOKENS_ASSIGNED_PER_LICENSE(),
-                "Assigned amount for address exceedes limit"
-            );
+            if (
+                getUserTotalAssignedAmount(to) + license.totalAssignedAmount >
+                _controller.MND_MAX_TOKENS_ASSIGNED_PER_LICENSE()
+            ) {
+                revert AssignedAmountExceedsLimit();
+            }
         }
         return super._update(to, tokenId, auth);
     }
@@ -608,6 +619,12 @@ contract MNDContract is
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
+    }
+
+    function _requireLicenseOwner(uint256 licenseId) internal view {
+        if (ownerOf(licenseId) != msg.sender) {
+            revert NotLicenseOwner();
+        }
     }
 
     function setCompanyWallets(
