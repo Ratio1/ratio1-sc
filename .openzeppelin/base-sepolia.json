@@ -104,6 +104,11 @@
       "address": "0x5659ed5339DBf256B0a781216Fa360e8Bb16315e",
       "txHash": "0x4f42d4c17b7701f3f2aaa7ae12d5810891862a9a58995ea92cd0229bd017572e",
       "kind": "transparent"
+    },
+    {
+      "address": "0xEAEa990E782Cf3c212e8A1F7cd478dd0B478BC84",
+      "txHash": "0x5d1bc8264321a906b8fb6f55f605990895e4bc9b26364f55c99935163f55479e",
+      "kind": "transparent"
     }
   ],
   "impls": {
@@ -30247,6 +30252,177 @@
               "src": "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol:38",
               "offset": 0,
               "slot": "5"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "33037106cd6714bac68c25cd496df6316e45b12913719717b440f6401665b988": {
+      "address": "0x8b3c8FfE0f8440447EAA9aF7119e09A0F9E799cd",
+      "txHash": "0x5b2624445058faa17a938fdd7354b5ac4bfdbc40b19f1c35e285d348b28fdef9",
+      "layout": {
+        "solcVersion": "0.8.22",
+        "storage": [
+          {
+            "label": "ndContract",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_address",
+            "contract": "AdoptionOracle",
+            "src": "contracts/AdoptionOracle.sol:9"
+          },
+          {
+            "label": "poaiManager",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_address",
+            "contract": "AdoptionOracle",
+            "src": "contracts/AdoptionOracle.sol:10"
+          },
+          {
+            "label": "totalLicensesSold",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_uint256",
+            "contract": "AdoptionOracle",
+            "src": "contracts/AdoptionOracle.sol:12"
+          },
+          {
+            "label": "totalPoaiVolume",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_uint256",
+            "contract": "AdoptionOracle",
+            "src": "contracts/AdoptionOracle.sol:13"
+          },
+          {
+            "label": "licensesSoldEpochs",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_array(t_uint256)dyn_storage",
+            "contract": "AdoptionOracle",
+            "src": "contracts/AdoptionOracle.sol:15"
+          },
+          {
+            "label": "licensesSoldTotals",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_array(t_uint256)dyn_storage",
+            "contract": "AdoptionOracle",
+            "src": "contracts/AdoptionOracle.sol:16"
+          },
+          {
+            "label": "poaiVolumeEpochs",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_array(t_uint256)dyn_storage",
+            "contract": "AdoptionOracle",
+            "src": "contracts/AdoptionOracle.sol:17"
+          },
+          {
+            "label": "poaiVolumeTotals",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_array(t_uint256)dyn_storage",
+            "contract": "AdoptionOracle",
+            "src": "contracts/AdoptionOracle.sol:18"
+          },
+          {
+            "label": "ndFullReleaseThreshold",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_uint256",
+            "contract": "AdoptionOracle",
+            "src": "contracts/AdoptionOracle.sol:20"
+          },
+          {
+            "label": "poaiVolumeFullReleaseThreshold",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_uint256",
+            "contract": "AdoptionOracle",
+            "src": "contracts/AdoptionOracle.sol:21"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_uint256)dyn_storage": {
+            "label": "uint256[]",
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
             }
           ],
           "erc7201:openzeppelin.storage.Initializable": [
