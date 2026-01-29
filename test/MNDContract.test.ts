@@ -342,12 +342,6 @@ describe("MNDContract", function () {
     await mndContract.setAdoptionOracle(await oracle.getAddress());
   });
 
-  it("Set adoption oracle - invalid address", async function () {
-    await expect(
-      mndContract.setAdoptionOracle(NULL_ADDRESS)
-    ).to.be.revertedWith("Invalid adoption oracle");
-  });
-
   it("Set adoption oracle - OwnableUnauthorizedAccount", async function () {
     await expect(
       mndContract.connect(firstUser).setAdoptionOracle(await owner.getAddress())
@@ -654,7 +648,12 @@ describe("MNDContract", function () {
       .addLicense(await firstUser.getAddress(), LICENSE_POWER);
 
     const licenseIds = [2, 3];
-    await linkMultiNode(mndContract, firstUser, licenseIds, MULTI_NODE_ADDRESSES);
+    await linkMultiNode(
+      mndContract,
+      firstUser,
+      licenseIds,
+      MULTI_NODE_ADDRESSES
+    );
 
     for (let i = 0; i < licenseIds.length; i++) {
       const licenseId = licenseIds[i];
@@ -665,7 +664,9 @@ describe("MNDContract", function () {
       expect(await mndContract.registeredNodeAddresses(nodeAddress)).to.equal(
         true
       );
-      expect(await mndContract.nodeToLicenseId(nodeAddress)).to.equal(licenseId);
+      expect(await mndContract.nodeToLicenseId(nodeAddress)).to.equal(
+        licenseId
+      );
     }
   });
 
@@ -687,10 +688,7 @@ describe("MNDContract", function () {
           nodeAddresses,
           await signLinkMultiNode(oracle, firstUser, nodeAddresses)
         )
-    ).to.be.revertedWithCustomError(
-      mndContract,
-      "MismatchedInputArraysLength"
-    );
+    ).to.be.revertedWithCustomError(mndContract, "MismatchedInputArraysLength");
   });
 
   it("Link multi node - not the owner of the license", async function () {
@@ -716,10 +714,7 @@ describe("MNDContract", function () {
 
     await expect(
       linkMultiNode(mndContract, firstUser, [2], [MULTI_NODE_ADDRESSES[0]])
-    ).to.be.revertedWithCustomError(
-      mndContract,
-      "CannotReassignWithin24Hours"
-    );
+    ).to.be.revertedWithCustomError(mndContract, "CannotReassignWithin24Hours");
   });
 
   it("Link node - address already registered", async function () {
@@ -730,7 +725,9 @@ describe("MNDContract", function () {
     await linkNode(mndContract, firstUser, 2);
 
     //DO TEST - try to link again
-    await expect(linkNode(mndContract, firstUser, 2)).to.be.revertedWithCustomError(
+    await expect(
+      linkNode(mndContract, firstUser, 2)
+    ).to.be.revertedWithCustomError(
       mndContract,
       "NodeAddressAlreadyRegistered"
     );
@@ -744,10 +741,9 @@ describe("MNDContract", function () {
     await linkNode(mndContract, firstUser, 2);
 
     //DO TEST - try to link again
-    await expect(linkNode(mndContract, secondUser, 2)).to.be.revertedWithCustomError(
-      mndContract,
-      "NotLicenseOwner"
-    );
+    await expect(
+      linkNode(mndContract, secondUser, 2)
+    ).to.be.revertedWithCustomError(mndContract, "NotLicenseOwner");
   });
 
   it("Link node - wrong license", async function () {
@@ -789,10 +785,9 @@ describe("MNDContract", function () {
 
     //DO TEST - try to link before 24 hrs
     await unlinkNode(mndContract, firstUser, 2);
-    await expect(linkNode(mndContract, firstUser, 2)).to.be.revertedWithCustomError(
-      mndContract,
-      "CannotReassignWithin24Hours"
-    );
+    await expect(
+      linkNode(mndContract, firstUser, 2)
+    ).to.be.revertedWithCustomError(mndContract, "CannotReassignWithin24Hours");
   });
 
   it("Link node - link again after 24hrs", async function () {
@@ -1979,7 +1974,10 @@ describe("MNDContract", function () {
       COMPUTE_PARAMS.availabilies = [255];
       await mndContract
         .connect(firstUser)
-        .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]]);
+        .claimRewards(
+          [COMPUTE_PARAMS],
+          [[await computeSignatureBytes(oracle)]]
+        );
       if (i < MND_MAX_MINTING_DURATION - 1) {
         await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
         await ethers.provider.send("evm_mine", []);
@@ -2060,7 +2058,10 @@ describe("MNDContract", function () {
       mndContract
         .connect(firstUser)
         .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]])
-    ).to.be.revertedWithCustomError(mndContract, "InvalidNodeAddressForRewards");
+    ).to.be.revertedWithCustomError(
+      mndContract,
+      "InvalidNodeAddressForRewards"
+    );
   });
 
   it("Claim rewards - incorrect number of params.", async function () {
@@ -2140,7 +2141,10 @@ describe("MNDContract", function () {
           await secondUser.getAddress(),
           2
         )
-    ).to.be.revertedWithCustomError(mndContract, "SoulboundNonTransferableToken");
+    ).to.be.revertedWithCustomError(
+      mndContract,
+      "SoulboundNonTransferableToken"
+    );
   });
 
   it("Set minimum requred signatures - should work", async function () {
@@ -2250,7 +2254,10 @@ describe("MNDContract", function () {
           await secondUser.getAddress(),
           2
         )
-    ).to.be.revertedWithCustomError(mndContract, "SoulboundNonTransferableToken");
+    ).to.be.revertedWithCustomError(
+      mndContract,
+      "SoulboundNonTransferableToken"
+    );
   });
 
   it("Burn - empty license", async function () {
@@ -2284,7 +2291,9 @@ describe("MNDContract", function () {
       .addLicense(await firstUser.getAddress(), LICENSE_POWER);
 
     //DO TEST - transfer empty license
-    await expect(mndContract.connect(firstUser).burn(2)).to.be.revertedWithCustomError(
+    await expect(
+      mndContract.connect(firstUser).burn(2)
+    ).to.be.revertedWithCustomError(
       mndContract,
       "SoulboundNonTransferableToken"
     );

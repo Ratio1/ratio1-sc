@@ -764,7 +764,6 @@ contract MNDContract is
     }
 
     function setAdoptionOracle(address adoptionOracle_) public onlyOwner {
-        require(adoptionOracle_ != address(0), "Invalid adoption oracle");
         adoptionOracle = IAdoptionOracle(adoptionOracle_);
     }
 
