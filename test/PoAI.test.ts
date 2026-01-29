@@ -24,15 +24,19 @@ import {
   UniswapMockPair,
   UniswapMockRouter,
   CspEscrow,
+  AdoptionOracle,
 } from "../typechain-types";
 
 describe("PoAIManager", function () {
+  const ND_FULL_RELEASE_THRESHOLD = 7_500;
+  const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 2_500_000;
   let poaiManager: PoAIManager;
   let ndContract: NDContract;
   let mndContract: MNDContract;
   let controller: Controller;
   let r1: R1;
   let burnContract: BurnContract;
+  let adoptionOracle: AdoptionOracle;
   let owner: Signer;
   let user: Signer;
   let oracle: Signer;
@@ -134,6 +138,23 @@ describe("PoAIManager", function () {
     );
     await poaiManager.waitForDeployment();
     await ndContract.setPoAIManager(await poaiManager.getAddress());
+    const AdoptionOracleFactory = await ethers.getContractFactory(
+      "AdoptionOracle"
+    );
+    adoptionOracle = (await upgrades.deployProxy(
+      AdoptionOracleFactory,
+      [
+        await owner.getAddress(),
+        await ndContract.getAddress(),
+        await poaiManager.getAddress(),
+        ND_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+      ],
+      { initializer: "initialize" }
+    )) as AdoptionOracle;
+    await adoptionOracle.waitForDeployment();
+    await ndContract.setAdoptionOracle(await adoptionOracle.getAddress());
+    await poaiManager.setAdoptionOracle(await adoptionOracle.getAddress());
 
     // Set timestamp to start epoch + 1 day to avoid epoch 0 underflow issues
     const block = await ethers.provider.getBlock("latest");
@@ -1814,8 +1835,8 @@ describe("PoAIManager", function () {
         await ethers.getSigners();
 
       // Add more oracles to test consensus
-      await controller.addOracle(await oracle2.getAddress());
-      await controller.addOracle(await oracle3.getAddress());
+      await controller.connect(owner).addOracle(await oracle2.getAddress());
+      await controller.connect(owner).addOracle(await oracle3.getAddress());
       await controller.addOracle(await oracle4.getAddress());
       await controller.addOracle(await oracle5.getAddress());
     });
@@ -2229,8 +2250,8 @@ describe("PoAIManager", function () {
 
   describe("Rewards Allocation and Burning", function () {
     it("should allocate rewards to active nodes and burn 15%", async function () {
-      await controller.addOracle(await oracle2.getAddress());
-      await controller.addOracle(await oracle3.getAddress());
+      await controller.connect(owner).addOracle(await oracle2.getAddress());
+      await controller.connect(owner).addOracle(await oracle3.getAddress());
 
       const escrowAddress = await setupUserWithEscrow(user, oracle);
       const CspEscrow = await ethers.getContractFactory("CspEscrow");
@@ -2241,7 +2262,7 @@ describe("PoAIManager", function () {
         nd: ndContract,
         mintAuthority: owner,
         buyer: user,
-        oracleSigner: oracle2,
+        oracleSigner: oracle,
         nodeAddress: await oracle2.getAddress(),
       });
       await buyLicenseAndLinkNode({
@@ -2249,7 +2270,7 @@ describe("PoAIManager", function () {
         nd: ndContract,
         mintAuthority: owner,
         buyer: user,
-        oracleSigner: oracle3,
+        oracleSigner: oracle,
         nodeAddress: await oracle3.getAddress(),
       });
 
@@ -2337,6 +2358,76 @@ describe("PoAIManager", function () {
       expect(jobDetails.lastAllocatedEpoch).to.equal(
         (await poaiManager.getCurrentEpoch()) - 1n
       );
+    });
+
+    it("tracks cumulative PoAI volume per epoch", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+      await buyLicenseAndLinkNode({
+        r1,
+        nd: ndContract,
+        mintAuthority: owner,
+        buyer: user,
+        oracleSigner: oracle,
+        nodeAddress: await oracle2.getAddress(),
+      });
+      await buyLicenseAndLinkNode({
+        r1,
+        nd: ndContract,
+        mintAuthority: owner,
+        buyer: user,
+        oracleSigner: oracle,
+        nodeAddress: await oracle3.getAddress(),
+      });
+
+      const jobPrice = 1_000_000_000n; // 1000 USDC (6 decimals)
+      await mockUsdc.mint(await user.getAddress(), jobPrice);
+      await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
+
+      const currentEpoch = await poaiManager.getCurrentEpoch();
+      const lastExecutionEpoch = currentEpoch + 35n;
+      await cspEscrow.connect(user).createJobs([
+        {
+          jobType: 1,
+          projectHash: ethers.keccak256(ethers.toUtf8Bytes("volume-project")),
+          lastExecutionEpoch,
+          numberOfNodesRequested: 3,
+        },
+      ]);
+
+      const activeNodes = [
+        await oracle.getAddress(),
+        await oracle2.getAddress(),
+        await oracle3.getAddress(),
+      ];
+
+      await controller.connect(owner).addOracle(await oracle2.getAddress());
+      await controller.connect(owner).addOracle(await oracle3.getAddress());
+
+      await poaiManager.connect(oracle).submitNodeUpdate(1, activeNodes);
+      await poaiManager.connect(oracle2).submitNodeUpdate(1, activeNodes);
+      await poaiManager.connect(oracle3).submitNodeUpdate(1, activeNodes);
+
+      await r1.mint(
+        await mockUniswapRouter.getAddress(),
+        ethers.parseEther("1000")
+      );
+      await advanceEpochs(1);
+
+      await poaiManager.allocateRewardsAcrossAllEscrows();
+
+      const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
+      const totalRewards = pricePerEpoch * BigInt(activeNodes.length);
+      expect(await adoptionOracle.totalPoaiVolume()).to.equal(totalRewards);
+
+      const lastEpoch = (await poaiManager.getCurrentEpoch()) - 1n;
+      const volumes = await adoptionOracle.getPoaiVolumeRange(
+        lastEpoch,
+        lastEpoch
+      );
+      expect(volumes[0]).to.equal(totalRewards);
     });
 
     it("should allocate rewards across 100 jobs with 2 nodes each", async function () {
