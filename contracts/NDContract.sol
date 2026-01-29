@@ -25,6 +25,10 @@ interface IPoAIManager {
     ) external view returns (uint256 usdcRewards, uint256 r1Rewards);
 }
 
+interface IAdoptionOracle {
+    function recordLicenseSales(uint256 epoch, uint256 licensesSold) external;
+}
+
 struct ComputeRewardsParams {
     uint256 licenseId;
     address nodeAddress;
@@ -65,6 +69,42 @@ struct LicenseInfo {
     uint256 usdcPoaiRewards;
     uint256 r1PoaiRewards;
 }
+
+error InvalidLicenseSupply();
+error AllLicensesSold();
+error WrongPriceTier(uint8 currentPriceTier, uint8 requestedPriceTier);
+error InvalidLicenseCount();
+error InvoiceUuidUsed();
+error PriceExceedsMaxAccepted(
+    uint256 licenseTokenPrice,
+    uint256 maxAcceptedTokenPerLicense
+);
+error PriceExceedsAllowedDifference(
+    uint256 licenseTokenPrice,
+    uint256 minPrice,
+    uint256 maxPrice
+);
+error ExceedsMintLimit();
+error R1TransferFailed();
+error PriceTierOversold();
+error InvalidNodeAddress();
+error NodeAddressAlreadyRegistered();
+error CannotReassignWithin24Hours();
+error CannotUnlinkBeforeClaimingRewards();
+error MismatchedInputArraysLength();
+error InvalidNodeAddressForRewards();
+error IncorrectNumberOfParams();
+error InvalidEpochs();
+error MaxTokenSupplyReached();
+error CompanyAmountOutOfRange();
+error TimestampBeforeStartEpoch();
+error NonexistentTokenURI();
+error PercentageExceedsMax();
+error LicenseAlreadyBanned();
+error LicenseNotBanned();
+error LicenseBanned();
+error SwapFailed();
+error NotLicenseOwner();
 
 contract NDContract is
     Initializable,
@@ -129,6 +169,7 @@ contract NDContract is
     uint256 public directAddLpPercentage;
 
     IPoAIManager public poaiManager;
+    IAdoptionOracle public adoptionOracle;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -184,27 +225,45 @@ contract NDContract is
     }
 
     function initializePriceTiers() private {
-        _priceTiers[1] = PriceTier(500, 89, 0);
-        _priceTiers[2] = PriceTier(750, 144, 0);
-        _priceTiers[3] = PriceTier(1000, 233, 0);
-        _priceTiers[4] = PriceTier(1500, 377, 0);
-        _priceTiers[5] = PriceTier(2000, 610, 0);
-        _priceTiers[6] = PriceTier(2500, 987, 0);
-        _priceTiers[7] = PriceTier(3000, 1597, 0);
-        _priceTiers[8] = PriceTier(3500, 2584, 0);
-        _priceTiers[9] = PriceTier(4000, 4181, 0);
-        _priceTiers[10] = PriceTier(5000, 6765, 0);
-        _priceTiers[11] = PriceTier(7000, 10946, 0);
-        _priceTiers[12] = PriceTier(9500, 17711, 0);
+        uint256[12] memory prices = [
+            uint256(500),
+            750,
+            1000,
+            1500,
+            2000,
+            2500,
+            3000,
+            3500,
+            4000,
+            5000,
+            7000,
+            9500
+        ];
+        uint256[12] memory units = [
+            uint256(89),
+            144,
+            233,
+            377,
+            610,
+            987,
+            1597,
+            2584,
+            4181,
+            6765,
+            10946,
+            17711
+        ];
 
         uint256 ndSupply = 0;
-        for (uint8 i = 1; i <= LAST_PRICE_TIER; i++) {
-            ndSupply += _priceTiers[i].totalUnits;
+        for (uint8 i = 0; i < LAST_PRICE_TIER; i++) {
+            uint8 tier = i + 1;
+            uint256 tierUnits = units[i];
+            _priceTiers[tier] = PriceTier(prices[i], tierUnits, 0);
+            ndSupply += tierUnits;
         }
-        require(
-            ndSupply == _controller.ND_MAX_LICENSE_SUPPLY(),
-            "Invalid license supply"
-        );
+        if (ndSupply != _controller.ND_MAX_LICENSE_SUPPLY()) {
+            revert InvalidLicenseSupply();
+        }
 
         currentPriceTier = 1;
     }
@@ -218,19 +277,18 @@ contract NDContract is
         uint256 vatPercent,
         bytes memory signature
     ) public nonReentrant whenNotPaused returns (uint) {
-        require(
-            currentPriceTier <= LAST_PRICE_TIER,
-            "All licenses have been sold"
-        );
-        require(
-            requestedPriceTier == currentPriceTier,
-            "Not in the right price tier"
-        );
-        require(nLicensesToBuy > 0, "Invalid number of licenses");
-        require(
-            !usedInvoiceUUIDs[invoiceUuid],
-            "Invoice UUID has already been used"
-        );
+        if (currentPriceTier > LAST_PRICE_TIER) {
+            revert AllLicensesSold();
+        }
+        if (requestedPriceTier != currentPriceTier) {
+            revert WrongPriceTier(currentPriceTier, requestedPriceTier);
+        }
+        if (nLicensesToBuy == 0) {
+            revert InvalidLicenseCount();
+        }
+        if (usedInvoiceUUIDs[invoiceUuid]) {
+            revert InvoiceUuidUsed();
+        }
         verifyBuyLicenseSignature(
             msg.sender,
             invoiceUuid,
@@ -246,10 +304,12 @@ contract NDContract is
             nLicensesToBuy
         );
         uint256 licenseTokenPrice = getLicenseTokenPrice();
-        require(
-            licenseTokenPrice <= maxAcceptedTokenPerLicense,
-            "Price exceeds max accepted"
-        );
+        if (licenseTokenPrice > maxAcceptedTokenPerLicense) {
+            revert PriceExceedsMaxAccepted(
+                licenseTokenPrice,
+                maxAcceptedTokenPerLicense
+            );
+        }
         //Verify that the price is within the allowed difference from the last price
         if (
             lastLicensePriceTier == currentPriceTier &&
@@ -259,10 +319,13 @@ contract NDContract is
                 (MAX_PERCENTAGE - maxAllowedPriceDifference)) / MAX_PERCENTAGE;
             uint256 maxPrice = (lastLicensePrice *
                 (MAX_PERCENTAGE + maxAllowedPriceDifference)) / MAX_PERCENTAGE;
-            require(
-                licenseTokenPrice >= minPrice && licenseTokenPrice <= maxPrice,
-                "Price exceeds allowed difference"
-            );
+            if (licenseTokenPrice < minPrice || licenseTokenPrice > maxPrice) {
+                revert PriceExceedsAllowedDifference(
+                    licenseTokenPrice,
+                    minPrice,
+                    maxPrice
+                );
+            }
         }
         lastLicensePrice = licenseTokenPrice;
         lastLicensePriceTier = currentPriceTier;
@@ -275,17 +338,17 @@ contract NDContract is
         uint256 totalTokenAmount = taxableTokenAmount + vatTokenAmount;
 
         // Check user's mint limit
-        require(
-            userUsdMintedAmount[msg.sender] + taxableUsdAmount <= usdMintLimit,
-            "Exceeds mint limit"
-        );
+        if (userUsdMintedAmount[msg.sender] + taxableUsdAmount > usdMintLimit) {
+            revert ExceedsMintLimit();
+        }
         userUsdMintedAmount[msg.sender] += taxableUsdAmount;
 
         // Transfer R1 tokens from user to contract
-        require(
-            _R1Token.transferFrom(msg.sender, address(this), totalTokenAmount),
-            "R1 transfer failed"
-        );
+        if (
+            !_R1Token.transferFrom(msg.sender, address(this), totalTokenAmount)
+        ) {
+            revert R1TransferFailed();
+        }
         distributePayment(taxableTokenAmount, vatTokenAmount, buyableUnits);
 
         uint256[] memory mintedTokens = batchMint(msg.sender, buyableUnits);
@@ -294,9 +357,13 @@ contract NDContract is
         if (priceTier.soldUnits == priceTier.totalUnits) {
             currentPriceTier++;
         } else if (priceTier.soldUnits > priceTier.totalUnits) {
-            revert("Price tier sold more than available units");
+            revert PriceTierOversold();
         }
 
+        adoptionOracle.recordLicenseSales(
+            getCurrentEpoch(),
+            mintedTokens.length
+        );
         emit LicensesCreated(
             msg.sender,
             invoiceUuid,
@@ -335,39 +402,28 @@ contract NDContract is
         address newNodeAddress,
         bytes memory signature
     ) public whenNotPaused {
-        require(
-            ownerOf(licenseId) == msg.sender,
-            "Not the owner of the license"
-        );
-        require(newNodeAddress != address(0), "Invalid node address");
-        require(
-            !isNodeAlreadyLinked(newNodeAddress),
-            "Node address already registered"
-        );
-
-        License storage license = licenses[licenseId];
-        require(!license.isBanned, "License is banned, cannot perform action");
-        require(
-            license.assignTimestamp + 24 hours < block.timestamp,
-            "Cannot reassign within 24 hours"
-        );
         verifyLinkNodeSignature(msg.sender, newNodeAddress, signature);
+        _linkNodeInternal(licenseId, newNodeAddress);
+    }
 
-        _removeNodeAddress(license, licenseId);
-        license.nodeAddress = newNodeAddress;
-        license.lastClaimEpoch = getCurrentEpoch();
-        license.assignTimestamp = block.timestamp;
-        registeredNodeAddresses[newNodeAddress] = true;
-        nodeToLicenseId[newNodeAddress] = licenseId;
+    function linkMultiNode(
+        uint256[] memory licenseIds,
+        address[] memory newNodeAddresses,
+        bytes memory signature
+    ) public whenNotPaused {
+        if (licenseIds.length != newNodeAddresses.length) {
+            revert MismatchedInputArraysLength();
+        }
 
-        emit LinkNode(msg.sender, licenseId, newNodeAddress);
+        verifyLinkMultiNodeSignature(msg.sender, newNodeAddresses, signature);
+
+        for (uint256 i = 0; i < licenseIds.length; i++) {
+            _linkNodeInternal(licenseIds[i], newNodeAddresses[i]);
+        }
     }
 
     function unlinkNode(uint256 licenseId) public whenNotPaused {
-        require(
-            ownerOf(licenseId) == msg.sender,
-            "Not the owner of the license"
-        );
+        _requireLicenseOwner(licenseId);
         License storage license = licenses[licenseId];
         _removeNodeAddress(license, licenseId);
     }
@@ -379,11 +435,10 @@ contract NDContract is
         if (license.nodeAddress == address(0)) {
             return;
         }
-        require(!license.isBanned, "License is banned, cannot perform action");
-        require(
-            license.lastClaimEpoch == getCurrentEpoch(),
-            "Cannot unlink before claiming rewards"
-        );
+        _requireNotBanned(license);
+        if (license.lastClaimEpoch != getCurrentEpoch()) {
+            revert CannotUnlinkBeforeClaimingRewards();
+        }
 
         address oldNodeAddress = license.nodeAddress;
         registeredNodeAddresses[license.nodeAddress] = false;
@@ -393,31 +448,52 @@ contract NDContract is
         emit UnlinkNode(msg.sender, licenseId, oldNodeAddress);
     }
 
+    function _linkNodeInternal(
+        uint256 licenseId,
+        address newNodeAddress
+    ) private {
+        _requireLicenseOwner(licenseId);
+        if (newNodeAddress == address(0)) {
+            revert InvalidNodeAddress();
+        }
+        if (isNodeAlreadyLinked(newNodeAddress)) {
+            revert NodeAddressAlreadyRegistered();
+        }
+
+        License storage license = licenses[licenseId];
+        _requireNotBanned(license);
+        if (license.assignTimestamp + 24 hours >= block.timestamp) {
+            revert CannotReassignWithin24Hours();
+        }
+
+        _removeNodeAddress(license, licenseId);
+        license.nodeAddress = newNodeAddress;
+        license.lastClaimEpoch = getCurrentEpoch();
+        license.assignTimestamp = block.timestamp;
+        registeredNodeAddresses[newNodeAddress] = true;
+        nodeToLicenseId[newNodeAddress] = licenseId;
+
+        emit LinkNode(msg.sender, licenseId, newNodeAddress);
+    }
+
     function claimRewards(
         ComputeRewardsParams[] memory computeParams,
         bytes[][] memory nodesSignatures
     ) public nonReentrant whenNotPaused {
-        require(
-            computeParams.length == nodesSignatures.length,
-            "Mismatched input arrays length"
-        );
+        if (computeParams.length != nodesSignatures.length) {
+            revert MismatchedInputArraysLength();
+        }
 
         uint256 totalRewards = 0;
         for (uint256 i = 0; i < computeParams.length; i++) {
-            require(
-                ownerOf(computeParams[i].licenseId) == msg.sender,
-                "User does not have the license"
-            );
+            _requireLicenseOwner(computeParams[i].licenseId);
             address firstSigner = verifyRewardsSignatures(
                 computeParams[i],
                 nodesSignatures[i]
             );
 
             License storage license = licenses[computeParams[i].licenseId];
-            require(
-                !license.isBanned,
-                "License is banned, cannot perform action"
-            );
+            _requireNotBanned(license);
             uint256 rewardsAmount = calculateLicenseRewards(
                 license,
                 computeParams[i]
@@ -468,10 +544,9 @@ contract NDContract is
         uint256 currentEpoch = getCurrentEpoch();
         uint256 licenseRewards = 0;
 
-        require(
-            license.nodeAddress == computeParam.nodeAddress,
-            "Invalid node address."
-        );
+        if (license.nodeAddress != computeParam.nodeAddress) {
+            revert InvalidNodeAddressForRewards();
+        }
 
         if (
             license.totalClaimedAmount ==
@@ -485,16 +560,18 @@ contract NDContract is
             return 0;
         }
 
-        require(
-            computeParam.epochs.length == epochsToClaim &&
-                computeParam.availabilies.length == epochsToClaim,
-            "Incorrect number of params."
-        );
-        require(
-            computeParam.epochs[computeParam.epochs.length - 1] ==
-                currentEpoch - 1,
-            "Invalid epochs"
-        );
+        if (
+            computeParam.epochs.length != epochsToClaim ||
+            computeParam.availabilies.length != epochsToClaim
+        ) {
+            revert IncorrectNumberOfParams();
+        }
+        if (
+            computeParam.epochs[computeParam.epochs.length - 1] !=
+            currentEpoch - 1
+        ) {
+            revert InvalidEpochs();
+        }
 
         for (uint256 i = 0; i < epochsToClaim; i++) {
             licenseRewards +=
@@ -522,10 +599,9 @@ contract NDContract is
     function safeMint(address to) private returns (uint256) {
         _supply += 1;
         uint256 newTokenId = _supply;
-        require(
-            newTokenId <= _controller.ND_MAX_LICENSE_SUPPLY(),
-            "Maximum token supply reached."
-        );
+        if (newTokenId > _controller.ND_MAX_LICENSE_SUPPLY()) {
+            revert MaxTokenSupplyReached();
+        }
 
         _safeMint(to, newTokenId);
 
@@ -549,7 +625,7 @@ contract NDContract is
         // Swap the VAT and company amounts for USDC before sending
         uint256 amountToSwap = companyAmount + vatAmount;
         uint256 totalUsdcAmount = swapR1ForUsdc(amountToSwap);
-        require(totalUsdcAmount > 0, "Swap failed");
+        _requireSwapSuccess(totalUsdcAmount);
         uint256 vatUsdcAmount = 0;
         if (vatAmount > 0) {
             vatUsdcAmount = (totalUsdcAmount * vatAmount) / amountToSwap;
@@ -559,10 +635,9 @@ contract NDContract is
             nLicenses *
             10 ** 6 *
             COMPANY_PERCENTAGE) / MAX_PERCENTAGE;
-        require(
-            companyUsdcAmount >= (companyExpectedAmount * 97) / 100,
-            "Company amount is not within expected range"
-        );
+        if (companyUsdcAmount < (companyExpectedAmount * 97) / 100) {
+            revert CompanyAmountOutOfRange();
+        }
 
         IERC20(_usdcAddr).transfer(companyWallet, companyUsdcAmount);
         if (vatUsdcAmount > 0) {
@@ -581,7 +656,7 @@ contract NDContract is
         uint256 halfR1Amount = directAddLpAmount / 2;
         uint256 usdcAmount = swapR1ForUsdc(halfR1Amount);
 
-        require(usdcAmount > 0, "Swap failed");
+        _requireSwapSuccess(usdcAmount);
 
         IERC20(_usdcAddr).approve(address(_uniswapV2Router), usdcAmount);
         _R1Token.approve(address(_uniswapV2Router), halfR1Amount);
@@ -611,7 +686,7 @@ contract NDContract is
 
         if (reservedLpAmount > 0) {
             uint256 reservedUsdcAmount = swapR1ForUsdc(reservedLpAmount);
-            require(reservedUsdcAmount > 0, "Swap failed");
+            _requireSwapSuccess(reservedUsdcAmount);
             IERC20(_usdcAddr).transfer(lpWallet, reservedUsdcAmount);
             emit LiquidityReserved(reservedUsdcAmount);
         }
@@ -655,10 +730,9 @@ contract NDContract is
     function _calculateEpoch(uint256 timestamp) private view returns (uint256) {
         uint256 startEpochTimestamp = _controller.startEpochTimestamp();
         uint256 epochDuration = _controller.epochDuration();
-        require(
-            timestamp >= startEpochTimestamp,
-            "Timestamp is before the start epoch."
-        );
+        if (timestamp < startEpochTimestamp) {
+            revert TimestampBeforeStartEpoch();
+        }
 
         return (timestamp - startEpochTimestamp) / epochDuration;
     }
@@ -685,15 +759,14 @@ contract NDContract is
         override(ERC721Upgradeable, ERC721URIStorageUpgradeable)
         returns (string memory)
     {
-        require(
-            _ownerOf(tokenId) != address(0),
-            "ERC721Metadata: URI query for nonexistent token"
-        );
+        if (_ownerOf(tokenId) == address(0)) {
+            revert NonexistentTokenURI();
+        }
         return _baseTokenURI;
     }
 
     function burn(uint256 tokenId) public whenNotPaused {
-        require(ownerOf(tokenId) == msg.sender, "Not the owner of the license");
+        _requireLicenseOwner(tokenId);
         _burn(tokenId);
     }
 
@@ -708,7 +781,7 @@ contract NDContract is
         returns (address)
     {
         License storage license = licenses[tokenId];
-        require(!license.isBanned, "License is banned, cannot perform action");
+        _requireNotBanned(license);
         _removeNodeAddress(license, tokenId);
         return super._update(to, tokenId, auth);
     }
@@ -731,6 +804,24 @@ contract NDContract is
         return super.supportsInterface(interfaceId);
     }
 
+    function _requireLicenseOwner(uint256 licenseId) internal view {
+        if (ownerOf(licenseId) != msg.sender) {
+            revert NotLicenseOwner();
+        }
+    }
+
+    function _requireNotBanned(License storage license) internal view {
+        if (license.isBanned) {
+            revert LicenseBanned();
+        }
+    }
+
+    function _requireSwapSuccess(uint256 amountOut) internal pure {
+        if (amountOut == 0) {
+            revert SwapFailed();
+        }
+    }
+
     function setCompanyWallets(
         address newCompanyWallet,
         address newLpWallet,
@@ -749,25 +840,32 @@ contract NDContract is
         poaiManager = IPoAIManager(_poaiManager);
     }
 
+    function setAdoptionOracle(address adoptionOracle_) public onlyOwner {
+        adoptionOracle = IAdoptionOracle(adoptionOracle_);
+    }
+
     function setDirectAddLpPercentage(
         uint256 newDirectAddLpPercentage
     ) public onlyOwner {
-        require(
-            newDirectAddLpPercentage <= MAX_PERCENTAGE,
-            "Percentage cannot exceed 100%"
-        );
+        if (newDirectAddLpPercentage > MAX_PERCENTAGE) {
+            revert PercentageExceedsMax();
+        }
         directAddLpPercentage = newDirectAddLpPercentage;
     }
 
     function banLicense(uint256 licenseId) public onlyOwner {
         License storage license = licenses[licenseId];
-        require(!license.isBanned, "License is already banned");
+        if (license.isBanned) {
+            revert LicenseAlreadyBanned();
+        }
         license.isBanned = true;
     }
 
     function unbanLicense(uint256 licenseId) public onlyOwner {
         License storage license = licenses[licenseId];
-        require(license.isBanned, "License is not banned");
+        if (!license.isBanned) {
+            revert LicenseNotBanned();
+        }
         license.isBanned = false;
     }
 
@@ -926,6 +1024,25 @@ contract NDContract is
         bytes memory signature
     ) internal returns (address) {
         bytes32 messageHash = keccak256(abi.encodePacked(addr, nodeAddress));
+        bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(
+            messageHash
+        );
+        bytes[] memory signatures = new bytes[](1);
+        signatures[0] = signature;
+        return
+            _controller.requireVerifySignatures(
+                ethSignedMessageHash,
+                signatures,
+                false
+            );
+    }
+
+    function verifyLinkMultiNodeSignature(
+        address addr,
+        address[] memory nodeAddresses,
+        bytes memory signature
+    ) internal returns (address) {
+        bytes32 messageHash = keccak256(abi.encodePacked(addr, nodeAddresses));
         bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(
             messageHash
         );

@@ -50,6 +50,10 @@ interface IMND {
     ) external view returns (MNDLicense[] memory);
 }
 
+interface IAdoptionOracle {
+    function recordPoaiVolume(uint256 epoch, uint256 volume) external;
+}
+
 struct DeprecatedNodesTransitionProposal {
     address proposer;
     address[] newActiveNodes;
@@ -82,6 +86,25 @@ struct CspWithOwner {
     address cspAddress;
     address cspOwner;
 }
+
+error AlreadyHasEscrow();
+error NoOracleNodeOwned();
+error BurnContractZeroAddress();
+error NotNodeOwner();
+error NotOracle();
+error JobDoesNotExist();
+error ConsensusCooldownNotExpired();
+error AlreadySubmitted();
+error HashNotStored();
+error InvalidJob();
+error JobUnvalidatedCannotRemove();
+error InvalidDelegatedAddress();
+error AddressAlreadyOwnsEscrow();
+error AddressDelegatedToAnotherEscrow();
+error DelegateNotRegistered();
+error AlreadyReconciled();
+error TimestampBeforeStartEpoch();
+error NotCspEscrow();
 
 contract PoAIManager is Initializable, OwnableUpgradeable {
     //..######..########..#######..########.....###.....######...########
@@ -138,6 +161,8 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         public nodesTransactionProposals;
     // Mapping from delegated address to CSP Escrow address
     mapping(address => address) public delegatedAddressToEscrow;
+    address public burnContract;
+    IAdoptionOracle public adoptionOracle;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -193,6 +218,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         address _controller,
         address _usdcToken,
         address _r1Token,
+        address _burnContract,
         address _uniswapV2Router,
         address _uniswapV2Pair,
         address newOwner
@@ -207,23 +233,29 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         controller = Controller(_controller);
         usdcToken = _usdcToken;
         r1Token = _r1Token;
+        burnContract = _burnContract;
         uniswapV2Router = _uniswapV2Router;
         uniswapV2Pair = _uniswapV2Pair;
         nextJobId = 1;
     }
 
+    function setAdoptionOracle(address adoptionOracle_) public onlyOwner {
+        adoptionOracle = IAdoptionOracle(adoptionOracle_);
+    }
+
     // Deploy a new CSP Escrow contract for a given owner
     function deployCspEscrow() external {
         address sender = msg.sender;
-        require(ownerToEscrow[sender] == address(0), "Already has escrow");
-        require(_hasOracleNode(sender), "No oracle node owned");
+        _requireNoEscrow(sender);
+        _requireHasOracleNode(sender);
         // Deploy BeaconProxy for the new CSP Escrow
         bytes memory data = abi.encodeWithSignature(
-            "initialize(address,address,address,address,address,address,address)",
+            "initialize(address,address,address,address,address,address,address,address)",
             sender,
             address(this),
             usdcToken,
             r1Token,
+            burnContract,
             address(controller),
             uniswapV2Router,
             uniswapV2Pair
@@ -234,6 +266,15 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         ownerToEscrow[sender] = escrowAddr;
         escrowToOwner[escrowAddr] = sender;
         emit EscrowDeployed(sender, escrowAddr);
+    }
+
+    function setBurnContract(address newBurnContract) external onlyOwner {
+        _requireNonZeroAddress(newBurnContract);
+        burnContract = newBurnContract;
+        uint256 escrowCount = allEscrows.length;
+        for (uint256 i = 0; i < escrowCount; i++) {
+            CspEscrow(allEscrows[i]).setBurnContract(newBurnContract);
+        }
     }
 
     // Internal function to check if user owns at least one ND or MND with a linked node address that is an oracle
@@ -274,7 +315,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     // Claim rewards for a node owner across all CSPs
     function claimRewardsForNode(address nodeAddr) external {
         address nodeOwner = ndContract.getNodeOwner(nodeAddr);
-        require(nodeOwner == msg.sender, "Not the owner of the node");
+        _requireNodeOwner(nodeOwner);
         address[] memory escrows = nodeToEscrowsWithRewards[nodeAddr];
         uint256 totalClaimed = 0;
 
@@ -292,7 +333,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         for (uint256 i = 0; i < nodeAddrs.length; i++) {
             address nodeAddr = nodeAddrs[i];
             address nodeOwner = ndContract.getNodeOwner(nodeAddr);
-            require(nodeOwner == msg.sender, "Not the owner of the node");
+            _requireNodeOwner(nodeOwner);
             address[] memory escrows = nodeToEscrowsWithRewards[nodeAddr];
             uint256 totalClaimed = 0;
 
@@ -313,10 +354,10 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     ) external {
         address sender = msg.sender;
         address[] memory oracles = controller.getOracles();
-        require(_isOracle(sender, oracles), "Not an oracle");
+        _requireOracle(sender, oracles);
         uint256 oraclesCount = oracles.length;
         address escrowAddress = jobIdToEscrow[jobId];
-        require(escrowAddress != address(0), "Job does not exist");
+        _requireJobExists(escrowAddress);
         // Check if the nodes are the same as the current active nodes
         bytes32 newActiveNodesHash = keccak256(abi.encode(newActiveNodes));
         //do not open a new consensus session if the node is reporting the same nodes (probably a late oracle)
@@ -328,18 +369,16 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             }
         }
         // Check if we're in the cooldown period after consensus
-        require(
-            block.timestamp - jobConsensusTimestamp[jobId] >=
-                CONSENSUS_COOLDOWN_PERIOD,
-            "Consensus cooldown not expired"
-        );
+        _requireConsensusCooldownElapsed(jobId);
         uint256 currentEpoch = getCurrentEpoch();
         // Check if the sender has already submitted a proposal for this job in the current epoch
         NodesTransitionProposal[] storage proposals = nodesTransactionProposals[
             jobId
         ][currentEpoch];
         for (uint256 i = 0; i < proposals.length; i++) {
-            require(proposals[i].proposer != sender, "Already submitted");
+            if (proposals[i].proposer == sender) {
+                revert AlreadySubmitted();
+            }
         }
 
         _cacheNodesForJob(jobId, newActiveNodesHash, newActiveNodes);
@@ -401,10 +440,9 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         // Check if we have enough consensus (33% + 1)
         uint256 requiredConsensus = (oraclesCount / 3) + 1;
         if (maxCount >= requiredConsensus) {
-            require(
-                jobIdNodesHashStored[jobId][mostCommonHash],
-                "Hash not stored"
-            );
+            if (!jobIdNodesHashStored[jobId][mostCommonHash]) {
+                revert HashNotStored();
+            }
             address[] memory mostCommonNewActiveNodes = jobIdToNodesByNodesHash[
                 jobId
             ][mostCommonHash];
@@ -454,11 +492,16 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     // Public function to allocate rewards across all CSP Escrows
     function allocateRewardsAcrossAllEscrows() external {
         uint256 escrowCount = allEscrows.length;
+        uint256 totalRewards = 0;
         for (uint256 i = 0; i < escrowCount; i++) {
             address escrowAddress = allEscrows[i];
-            CspEscrow(escrowAddress).allocateRewardsToNodes();
+            totalRewards += CspEscrow(escrowAddress).allocateRewardsToNodes();
         }
-        lastAllocatedEpoch = getCurrentEpoch() - 1;
+        uint256 lastEpoch = getCurrentEpoch() - 1;
+        if (totalRewards > 0) {
+            adoptionOracle.recordPoaiVolume(lastEpoch, totalRewards);
+        }
+        lastAllocatedEpoch = lastEpoch;
     }
 
     function getNewJobId() external onlyCspEscrow returns (uint256) {
@@ -470,8 +513,8 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
 
     function removeJob(uint256 jobId) external onlyCspEscrow {
         address escrowAddress = jobIdToEscrow[jobId];
-        require(escrowAddress == msg.sender, "Invalid job");
-        require(!isJobUnvalidated[jobId], "Job is unvalidated, cannot remove");
+        _requireJobOwnedByCaller(escrowAddress);
+        _requireJobRemovable(jobId);
 
         delete jobConsensusTimestamp[jobId];
         delete jobIdToEscrow[jobId];
@@ -481,17 +524,12 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     function registerDelegatedAddress(
         address delegatedAddress
     ) external onlyCspEscrow {
-        require(delegatedAddress != address(0), "Invalid delegated address");
-        require(
-            ownerToEscrow[delegatedAddress] == address(0),
-            "Address already owns an escrow"
-        );
+        _requireDelegatedAddress(delegatedAddress);
         address existingEscrow = delegatedAddressToEscrow[delegatedAddress];
         if (existingEscrow != address(0)) {
-            require(
-                existingEscrow == msg.sender,
-                "Address delegated to another escrow"
-            );
+            if (existingEscrow != msg.sender) {
+                revert AddressDelegatedToAnotherEscrow();
+            }
             return;
         }
         delegatedAddressToEscrow[delegatedAddress] = msg.sender;
@@ -500,10 +538,9 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     function unregisterDelegatedAddress(
         address delegatedAddress
     ) external onlyCspEscrow {
-        require(
-            delegatedAddressToEscrow[delegatedAddress] == msg.sender,
-            "Delegate not registered"
-        );
+        if (delegatedAddressToEscrow[delegatedAddress] != msg.sender) {
+            revert DelegateNotRegistered();
+        }
         delete delegatedAddressToEscrow[delegatedAddress];
     }
 
@@ -522,7 +559,9 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     }
 
     function reconcileAllJobsBalance() external onlyOwner {
-        require(!hasReconciled, "Already reconciled");
+        if (hasReconciled) {
+            revert AlreadyReconciled();
+        }
         uint256 escrowCount = allEscrows.length;
         for (uint256 i = 0; i < escrowCount; i++) {
             address escrowAddress = allEscrows[i];
@@ -562,10 +601,9 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     function _calculateEpoch(uint256 timestamp) private view returns (uint256) {
         uint256 startEpochTimestamp = controller.startEpochTimestamp();
         uint256 epochDuration = controller.epochDuration();
-        require(
-            timestamp >= startEpochTimestamp,
-            "Timestamp is before the start epoch."
-        );
+        if (timestamp < startEpochTimestamp) {
+            revert TimestampBeforeStartEpoch();
+        }
 
         return (timestamp - startEpochTimestamp) / epochDuration;
     }
@@ -855,8 +893,79 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         }
     }
 
+    function _requireNoEscrow(address account) internal view {
+        if (ownerToEscrow[account] != address(0)) {
+            revert AlreadyHasEscrow();
+        }
+    }
+
+    function _requireHasOracleNode(address account) internal view {
+        if (!_hasOracleNode(account)) {
+            revert NoOracleNodeOwned();
+        }
+    }
+
+    function _requireNodeOwner(address nodeOwner) internal view {
+        if (nodeOwner != msg.sender) {
+            revert NotNodeOwner();
+        }
+    }
+
+    function _requireOracle(
+        address account,
+        address[] memory oracles
+    ) internal pure {
+        if (!_isOracle(account, oracles)) {
+            revert NotOracle();
+        }
+    }
+
+    function _requireJobExists(address escrowAddress) internal pure {
+        if (escrowAddress == address(0)) {
+            revert JobDoesNotExist();
+        }
+    }
+
+    function _requireConsensusCooldownElapsed(uint256 jobId) internal view {
+        if (
+            block.timestamp - jobConsensusTimestamp[jobId] <
+            CONSENSUS_COOLDOWN_PERIOD
+        ) {
+            revert ConsensusCooldownNotExpired();
+        }
+    }
+
+    function _requireJobOwnedByCaller(address escrowAddress) internal view {
+        if (escrowAddress != msg.sender) {
+            revert InvalidJob();
+        }
+    }
+
+    function _requireJobRemovable(uint256 jobId) internal view {
+        if (isJobUnvalidated[jobId]) {
+            revert JobUnvalidatedCannotRemove();
+        }
+    }
+
+    function _requireDelegatedAddress(address delegatedAddress) internal view {
+        if (delegatedAddress == address(0)) {
+            revert InvalidDelegatedAddress();
+        }
+        if (ownerToEscrow[delegatedAddress] != address(0)) {
+            revert AddressAlreadyOwnsEscrow();
+        }
+    }
+
+    function _requireNonZeroAddress(address account) internal pure {
+        if (account == address(0)) {
+            revert BurnContractZeroAddress();
+        }
+    }
+
     modifier onlyCspEscrow() {
-        require(escrowToOwner[msg.sender] != address(0), "Not a CSP Escrow");
+        if (escrowToOwner[msg.sender] == address(0)) {
+            revert NotCspEscrow();
+        }
         _;
     }
 }

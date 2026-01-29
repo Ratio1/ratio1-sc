@@ -6,8 +6,9 @@ async function main() {
 
   const R1ContractFactory = await ethers.getContractFactory("R1", deployer);
   const r1Contract = await R1ContractFactory.deploy(SAFE_ADDR);
-  await r1Contract.deployed();
-  console.log("R1 deployed to:", r1Contract.address);
+  await r1Contract.waitForDeployment();
+  const r1Address = await r1Contract.getAddress();
+  console.log("R1 deployed to:", r1Address);
 }
 
 main()

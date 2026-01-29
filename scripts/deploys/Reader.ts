@@ -15,14 +15,15 @@ async function main() {
     { initializer: "initialize" }
   );
 
-  await readerContract.deployed();
-  console.log("Reader deployed to:", readerContract.address);
+  await readerContract.waitForDeployment();
+  const proxyAddress = await readerContract.getAddress();
+  console.log("Reader deployed to:", proxyAddress);
   const implAddress = await upgrades.erc1967.getImplementationAddress(
-    readerContract.address
+    proxyAddress
   );
   console.log("Implementation:", implAddress);
   const adminAddress = await upgrades.erc1967.getAdminAddress(
-    readerContract.address
+    proxyAddress
   );
   console.log("Proxy Admin:", adminAddress);
 }

@@ -8,6 +8,7 @@ import {
   deployNDContract,
   deployR1,
   deployUniswapMocks,
+  generateInvoiceUuid,
   NODE_ADDRESS,
   NULL_ADDRESS,
   ONE_DAY_IN_SECS,
@@ -16,11 +17,12 @@ import {
   setTimestampAndMine,
   signBuyLicense,
   signComputeParams,
+  signLinkMultiNode,
   signLinkNode,
   START_EPOCH_TIMESTAMP,
   takeSnapshot,
 } from "./helpers";
-import { Controller, NDContract, R1 } from "../typechain-types";
+import { AdoptionOracle, Controller, NDContract, R1 } from "../typechain-types";
 import { v4 as uuidv4 } from "uuid";
 import { BigNumberish } from "ethers";
 
@@ -54,6 +56,10 @@ const EXPECTED_LICENSES_INFO = [
   },
 ];
 const EPOCH_IN_A_DAY = 1;
+const MULTI_NODE_ADDRESSES = [
+  "0x0000000000000000000000000000000000000010",
+  "0x0000000000000000000000000000000000000020",
+];
 
 const EXPECTED_PRICE_TIERS = [
   {
@@ -119,6 +125,8 @@ const EXPECTED_PRICE_TIERS = [
 ];
 
 describe("NDContract", function () {
+  const ND_FULL_RELEASE_THRESHOLD = 7_500;
+  const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 2_500_000;
   /*
   .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
   .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -132,6 +140,7 @@ describe("NDContract", function () {
   let ndContract: NDContract;
   let controllerContract: Controller;
   let r1Contract: R1;
+  let adoptionOracle: AdoptionOracle;
   let owner: HardhatEthersSigner;
   let firstUser: HardhatEthersSigner;
   let secondUser: HardhatEthersSigner;
@@ -157,6 +166,12 @@ describe("NDContract", function () {
     maxUnits = 100;
 
     r1Contract = await deployR1(owner);
+    const BurnContractFactory = await ethers.getContractFactory("BurnContract");
+    const burnContract = await BurnContractFactory.deploy(
+      await r1Contract.getAddress()
+    );
+    await burnContract.waitForDeployment();
+    await r1Contract.addBurner(await burnContract.getAddress());
     controllerContract = await deployController({
       owner,
       oracleSigners: [backend],
@@ -214,6 +229,7 @@ describe("NDContract", function () {
         await controllerContract.getAddress(),
         await usdcContract.getAddress(),
         await r1Contract.getAddress(),
+        await burnContract.getAddress(),
         await uniswapMockRouterContract.getAddress(),
         await uniswapMockPairContract.getAddress(),
         await owner.getAddress(),
@@ -222,6 +238,22 @@ describe("NDContract", function () {
     );
     await poaiManager.waitForDeployment();
     await ndContract.setPoAIManager(await poaiManager.getAddress());
+    const AdoptionOracleFactory =
+      await ethers.getContractFactory("AdoptionOracle");
+    adoptionOracle = (await upgrades.deployProxy(
+      AdoptionOracleFactory,
+      [
+        await owner.getAddress(),
+        await ndContract.getAddress(),
+        await poaiManager.getAddress(),
+        ND_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+      ],
+      { initializer: "initialize" }
+    )) as AdoptionOracle;
+    await adoptionOracle.waitForDeployment();
+    await ndContract.setAdoptionOracle(await adoptionOracle.getAddress());
+    await poaiManager.setAdoptionOracle(await adoptionOracle.getAddress());
 
     snapshotId = await takeSnapshot();
   });
@@ -278,6 +310,21 @@ describe("NDContract", function () {
         licenseId,
         NODE_ADDRESS,
         await signLinkNode(backend, user, NODE_ADDRESS)
+      );
+  }
+
+  async function linkMultiNode(
+    ndContract: NDContract,
+    user: HardhatEthersSigner,
+    licenseIds: number[],
+    nodeAddresses: string[]
+  ) {
+    await ndContract
+      .connect(user)
+      .linkMultiNode(
+        licenseIds,
+        nodeAddresses,
+        await signLinkMultiNode(backend, user, nodeAddresses)
       );
   }
 
@@ -471,9 +518,8 @@ describe("NDContract", function () {
       20,
       await createLicenseSignature(backend, firstUser, 10000)
     );
-    await expect(ndContract.connect(secondUser).burn(1)).to.be.revertedWith(
-      "Not the owner of the license"
-    );
+    await expect(ndContract.connect(secondUser).burn(1))
+      .to.be.revertedWithCustomError(ndContract, "NotLicenseOwner");
   });
 
   it("Burn - paused contract", async function () {
@@ -545,30 +591,37 @@ describe("NDContract", function () {
   });
 
   it("Buy license - Price exceeds max accepted", async function () {
+    const licenseTokenPrice = await ndContract.getLicenseTokenPrice();
+    const pricePerLicense = licenseTokenPrice / 2n;
+    const totalWithoutVat = pricePerLicense;
+    const vatAmount = (totalWithoutVat * 20n) / 100n;
+    const totalWithVat = totalWithoutVat + vatAmount;
+    const maxAcceptedTokenPerLicense = totalWithVat + totalWithVat / 10n;
     await expect(
       buyLicenseWithMintAndAllowance(
         r1Contract,
         ndContract,
         owner,
         firstUser,
-        (await ndContract.getLicenseTokenPrice()) / 2n,
+        pricePerLicense,
         1,
         1,
         10000,
         20,
         await createLicenseSignature(backend, firstUser, 10000)
       )
-    ).to.be.revertedWith("Price exceeds max accepted");
+    )
+      .to.be.revertedWithCustomError(ndContract, "PriceExceedsMaxAccepted")
+      .withArgs(licenseTokenPrice, maxAcceptedTokenPerLicense);
   });
 
   it("Buy license - Price exceeds max accepted", async function () {
+    const licenseTokenPrice = await ndContract.getLicenseTokenPrice();
+    const maxAcceptedTokenPerLicense = 2n;
     //Mint tokens
     await r1Contract
       .connect(owner)
-      .mint(
-        await firstUser.getAddress(),
-        await ndContract.getLicenseTokenPrice()
-      );
+      .mint(await firstUser.getAddress(), licenseTokenPrice);
 
     //Buy license without giving allowance
     await expect(
@@ -577,7 +630,7 @@ describe("NDContract", function () {
         .buyLicense(
           1,
           1,
-          2,
+          maxAcceptedTokenPerLicense,
           invoiceUuid,
           10000,
           20,
@@ -585,7 +638,9 @@ describe("NDContract", function () {
             await createLicenseSignature(backend, firstUser, 10000)
           )
         )
-    ).to.be.revertedWith("Price exceeds max accepted");
+    )
+      .to.be.revertedWithCustomError(ndContract, "PriceExceedsMaxAccepted")
+      .withArgs(licenseTokenPrice, maxAcceptedTokenPerLicense);
   });
 
   it("Buy license - paused contract", async function () {
@@ -627,6 +682,8 @@ describe("NDContract", function () {
   });
 
   it("Buy license- wrong tier", async function () {
+    const currentPriceTier = await ndContract.currentPriceTier();
+    const requestedPriceTier = 2n;
     //DO TEST -try buy 1 license in first tier
     await expect(
       buyLicenseWithMintAndAllowance(
@@ -636,15 +693,17 @@ describe("NDContract", function () {
         firstUser,
         await ndContract.getLicenseTokenPrice(),
         1,
-        2,
+        Number(requestedPriceTier),
         10000,
         20,
         await createLicenseSignature(backend, firstUser, 10000)
       )
-    ).to.be.revertedWith("Not in the right price tier");
+    )
+      .to.be.revertedWithCustomError(ndContract, "WrongPriceTier")
+      .withArgs(currentPriceTier, requestedPriceTier);
   });
 
-  it("Buy license- wrong number of lienses", async function () {
+  it("Buy license- wrong number of licenses", async function () {
     //DO TEST -try buy 1 license in first tier
     await expect(
       buyLicenseWithMintAndAllowance(
@@ -659,7 +718,7 @@ describe("NDContract", function () {
         20,
         await createLicenseSignature(backend, firstUser, 10000)
       )
-    ).to.be.revertedWith("Exceeds mint limit");
+    ).to.be.revertedWithCustomError(ndContract, "ExceedsMintLimit");
   });
 
   it("Buy license- Invoice UUID has already been used", async function () {
@@ -691,7 +750,7 @@ describe("NDContract", function () {
         20,
         await createLicenseSignature(backend, firstUser, 10000)
       )
-    ).to.be.revertedWith("Invoice UUID has already been used");
+    ).to.be.revertedWithCustomError(ndContract, "InvoiceUuidUsed");
   });
 
   it("Link node - should work", async function () {
@@ -719,6 +778,138 @@ describe("NDContract", function () {
     expect(await ndContract.isNodeActive(NODE_ADDRESS)).to.be.true;
   });
 
+  it("Link multi node - should work", async function () {
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      await ndContract.getLicenseTokenPrice(),
+      2,
+      1,
+      20000,
+      20,
+      await createLicenseSignature(backend, firstUser, 20000)
+    );
+
+    const licenseIds = [1, 2];
+    await linkMultiNode(ndContract, firstUser, licenseIds, MULTI_NODE_ADDRESSES);
+
+    for (let i = 0; i < licenseIds.length; i++) {
+      const licenseId = licenseIds[i];
+      const nodeAddress = MULTI_NODE_ADDRESSES[i];
+      expect((await ndContract.licenses(licenseId)).nodeAddress).to.equal(
+        nodeAddress
+      );
+      expect(await ndContract.registeredNodeAddresses(nodeAddress)).to.be.true;
+      expect(await ndContract.nodeToLicenseId(nodeAddress)).to.equal(licenseId);
+      expect(await ndContract.isNodeActive(nodeAddress)).to.be.true;
+    }
+  });
+
+  it("Link multi node - mismatched arrays length", async function () {
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      await ndContract.getLicenseTokenPrice(),
+      2,
+      1,
+      20000,
+      20,
+      await createLicenseSignature(backend, firstUser, 20000)
+    );
+
+    const licenseIds = [1, 2];
+    const nodeAddresses = [MULTI_NODE_ADDRESSES[0]];
+    await expect(
+      ndContract
+        .connect(firstUser)
+        .linkMultiNode(
+          licenseIds,
+          nodeAddresses,
+          await signLinkMultiNode(backend, firstUser, nodeAddresses)
+        )
+    ).to.be.revertedWithCustomError(ndContract, "MismatchedInputArraysLength");
+  });
+
+  it("Link multi node - not the owner of the license", async function () {
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      await ndContract.getLicenseTokenPrice(),
+      1,
+      1,
+      10000,
+      20,
+      await createLicenseSignature(backend, firstUser, 10000)
+    );
+    invoiceUuid = Buffer.from("e18ac3989ae74da398c8ab26de41bb7c");
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      secondUser,
+      await ndContract.getLicenseTokenPrice(),
+      1,
+      1,
+      10000,
+      20,
+      await createLicenseSignature(backend, secondUser, 10000)
+    );
+
+    const licenseIds = [1, 2];
+    await expect(
+      linkMultiNode(ndContract, firstUser, licenseIds, MULTI_NODE_ADDRESSES)
+    ).to.be.revertedWithCustomError(ndContract, "NotLicenseOwner");
+  });
+
+  it("Link multi node - banned license", async function () {
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      await ndContract.getLicenseTokenPrice(),
+      1,
+      1,
+      10000,
+      20,
+      await createLicenseSignature(backend, firstUser, 10000)
+    );
+
+    await ndContract.connect(owner).banLicense(1);
+
+    await expect(
+      linkMultiNode(ndContract, firstUser, [1], [MULTI_NODE_ADDRESSES[0]])
+    ).to.be.revertedWithCustomError(ndContract, "LicenseBanned");
+  });
+
+  it("Link multi node - link again before 24hrs", async function () {
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      firstUser,
+      await ndContract.getLicenseTokenPrice(),
+      1,
+      1,
+      10000,
+      20,
+      await createLicenseSignature(backend, firstUser, 10000)
+    );
+
+    await linkNode(ndContract, firstUser, 1);
+    await unlinkNode(ndContract, firstUser, 1);
+
+    await expect(
+      linkMultiNode(ndContract, firstUser, [1], [MULTI_NODE_ADDRESSES[0]])
+    ).to.be.revertedWithCustomError(ndContract, "CannotReassignWithin24Hours");
+  });
+
   it("Link node - address already registered", async function () {
     //SETUP WORLD
     await buyLicenseWithMintAndAllowance(
@@ -736,9 +927,8 @@ describe("NDContract", function () {
     await linkNode(ndContract, firstUser, 1);
 
     //DO TEST - try to link again
-    await expect(linkNode(ndContract, firstUser, 1)).to.be.revertedWith(
-      "Node address already registered"
-    );
+    await expect(linkNode(ndContract, firstUser, 1))
+      .to.be.revertedWithCustomError(ndContract, "NodeAddressAlreadyRegistered");
   });
 
   it("Link node - not the owner of the license", async function () {
@@ -758,9 +948,8 @@ describe("NDContract", function () {
     await linkNode(ndContract, firstUser, 1);
 
     //DO TEST - try to link again
-    await expect(linkNode(ndContract, secondUser, 1)).to.be.revertedWith(
-      "Not the owner of the license"
-    );
+    await expect(linkNode(ndContract, secondUser, 1))
+      .to.be.revertedWithCustomError(ndContract, "NotLicenseOwner");
   });
 
   it("Link node - wrong license", async function () {
@@ -808,7 +997,7 @@ describe("NDContract", function () {
           NULL_ADDRESS,
           await signLinkNode(backend, firstUser, NULL_ADDRESS)
         )
-    ).to.be.revertedWith("Invalid node address");
+    ).to.be.revertedWithCustomError(ndContract, "InvalidNodeAddress");
   });
 
   it("Link node - link again before 24hrs", async function () {
@@ -829,9 +1018,8 @@ describe("NDContract", function () {
 
     //DO TEST - try to link before 24 hrs
     await unlinkNode(ndContract, firstUser, 1);
-    await expect(linkNode(ndContract, firstUser, 1)).to.be.revertedWith(
-      "Cannot reassign within 24 hours"
-    );
+    await expect(linkNode(ndContract, firstUser, 1))
+      .to.be.revertedWithCustomError(ndContract, "CannotReassignWithin24Hours");
   });
 
   it("Link node - link again after 24hrs", async function () {
@@ -1081,7 +1269,7 @@ describe("NDContract", function () {
           [COMPUTE_PARAMS, COMPUTE_PARAMS],
           [[await computeSignatureBytes(backend)]]
         )
-    ).to.be.revertedWith("Mismatched input arrays length");
+    ).to.be.revertedWithCustomError(ndContract, "MismatchedInputArraysLength");
   });
 
   it("Claim rewards - user does not have the license", async function () {
@@ -1110,7 +1298,7 @@ describe("NDContract", function () {
           [COMPUTE_PARAMS],
           [[await computeSignatureBytes(backend)]]
         )
-    ).to.be.revertedWith("User does not have the license");
+    ).to.be.revertedWithCustomError(ndContract, "NotLicenseOwner");
   });
 
   it("Claim rewards - invalid signature", async function () {
@@ -1276,7 +1464,7 @@ describe("NDContract", function () {
           [COMPUTE_PARAMS],
           [[await computeSignatureBytes(backend)]]
         )
-    ).to.be.revertedWith("Invalid node address.");
+    ).to.be.revertedWithCustomError(ndContract, "InvalidNodeAddressForRewards");
   });
 
   it("Claim rewards - incorrect number of params.", async function () {
@@ -1306,7 +1494,7 @@ describe("NDContract", function () {
           [COMPUTE_PARAMS],
           [[await computeSignatureBytes(backend)]]
         )
-    ).to.be.revertedWith("Incorrect number of params.");
+    ).to.be.revertedWithCustomError(ndContract, "IncorrectNumberOfParams");
   });
 
   it("Claim rewards - 0 epoch to claim", async function () {
@@ -1564,7 +1752,7 @@ describe("NDContract", function () {
           [COMPUTE_PARAMS],
           [[await computeSignatureBytes(backend)]]
         )
-    ).to.be.revertedWith("License is banned, cannot perform action");
+    ).to.be.revertedWithCustomError(ndContract, "LicenseBanned");
   });
 
   it("Ban license - already banned", async function () {
@@ -1582,9 +1770,8 @@ describe("NDContract", function () {
     );
 
     await ndContract.connect(owner).banLicense(1);
-    await expect(ndContract.connect(owner).banLicense(1)).to.be.revertedWith(
-      "License is already banned"
-    );
+    await expect(ndContract.connect(owner).banLicense(1))
+      .to.be.revertedWithCustomError(ndContract, "LicenseAlreadyBanned");
   });
 
   it("Ban license - not the owner", async function () {
@@ -1621,7 +1808,7 @@ describe("NDContract", function () {
           [COMPUTE_PARAMS],
           [[await computeSignatureBytes(backend)]]
         )
-    ).to.be.revertedWith("License is banned, cannot perform action");
+    ).to.be.revertedWithCustomError(ndContract, "LicenseBanned");
     await ndContract.connect(owner).unbanLicense(1);
     await ndContract
       .connect(firstUser)
@@ -1635,9 +1822,73 @@ describe("NDContract", function () {
   });
 
   it("Unban license - not banned license", async function () {
-    await expect(ndContract.connect(owner).unbanLicense(1)).to.be.revertedWith(
-      "License is not banned"
+    await expect(ndContract.connect(owner).unbanLicense(1))
+      .to.be.revertedWithCustomError(ndContract, "LicenseNotBanned");
+  });
+
+  it("Tracks licenses sold checkpoints across epochs", async function () {
+    const firstInvoiceUuid = generateInvoiceUuid("licenses-epoch-0");
+    const firstSignature = await signBuyLicense(
+      backend,
+      await firstUser.getAddress(),
+      firstInvoiceUuid,
+      10000,
+      20
     );
+    const pricePerLicense = await ndContract.getLicenseTokenPrice();
+
+    await buyLicenseWithMintAndAllowanceHelper({
+      r1: r1Contract,
+      nd: ndContract,
+      mintAuthority: owner,
+      buyer: firstUser,
+      pricePerLicense,
+      licenseCount: 2,
+      priceTier: 1,
+      invoiceUuid: firstInvoiceUuid,
+      usdMintLimit: 10000,
+      vatPercent: 20,
+      signature: firstSignature,
+    });
+
+    const firstEpoch = await ndContract.getCurrentEpoch();
+    const firstRange = await adoptionOracle.getLicensesSoldRange(
+      firstEpoch,
+      firstEpoch
+    );
+    expect(firstRange[0]).to.equal(2n);
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    const secondInvoiceUuid = generateInvoiceUuid("licenses-epoch-1");
+    const secondSignature = await signBuyLicense(
+      backend,
+      await firstUser.getAddress(),
+      secondInvoiceUuid,
+      10000,
+      20
+    );
+    await buyLicenseWithMintAndAllowanceHelper({
+      r1: r1Contract,
+      nd: ndContract,
+      mintAuthority: owner,
+      buyer: firstUser,
+      pricePerLicense: await ndContract.getLicenseTokenPrice(),
+      licenseCount: 1,
+      priceTier: 1,
+      invoiceUuid: secondInvoiceUuid,
+      usdMintLimit: 10000,
+      vatPercent: 20,
+      signature: secondSignature,
+    });
+
+    const secondEpoch = await ndContract.getCurrentEpoch();
+    const range = await adoptionOracle.getLicensesSoldRange(
+      firstEpoch,
+      secondEpoch
+    );
+    expect(range).to.deep.equal([2n, 3n]);
   });
 
   it.skip("Buy all license ", async function () {
@@ -1702,6 +1953,6 @@ describe("NDContract", function () {
         20,
         await createLicenseSignature(backend, firstUser, 1_000_000)
       )
-    ).to.be.revertedWith("All licenses have been sold");
+    ).to.be.revertedWithCustomError(ndContract, "AllLicensesSold");
   });
 });

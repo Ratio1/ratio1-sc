@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import {
   deployController,
@@ -14,11 +14,18 @@ import {
   revertSnapshotAndCapture,
   setTimestampAndMine,
   signComputeParams,
+  signLinkMultiNode,
   signLinkNode,
   START_EPOCH_TIMESTAMP,
   takeSnapshot,
 } from "./helpers";
-import { Controller, MNDContract, NDContract, R1 } from "../typechain-types";
+import {
+  AdoptionOracle,
+  Controller,
+  MNDContract,
+  NDContract,
+  R1,
+} from "../typechain-types";
 
 // npx hardhat test     ---- for gas usage
 // npx hardhat coverage ---- for test coverage
@@ -38,10 +45,17 @@ const newExpensesWallet = "0x0000000000000000000000000000000000000002";
 const newMarketingWallet = "0x0000000000000000000000000000000000000003";
 const newGrantsWallet = "0x0000000000000000000000000000000000000004";
 const newCsrWallet = "0x0000000000000000000000000000000000000005";
+const MULTI_NODE_ADDRESSES = [
+  "0x0000000000000000000000000000000000000010",
+  "0x0000000000000000000000000000000000000020",
+];
 const REWARDS_AMOUNT = 106362840848417488913n;
 const LICENSE_POWER = 485410n * ONE_TOKEN;
 const CLIFF_PERIOD = 223n;
 const MND_MAX_MINTING_DURATION = 30 * 30;
+const ND_FULL_RELEASE_THRESHOLD = 1;
+const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 1;
+const MAX_ADOPTION_PERCENTAGE = 65_535n;
 
 const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: 2n,
@@ -73,8 +87,10 @@ describe("MNDContract", function () {
     */
 
   let mndContract: MNDContract;
+  let ndContract: NDContract;
   let r1Contract: R1;
   let controllerContract: Controller;
+  let adoptionOracle: AdoptionOracle;
   let owner: HardhatEthersSigner;
   let firstUser: HardhatEthersSigner;
   let secondUser: HardhatEthersSigner;
@@ -113,13 +129,31 @@ describe("MNDContract", function () {
       controller: controllerContract,
       owner,
     });
-    const ndContract = await deployNDContract({
+    ndContract = await deployNDContract({
       r1: r1Contract,
       controller: controllerContract,
       owner,
     });
 
     await mndContract.setNDContract(await ndContract.getAddress());
+
+    const AdoptionOracleFactory = await ethers.getContractFactory(
+      "AdoptionOracle"
+    );
+    adoptionOracle = await upgrades.deployProxy(
+      AdoptionOracleFactory,
+      [
+        await owner.getAddress(),
+        await ndContract.getAddress(),
+        await owner.getAddress(),
+        ND_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+      ],
+      { initializer: "initialize" }
+    );
+    await adoptionOracle.waitForDeployment();
+    await adoptionOracle.initializeLicenseSales([0], [2]);
+    await mndContract.setAdoptionOracle(await adoptionOracle.getAddress());
 
     await r1Contract.setNdContract(await owner.getAddress());
     await r1Contract.setMndContract(await mndContract.getAddress());
@@ -165,6 +199,21 @@ describe("MNDContract", function () {
     });
   }
 
+  async function linkMultiNode(
+    mndContract: MNDContract,
+    user: HardhatEthersSigner,
+    licenseIds: number[],
+    nodeAddresses: string[]
+  ) {
+    await mndContract
+      .connect(user)
+      .linkMultiNode(
+        licenseIds,
+        nodeAddresses,
+        await signLinkMultiNode(oracle, user, nodeAddresses)
+      );
+  }
+
   async function unlinkNode(
     ndContract: MNDContract,
     user: HardhatEthersSigner,
@@ -178,6 +227,68 @@ describe("MNDContract", function () {
     let todayCliffEpochPassed =
       START_EPOCH_TIMESTAMP + cliffEpochPased + ONE_DAY_IN_SECS; //Chain start 2 days before contracts, and we need to be one day afetr cliff epoch
     await setTimestampAndMine(todayCliffEpochPassed);
+  }
+
+  async function deployAdoptionOracleWithSales(
+    epochs: number[],
+    totals: number[]
+  ) {
+    const AdoptionOracleFactory = await ethers.getContractFactory(
+      "AdoptionOracle"
+    );
+    const oracle = await upgrades.deployProxy(
+      AdoptionOracleFactory,
+      [
+        await owner.getAddress(),
+        await ndContract.getAddress(),
+        await owner.getAddress(),
+        ND_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+      ],
+      { initializer: "initialize" }
+    );
+    await oracle.waitForDeployment();
+    await oracle.initializeLicenseSales(epochs, totals);
+    return oracle;
+  }
+
+  async function deployAdoptionOracleWithData({
+    ndThreshold = ND_FULL_RELEASE_THRESHOLD,
+    poaiThreshold = POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+    licenseEpochs = [],
+    licenseTotals = [],
+    poaiEpochs = [],
+    poaiTotals = [],
+  }: {
+    ndThreshold?: number;
+    poaiThreshold?: number;
+    licenseEpochs?: number[];
+    licenseTotals?: number[];
+    poaiEpochs?: number[];
+    poaiTotals?: number[];
+  }) {
+    const AdoptionOracleFactory = await ethers.getContractFactory(
+      "AdoptionOracle"
+    );
+    const oracle = await upgrades.deployProxy(
+      AdoptionOracleFactory,
+      [
+        await owner.getAddress(),
+        await ndContract.getAddress(),
+        await owner.getAddress(),
+        ndThreshold,
+        poaiThreshold,
+      ],
+      { initializer: "initialize" }
+    );
+    await oracle.waitForDeployment();
+    if (licenseEpochs.length > 0) {
+      await oracle.initializeLicenseSales(licenseEpochs, licenseTotals);
+    }
+    if (poaiEpochs.length > 0) {
+      await oracle.initializePoaiVolumes(poaiEpochs, poaiTotals);
+    }
+    return oracle;
   }
 
   /*
@@ -224,6 +335,28 @@ describe("MNDContract", function () {
       mndContract
         .connect(firstUser)
         .setNDContract(await secondUser.getAddress())
+    ).to.be.revertedWithCustomError(mndContract, "OwnableUnauthorizedAccount");
+  });
+
+  it("Set adoption oracle - should work", async function () {
+    const oracle = await deployAdoptionOracleWithSales([0], [2]);
+    await mndContract.setAdoptionOracle(await oracle.getAddress());
+  });
+
+  it("Set adoption oracle - OwnableUnauthorizedAccount", async function () {
+    await expect(
+      mndContract.connect(firstUser).setAdoptionOracle(await owner.getAddress())
+    ).to.be.revertedWithCustomError(mndContract, "OwnableUnauthorizedAccount");
+  });
+
+  it("Set max carryover release factor - should work", async function () {
+    await mndContract.setMaxCarryoverReleaseFactor(200);
+    expect(await mndContract.maxCarryoverReleaseFactor()).to.equal(200);
+  });
+
+  it("Set max carryover release factor - OwnableUnauthorizedAccount", async function () {
+    await expect(
+      mndContract.connect(firstUser).setMaxCarryoverReleaseFactor(200)
     ).to.be.revertedWithCustomError(mndContract, "OwnableUnauthorizedAccount");
   });
 
@@ -360,7 +493,7 @@ describe("MNDContract", function () {
       mndContract
         .connect(owner)
         .addLicense(await firstUser.getAddress(), LICENSE_POWER * ONE_TOKEN)
-    ).to.be.revertedWith("Invalid license power");
+    ).to.be.revertedWithCustomError(mndContract, "InvalidLicensePower");
   });
 
   it("Add license - power limit reached", async function () {
@@ -378,7 +511,10 @@ describe("MNDContract", function () {
       mndContract
         .connect(owner)
         .addLicense(await firstUser.getAddress(), ONE_TOKEN * 3236067n)
-    ).to.be.revertedWith("Max total assigned tokens reached");
+    ).to.be.revertedWithCustomError(
+      mndContract,
+      "MaxTotalAssignedTokensReached"
+    );
   });
 
   it("Add license - paused contract", async function () {
@@ -413,7 +549,7 @@ describe("MNDContract", function () {
 
     await expect(
       mndContract.connect(owner).addLicense(await firstUser.getAddress(), 1)
-    ).to.be.revertedWith("Maximum token supply reached.");
+    ).to.be.revertedWithCustomError(mndContract, "MaxTokenSupplyReached");
   });
 
   it("Add license - max total assigned tokens reached", async function () {
@@ -437,7 +573,10 @@ describe("MNDContract", function () {
       mndContract
         .connect(owner)
         .addLicense(await firstUser.getAddress(), ONE_TOKEN)
-    ).to.be.revertedWith("Max total assigned tokens reached");
+    ).to.be.revertedWithCustomError(
+      mndContract,
+      "MaxTotalAssignedTokensReached"
+    );
   });
 
   it("Pause contract - should work", async function () {
@@ -501,6 +640,84 @@ describe("MNDContract", function () {
     );
   });
 
+  it("Link multi node - should work", async function () {
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+
+    const licenseIds = [2, 3];
+    await linkMultiNode(
+      mndContract,
+      firstUser,
+      licenseIds,
+      MULTI_NODE_ADDRESSES
+    );
+
+    for (let i = 0; i < licenseIds.length; i++) {
+      const licenseId = licenseIds[i];
+      const nodeAddress = MULTI_NODE_ADDRESSES[i];
+      expect((await mndContract.licenses(licenseId)).nodeAddress).to.equal(
+        nodeAddress
+      );
+      expect(await mndContract.registeredNodeAddresses(nodeAddress)).to.equal(
+        true
+      );
+      expect(await mndContract.nodeToLicenseId(nodeAddress)).to.equal(
+        licenseId
+      );
+    }
+  });
+
+  it("Link multi node - mismatched arrays length", async function () {
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+
+    const licenseIds = [2, 3];
+    const nodeAddresses = [MULTI_NODE_ADDRESSES[0]];
+    await expect(
+      mndContract
+        .connect(firstUser)
+        .linkMultiNode(
+          licenseIds,
+          nodeAddresses,
+          await signLinkMultiNode(oracle, firstUser, nodeAddresses)
+        )
+    ).to.be.revertedWithCustomError(mndContract, "MismatchedInputArraysLength");
+  });
+
+  it("Link multi node - not the owner of the license", async function () {
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await mndContract
+      .connect(owner)
+      .addLicense(await secondUser.getAddress(), LICENSE_POWER);
+
+    await expect(
+      linkMultiNode(mndContract, firstUser, [2, 3], MULTI_NODE_ADDRESSES)
+    ).to.be.revertedWithCustomError(mndContract, "NotLicenseOwner");
+  });
+
+  it("Link multi node - link again before 24hrs", async function () {
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+
+    await linkNode(mndContract, firstUser, 2);
+    await unlinkNode(mndContract, firstUser, 2);
+
+    await expect(
+      linkMultiNode(mndContract, firstUser, [2], [MULTI_NODE_ADDRESSES[0]])
+    ).to.be.revertedWithCustomError(mndContract, "CannotReassignWithin24Hours");
+  });
+
   it("Link node - address already registered", async function () {
     //SETUP WORLD
     await mndContract
@@ -509,8 +726,11 @@ describe("MNDContract", function () {
     await linkNode(mndContract, firstUser, 2);
 
     //DO TEST - try to link again
-    await expect(linkNode(mndContract, firstUser, 2)).to.be.revertedWith(
-      "Node address already registered"
+    await expect(
+      linkNode(mndContract, firstUser, 2)
+    ).to.be.revertedWithCustomError(
+      mndContract,
+      "NodeAddressAlreadyRegistered"
     );
   });
 
@@ -522,9 +742,9 @@ describe("MNDContract", function () {
     await linkNode(mndContract, firstUser, 2);
 
     //DO TEST - try to link again
-    await expect(linkNode(mndContract, secondUser, 2)).to.be.revertedWith(
-      "Not the owner of the license"
-    );
+    await expect(
+      linkNode(mndContract, secondUser, 2)
+    ).to.be.revertedWithCustomError(mndContract, "NotLicenseOwner");
   });
 
   it("Link node - wrong license", async function () {
@@ -554,7 +774,7 @@ describe("MNDContract", function () {
           NULL_ADDRESS,
           await signLinkNode(oracle, firstUser, NULL_ADDRESS)
         )
-    ).to.be.revertedWith("Invalid node address");
+    ).to.be.revertedWithCustomError(mndContract, "InvalidNodeAddress");
   });
 
   it("Link node - link again before 24hrs", async function () {
@@ -566,9 +786,9 @@ describe("MNDContract", function () {
 
     //DO TEST - try to link before 24 hrs
     await unlinkNode(mndContract, firstUser, 2);
-    await expect(linkNode(mndContract, firstUser, 2)).to.be.revertedWith(
-      "Cannot reassign within 24 hours"
-    );
+    await expect(
+      linkNode(mndContract, firstUser, 2)
+    ).to.be.revertedWithCustomError(mndContract, "CannotReassignWithin24Hours");
   });
 
   it("Link node - link again after 24hrs", async function () {
@@ -613,7 +833,7 @@ describe("MNDContract", function () {
     //DO TEST
     await expect(
       mndContract.connect(secondUser).unlinkNode(2)
-    ).to.be.revertedWith("Not the owner of the license");
+    ).to.be.revertedWithCustomError(mndContract, "NotLicenseOwner");
   });
 
   it("Unlink - unlink before claiming rewards, cliff not passed", async function () {
@@ -644,7 +864,10 @@ describe("MNDContract", function () {
     //DO TEST
     await expect(
       mndContract.connect(firstUser).unlinkNode(2)
-    ).to.be.revertedWith("Cannot unlink before claiming rewards");
+    ).to.be.revertedWithCustomError(
+      mndContract,
+      "CannotUnlinkBeforeClaimingRewards"
+    );
   });
 
   it("Calculate rewards", async function () {
@@ -695,6 +918,941 @@ describe("MNDContract", function () {
       licenseId: 2n,
       rewardsAmount: 9754316031215612969n,
     });
+  });
+
+  it("Adoption gating - withholds rewards into AWB when adoption is zero", async function () {
+    const adoptionOracleOverride = await deployAdoptionOracleWithSales(
+      [0],
+      [0]
+    );
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 1),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const zeroAdoptionParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [Number(CLIFF_PERIOD)],
+      availabilies: [255],
+    };
+    const zeroAdoptionSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: zeroAdoptionParams.nodeAddress,
+      epochs: zeroAdoptionParams.epochs,
+      availabilities: zeroAdoptionParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards(
+        [zeroAdoptionParams],
+        [[ethers.getBytes(zeroAdoptionSignature)]]
+      );
+
+    const awbBalance = await mndContract.awbBalances(2);
+    const license = await mndContract.licenses(2);
+    expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
+      0n
+    );
+    expect(awbBalance).to.be.gt(0n);
+    expect(license.totalClaimedAmount).to.equal(awbBalance);
+  });
+
+  it("Adoption gating - releases carryover when adoption increases", async function () {
+    const adoptionOracleOverride = await deployAdoptionOracleWithSales(
+      [0, Number(CLIFF_PERIOD) + 1],
+      [0, 2]
+    );
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 2),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const params = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [Number(CLIFF_PERIOD), Number(CLIFF_PERIOD) + 1],
+      availabilies: [255, 255],
+    };
+    const paramsSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: params.nodeAddress,
+      epochs: params.epochs,
+      availabilities: params.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([params], [[ethers.getBytes(paramsSignature)]]);
+
+    const awbBalance = await mndContract.awbBalances(2);
+    const license = await mndContract.licenses(2);
+    const minted = await r1Contract.balanceOf(await firstUser.getAddress());
+    expect(awbBalance).to.equal(0n);
+    expect(minted).to.equal(license.totalClaimedAmount);
+    expect(minted).to.be.gt(0n);
+  });
+
+  it("Adoption gating - increasing thresholds lowers adoption after a claim", async function () {
+    const epochOne = Number(CLIFF_PERIOD);
+    const epochTwo = epochOne + 1;
+    const initialThreshold = 1000;
+    const higherThreshold = 2000;
+    const totals = 1000;
+
+    const adoptionOracleOverride = await deployAdoptionOracleWithData({
+      ndThreshold: initialThreshold,
+      poaiThreshold: initialThreshold,
+      licenseEpochs: [epochOne, epochTwo],
+      licenseTotals: [totals, totals],
+      poaiEpochs: [epochOne, epochTwo],
+      poaiTotals: [totals, totals],
+    });
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 1),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochOneParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochOne],
+      availabilies: [255],
+    };
+    const epochOneSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochOneParams.nodeAddress,
+      epochs: epochOneParams.epochs,
+      availabilities: epochOneParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochOneParams], [[ethers.getBytes(epochOneSignature)]]);
+
+    const awbAfterFirst = await mndContract.awbBalances(2);
+    expect(awbAfterFirst).to.equal(0n);
+
+    await adoptionOracleOverride
+      .connect(owner)
+      .setNdFullReleaseThreshold(higherThreshold);
+    await adoptionOracleOverride
+      .connect(owner)
+      .setPoaiVolumeFullReleaseThreshold(higherThreshold);
+
+    const adoptionPercentEpochTwo =
+      await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochTwo);
+    expect(adoptionPercentEpochTwo).to.be.lt(MAX_ADOPTION_PERCENTAGE);
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochTwoParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochTwo],
+      availabilies: [255],
+    };
+    const epochTwoSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochTwoParams.nodeAddress,
+      epochs: epochTwoParams.epochs,
+      availabilities: epochTwoParams.availabilies,
+    });
+    const mintedBeforeSecond = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const licenseBeforeSecond = await mndContract.licenses(2);
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochTwoParams], [[ethers.getBytes(epochTwoSignature)]]);
+    const mintedAfterSecond = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const mintedSecond = mintedAfterSecond - mintedBeforeSecond;
+    const licenseAfterSecond = await mndContract.licenses(2);
+    const awbAfterSecond = await mndContract.awbBalances(2);
+    const curveMaxReleaseSecond =
+      licenseAfterSecond.totalClaimedAmount -
+      licenseBeforeSecond.totalClaimedAmount;
+    const expectedAdoptionSecond =
+      (curveMaxReleaseSecond * adoptionPercentEpochTwo) /
+      MAX_ADOPTION_PERCENTAGE;
+    const expectedWithheldSecond =
+      curveMaxReleaseSecond - expectedAdoptionSecond;
+
+    expect(mintedSecond).to.equal(expectedAdoptionSecond);
+    expect(awbAfterSecond).to.equal(expectedWithheldSecond);
+    expect(awbAfterSecond).to.be.gt(0n);
+  });
+
+  it("Adoption gating - decreasing thresholds raises adoption after a claim", async function () {
+    const epochOne = Number(CLIFF_PERIOD);
+    const epochTwo = epochOne + 1;
+    const higherThreshold = 2000;
+    const lowerThreshold = 1000;
+    const totals = 1000;
+
+    const adoptionOracleOverride = await deployAdoptionOracleWithData({
+      ndThreshold: higherThreshold,
+      poaiThreshold: higherThreshold,
+      licenseEpochs: [epochOne, epochTwo],
+      licenseTotals: [totals, totals],
+      poaiEpochs: [epochOne, epochTwo],
+      poaiTotals: [totals, totals],
+    });
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 1),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochOneParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochOne],
+      availabilies: [255],
+    };
+    const epochOneSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochOneParams.nodeAddress,
+      epochs: epochOneParams.epochs,
+      availabilities: epochOneParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochOneParams], [[ethers.getBytes(epochOneSignature)]]);
+
+    const adoptionPercentEpochOne =
+      await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochOne);
+    const awbAfterFirst = await mndContract.awbBalances(2);
+    expect(awbAfterFirst).to.be.gt(0n);
+
+    await adoptionOracleOverride
+      .connect(owner)
+      .setNdFullReleaseThreshold(lowerThreshold);
+    await adoptionOracleOverride
+      .connect(owner)
+      .setPoaiVolumeFullReleaseThreshold(lowerThreshold);
+
+    const adoptionPercentEpochTwo =
+      await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochTwo);
+    expect(adoptionPercentEpochTwo).to.be.gt(adoptionPercentEpochOne);
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochTwoParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochTwo],
+      availabilies: [255],
+    };
+    const epochTwoSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochTwoParams.nodeAddress,
+      epochs: epochTwoParams.epochs,
+      availabilities: epochTwoParams.availabilies,
+    });
+    const mintedBeforeSecond = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const licenseBeforeSecond = await mndContract.licenses(2);
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochTwoParams], [[ethers.getBytes(epochTwoSignature)]]);
+    const mintedAfterSecond = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const mintedSecond = mintedAfterSecond - mintedBeforeSecond;
+    const licenseAfterSecond = await mndContract.licenses(2);
+    const awbAfterSecond = await mndContract.awbBalances(2);
+    const curveMaxReleaseSecond =
+      licenseAfterSecond.totalClaimedAmount -
+      licenseBeforeSecond.totalClaimedAmount;
+    const expectedAdoptionSecond =
+      (curveMaxReleaseSecond * adoptionPercentEpochTwo) /
+      MAX_ADOPTION_PERCENTAGE;
+    const expectedWithheldSecond =
+      curveMaxReleaseSecond - expectedAdoptionSecond;
+    const targetWithheldBuffer =
+      (licenseBeforeSecond.totalClaimedAmount *
+        (MAX_ADOPTION_PERCENTAGE - adoptionPercentEpochTwo)) /
+      MAX_ADOPTION_PERCENTAGE;
+    const excessAwb =
+      awbAfterFirst > targetWithheldBuffer
+        ? awbAfterFirst - targetWithheldBuffer
+        : 0n;
+    const maxCarryoverRelease =
+      (curveMaxReleaseSecond *
+        (await mndContract.maxCarryoverReleaseFactor())) /
+      255n;
+    const expectedCarryover =
+      excessAwb > maxCarryoverRelease ? maxCarryoverRelease : excessAwb;
+
+    expect(mintedSecond).to.equal(expectedAdoptionSecond + expectedCarryover);
+    expect(awbAfterSecond).to.equal(
+      awbAfterFirst - expectedCarryover + expectedWithheldSecond
+    );
+    expect(mintedSecond).to.be.gt(expectedAdoptionSecond);
+  });
+
+  it("Adoption gating - adoption 0% withholds all rewards", async function () {
+    const adoptionOracleOverride = await deployAdoptionOracleWithData({});
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 1),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const params = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [Number(CLIFF_PERIOD)],
+      availabilies: [255],
+    };
+    const signature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: params.nodeAddress,
+      epochs: params.epochs,
+      availabilities: params.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([params], [[ethers.getBytes(signature)]]);
+
+    const minted = await r1Contract.balanceOf(await firstUser.getAddress());
+    const license = await mndContract.licenses(2);
+    const awbBalance = await mndContract.awbBalances(2);
+    expect(minted).to.equal(0n);
+    expect(awbBalance).to.equal(license.totalClaimedAmount);
+    expect(awbBalance).to.be.gt(0n);
+  });
+
+  it("Adoption gating - adoption 100% mints full availability release", async function () {
+    const epoch = Number(CLIFF_PERIOD);
+    const adoptionOracleOverride = await deployAdoptionOracleWithData({
+      licenseEpochs: [epoch],
+      licenseTotals: [2],
+      ndThreshold: 1,
+      poaiThreshold: 1,
+    });
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 1),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const params = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epoch],
+      availabilies: [255],
+    };
+    const signature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: params.nodeAddress,
+      epochs: params.epochs,
+      availabilities: params.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([params], [[ethers.getBytes(signature)]]);
+
+    const minted = await r1Contract.balanceOf(await firstUser.getAddress());
+    const license = await mndContract.licenses(2);
+    const awbBalance = await mndContract.awbBalances(2);
+    expect(minted).to.equal(license.totalClaimedAmount);
+    expect(awbBalance).to.equal(0n);
+  });
+
+  it("Adoption gating - adoption jump releases AWB up to cap", async function () {
+    const epochOne = Number(CLIFF_PERIOD);
+    const epochTwo = Number(CLIFF_PERIOD) + 1;
+    const maxFactor = 10; // out of 255
+    const adoptionOracleOverride = await deployAdoptionOracleWithData({
+      licenseEpochs: [epochOne, epochTwo],
+      licenseTotals: [0, 2],
+      ndThreshold: 1,
+      poaiThreshold: 1,
+    });
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+    await mndContract.setMaxCarryoverReleaseFactor(maxFactor);
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 1),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochOneParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochOne],
+      availabilies: [255],
+    };
+    const epochOneSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochOneParams.nodeAddress,
+      epochs: epochOneParams.epochs,
+      availabilities: epochOneParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochOneParams], [[ethers.getBytes(epochOneSignature)]]);
+
+    const licenseAfterFirst = await mndContract.licenses(2);
+    const awbAfterFirst = await mndContract.awbBalances(2);
+    const mintedAfterFirst = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    expect(mintedAfterFirst).to.equal(0n);
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochTwoParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochTwo],
+      availabilies: [255],
+    };
+    const epochTwoSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochTwoParams.nodeAddress,
+      epochs: epochTwoParams.epochs,
+      availabilities: epochTwoParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochTwoParams], [[ethers.getBytes(epochTwoSignature)]]);
+
+    const mintedAfterSecond = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const mintedSecond = mintedAfterSecond - mintedAfterFirst;
+    const licenseAfterSecond = await mndContract.licenses(2);
+    const awbAfterSecond = await mndContract.awbBalances(2);
+    const curveMaxReleaseSecond =
+      licenseAfterSecond.totalClaimedAmount -
+      licenseAfterFirst.totalClaimedAmount;
+    const expectedCap = (curveMaxReleaseSecond * BigInt(maxFactor)) / 255n;
+    const carryoverReleased = mintedSecond - curveMaxReleaseSecond;
+    expect(carryoverReleased).to.equal(expectedCap);
+    expect(awbAfterSecond).to.equal(awbAfterFirst - expectedCap);
+  });
+
+  it("Adoption gating - carryover releases even with zero availability", async function () {
+    const epochOne = Number(CLIFF_PERIOD);
+    const epochTwo = Number(CLIFF_PERIOD) + 1;
+    const adoptionOracleOverride = await deployAdoptionOracleWithData({
+      licenseEpochs: [epochOne, epochTwo],
+      licenseTotals: [0, 2],
+      ndThreshold: 1,
+      poaiThreshold: 1,
+    });
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 1),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochOneParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochOne],
+      availabilies: [255],
+    };
+    const epochOneSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochOneParams.nodeAddress,
+      epochs: epochOneParams.epochs,
+      availabilities: epochOneParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochOneParams], [[ethers.getBytes(epochOneSignature)]]);
+
+    const awbAfterFirst = await mndContract.awbBalances(2);
+    const licenseAfterFirst = await mndContract.licenses(2);
+    const mintedAfterFirst = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    expect(mintedAfterFirst).to.equal(0n);
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochTwoParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochTwo],
+      availabilies: [0],
+    };
+    const epochTwoSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochTwoParams.nodeAddress,
+      epochs: epochTwoParams.epochs,
+      availabilities: epochTwoParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochTwoParams], [[ethers.getBytes(epochTwoSignature)]]);
+
+    const mintedAfterSecond = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const mintedSecond = mintedAfterSecond - mintedAfterFirst;
+    const licenseAfterSecond = await mndContract.licenses(2);
+    const awbAfterSecond = await mndContract.awbBalances(2);
+
+    expect(licenseAfterSecond.totalClaimedAmount).to.equal(
+      licenseAfterFirst.totalClaimedAmount
+    );
+    expect(mintedSecond).to.equal(awbAfterFirst - awbAfterSecond);
+    expect(mintedSecond).to.be.gt(0n);
+  });
+
+  it("Adoption gating - carryover cap factor controls release amount", async function () {
+    const epochStart = Number(CLIFF_PERIOD);
+    const epochsToBuild = 10;
+    const epochJump = epochStart + epochsToBuild;
+    const adoptionOracleOverride = await deployAdoptionOracleWithData({
+      licenseEpochs: [epochStart, epochJump],
+      licenseTotals: [0, 2],
+      ndThreshold: 1,
+      poaiThreshold: 1,
+    });
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await mndContract.setMaxCarryoverReleaseFactor(0);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (epochStart + epochsToBuild),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochParams = Array.from(
+      { length: epochsToBuild },
+      (_, i) => epochStart + i
+    );
+    const availParams = Array.from({ length: epochsToBuild }, () => 255);
+    const buildParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: epochParams,
+      availabilies: availParams,
+    };
+    const buildSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: buildParams.nodeAddress,
+      epochs: buildParams.epochs,
+      availabilities: buildParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([buildParams], [[ethers.getBytes(buildSignature)]]);
+
+    const awbAfterBuild = await mndContract.awbBalances(2);
+    expect(awbAfterBuild).to.be.gt(0n);
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochJumpParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochJump],
+      availabilies: [255],
+    };
+    const epochJumpSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochJumpParams.nodeAddress,
+      epochs: epochJumpParams.epochs,
+      availabilities: epochJumpParams.availabilies,
+    });
+    const mintedBeforeJump = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const licenseBeforeJump = await mndContract.licenses(2);
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochJumpParams], [[ethers.getBytes(epochJumpSignature)]]);
+    const mintedAfterJump = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const licenseAfterJump = await mndContract.licenses(2);
+    const awbAfterJump = await mndContract.awbBalances(2);
+    const curveMaxReleaseJump =
+      licenseAfterJump.totalClaimedAmount -
+      licenseBeforeJump.totalClaimedAmount;
+    expect(mintedAfterJump - mintedBeforeJump).to.equal(curveMaxReleaseJump);
+    expect(awbAfterJump).to.equal(awbAfterBuild);
+
+    const halfFactor = 127;
+    await mndContract.setMaxCarryoverReleaseFactor(halfFactor);
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochNextParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochJump + 1],
+      availabilies: [255],
+    };
+    const epochNextSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochNextParams.nodeAddress,
+      epochs: epochNextParams.epochs,
+      availabilities: epochNextParams.availabilies,
+    });
+    const mintedBeforeNext = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const licenseBeforeNext = await mndContract.licenses(2);
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochNextParams], [[ethers.getBytes(epochNextSignature)]]);
+    const mintedAfterNext = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const licenseAfterNext = await mndContract.licenses(2);
+    const awbAfterNext = await mndContract.awbBalances(2);
+    const curveMaxReleaseNext =
+      licenseAfterNext.totalClaimedAmount -
+      licenseBeforeNext.totalClaimedAmount;
+    const expectedCap = (curveMaxReleaseNext * BigInt(halfFactor)) / 255n;
+    const mintedNext = mintedAfterNext - mintedBeforeNext;
+    const carryoverReleased = mintedNext - curveMaxReleaseNext;
+    expect(carryoverReleased).to.equal(expectedCap);
+    expect(awbAfterNext).to.equal(awbAfterJump - expectedCap);
+  });
+
+  it("Adoption gating - post-vesting curve flattens and drains AWB", async function () {
+    const plateauEpoch = Number(CLIFF_PERIOD) + MND_MAX_MINTING_DURATION;
+    const adoptionOracleOverride = await deployAdoptionOracleWithData({
+      licenseEpochs: [plateauEpoch],
+      licenseTotals: [2],
+      ndThreshold: 1,
+      poaiThreshold: 1,
+    });
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+    await mndContract.setMaxCarryoverReleaseFactor(10); // out of 255
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * plateauEpoch,
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochsToClaim = plateauEpoch - Number(CLIFF_PERIOD);
+    const epochRange = Array.from(
+      { length: epochsToClaim },
+      (_, i) => Number(CLIFF_PERIOD) + i
+    );
+    const availRange = Array.from({ length: epochsToClaim }, () => 255);
+    const earlyParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: epochRange,
+      availabilies: availRange,
+    };
+    const earlySignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: earlyParams.nodeAddress,
+      epochs: earlyParams.epochs,
+      availabilities: earlyParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([earlyParams], [[ethers.getBytes(earlySignature)]]);
+
+    const awbAfterEarly = await mndContract.awbBalances(2);
+    const licenseAfterEarly = await mndContract.licenses(2);
+    const mintedAfterEarly = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    expect(mintedAfterEarly).to.equal(0n);
+    expect(awbAfterEarly).to.equal(LICENSE_POWER);
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    const plateauParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [plateauEpoch],
+      availabilies: [255],
+    };
+    const plateauSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: plateauParams.nodeAddress,
+      epochs: plateauParams.epochs,
+      availabilities: plateauParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([plateauParams], [[ethers.getBytes(plateauSignature)]]);
+
+    const mintedAfterPlateau = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const mintedPlateau = mintedAfterPlateau - mintedAfterEarly;
+    const licenseAfterPlateau = await mndContract.licenses(2);
+    const awbAfterPlateau = await mndContract.awbBalances(2);
+    const curveMaxReleasePlateau =
+      licenseAfterPlateau.totalClaimedAmount -
+      licenseAfterEarly.totalClaimedAmount;
+    const carryoverPlateau = mintedPlateau - curveMaxReleasePlateau;
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    const plateauNextParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [plateauEpoch + 1],
+      availabilies: [255],
+    };
+    const plateauNextSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: plateauNextParams.nodeAddress,
+      epochs: plateauNextParams.epochs,
+      availabilities: plateauNextParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards(
+        [plateauNextParams],
+        [[ethers.getBytes(plateauNextSignature)]]
+      );
+
+    const mintedAfterPlateauNext = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const mintedPlateauNext = mintedAfterPlateauNext - mintedAfterPlateau;
+    const licenseAfterPlateauNext = await mndContract.licenses(2);
+    const awbAfterPlateauNext = await mndContract.awbBalances(2);
+    const curveMaxReleasePlateauNext =
+      licenseAfterPlateauNext.totalClaimedAmount -
+      licenseAfterPlateau.totalClaimedAmount;
+    const carryoverPlateauNext = mintedPlateauNext - curveMaxReleasePlateauNext;
+
+    expect(curveMaxReleasePlateauNext).to.equal(curveMaxReleasePlateau);
+    expect(carryoverPlateauNext).to.equal(carryoverPlateau);
+    expect(awbAfterPlateau).to.equal(awbAfterEarly - carryoverPlateau);
+    expect(awbAfterPlateauNext).to.equal(
+      awbAfterPlateau - carryoverPlateauNext
+    );
+    expect(carryoverPlateau).to.be.gt(0n);
+    expect(LICENSE_POWER).to.equal(
+      mintedAfterPlateauNext + awbAfterPlateauNext
+    );
+  });
+
+  it("Adoption gating - 50% adoption then 75% adoption releases 50% AWB", async function () {
+    const adoptionHalf = 500;
+    const adoptionSeventyFive = 750;
+    const adoptionThreshold = 1000;
+    const epochOne = Number(CLIFF_PERIOD);
+    const epochTwo = Number(CLIFF_PERIOD) + 1;
+
+    const AdoptionOracleFactory = await ethers.getContractFactory(
+      "AdoptionOracle"
+    );
+    const adoptionOracleOverride = await upgrades.deployProxy(
+      AdoptionOracleFactory,
+      [
+        await owner.getAddress(),
+        await ndContract.getAddress(),
+        await owner.getAddress(),
+        adoptionThreshold,
+        adoptionThreshold,
+      ],
+      { initializer: "initialize" }
+    );
+    await adoptionOracleOverride.waitForDeployment();
+    await adoptionOracleOverride.initializeLicenseSales(
+      [epochOne, epochTwo],
+      [adoptionHalf, adoptionSeventyFive]
+    );
+    await adoptionOracleOverride.initializePoaiVolumes(
+      [epochOne, epochTwo],
+      [adoptionHalf, adoptionSeventyFive]
+    );
+    await mndContract.setAdoptionOracle(
+      await adoptionOracleOverride.getAddress()
+    );
+
+    await mndContract
+      .connect(owner)
+      .addLicense(await firstUser.getAddress(), LICENSE_POWER);
+    await linkNode(mndContract, firstUser, 2);
+
+    await ethers.provider.send("evm_increaseTime", [
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 1),
+    ]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochOneParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochOne],
+      availabilies: [255],
+    };
+    const epochOneSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochOneParams.nodeAddress,
+      epochs: epochOneParams.epochs,
+      availabilities: epochOneParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochOneParams], [[ethers.getBytes(epochOneSignature)]]);
+
+    const balanceAfterFirst = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const licenseAfterFirst = await mndContract.licenses(2);
+    const awbAfterFirst = await mndContract.awbBalances(2);
+    const adoptionPercentEpochOne =
+      await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochOne);
+    const expectedMintedFirst =
+      (licenseAfterFirst.totalClaimedAmount * adoptionPercentEpochOne) /
+      MAX_ADOPTION_PERCENTAGE;
+    expect(balanceAfterFirst).to.equal(expectedMintedFirst);
+    expect(awbAfterFirst).to.equal(
+      licenseAfterFirst.totalClaimedAmount - expectedMintedFirst
+    );
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    const epochTwoParams = {
+      licenseId: 2,
+      nodeAddress: NODE_ADDRESS,
+      epochs: [epochTwo],
+      availabilies: [255],
+    };
+    const epochTwoSignature = await signComputeParams({
+      signer: oracle,
+      nodeAddress: epochTwoParams.nodeAddress,
+      epochs: epochTwoParams.epochs,
+      availabilities: epochTwoParams.availabilies,
+    });
+    await mndContract
+      .connect(firstUser)
+      .claimRewards([epochTwoParams], [[ethers.getBytes(epochTwoSignature)]]);
+
+    const balanceAfterSecond = await r1Contract.balanceOf(
+      await firstUser.getAddress()
+    );
+    const mintedSecond = balanceAfterSecond - balanceAfterFirst;
+    const licenseAfterSecond = await mndContract.licenses(2);
+    const awbAfterSecond = await mndContract.awbBalances(2);
+    const curveMaxReleaseSecond =
+      licenseAfterSecond.totalClaimedAmount -
+      licenseAfterFirst.totalClaimedAmount;
+    const adoptionPercentEpochTwo =
+      await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochTwo);
+    const expectedAdoptionSecond =
+      (curveMaxReleaseSecond * adoptionPercentEpochTwo) /
+      MAX_ADOPTION_PERCENTAGE;
+    const expectedWithheldSecond =
+      curveMaxReleaseSecond - expectedAdoptionSecond;
+    const targetWithheldBuffer =
+      (licenseAfterFirst.totalClaimedAmount *
+        (MAX_ADOPTION_PERCENTAGE - adoptionPercentEpochTwo)) /
+      MAX_ADOPTION_PERCENTAGE;
+    const expectedCarryover = awbAfterFirst - targetWithheldBuffer;
+
+    const carryoverDelta =
+      expectedCarryover * 2n > awbAfterFirst
+        ? expectedCarryover * 2n - awbAfterFirst
+        : awbAfterFirst - expectedCarryover * 2n;
+    expect(carryoverDelta).to.be.lte(2n);
+    expect(curveMaxReleaseSecond).to.be.gte(expectedCarryover);
+    expect(mintedSecond).to.equal(expectedAdoptionSecond + expectedCarryover);
+    expect(awbAfterSecond).to.equal(
+      awbAfterFirst - expectedCarryover + expectedWithheldSecond
+    );
+    expect(mintedSecond).to.be.gt(balanceAfterFirst);
   });
 
   it("Claim rewards - should work", async function () {
@@ -811,19 +1969,25 @@ describe("MNDContract", function () {
       .addLicense(await firstUser.getAddress(), LICENSE_POWER);
     await linkNode(mndContract, firstUser, 2);
     await ethers.provider.send("evm_increaseTime", [
-      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + MND_MAX_MINTING_DURATION),
+      ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 1),
     ]);
     await ethers.provider.send("evm_mine", []);
 
-    for (let i = 0; i < MND_MAX_MINTING_DURATION; i++) {
-      COMPUTE_PARAMS.epochs[i] = Number(CLIFF_PERIOD) + i;
-      COMPUTE_PARAMS.availabilies[i] = 255;
-    }
-
     //DO TEST
-    await mndContract
-      .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]]);
+    for (let i = 0; i < MND_MAX_MINTING_DURATION; i++) {
+      COMPUTE_PARAMS.epochs = [Number(CLIFF_PERIOD) + i];
+      COMPUTE_PARAMS.availabilies = [255];
+      await mndContract
+        .connect(firstUser)
+        .claimRewards(
+          [COMPUTE_PARAMS],
+          [[await computeSignatureBytes(oracle)]]
+        );
+      if (i < MND_MAX_MINTING_DURATION - 1) {
+        await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+        await ethers.provider.send("evm_mine", []);
+      }
+    }
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       LICENSE_POWER
     );
@@ -857,7 +2021,7 @@ describe("MNDContract", function () {
       mndContract
         .connect(secondUser)
         .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]])
-    ).to.be.revertedWith("User does not have the license");
+    ).to.be.revertedWithCustomError(mndContract, "NotLicenseOwner");
   });
 
   it("Claim rewards - invalid signature", async function () {
@@ -899,7 +2063,10 @@ describe("MNDContract", function () {
       mndContract
         .connect(firstUser)
         .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]])
-    ).to.be.revertedWith("Invalid node address.");
+    ).to.be.revertedWithCustomError(
+      mndContract,
+      "InvalidNodeAddressForRewards"
+    );
   });
 
   it("Claim rewards - incorrect number of params.", async function () {
@@ -918,7 +2085,7 @@ describe("MNDContract", function () {
       mndContract
         .connect(firstUser)
         .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]])
-    ).to.be.revertedWith("Incorrect number of params.");
+    ).to.be.revertedWithCustomError(mndContract, "IncorrectNumberOfParams");
   });
 
   it("Claim rewards - full history claim with 5 oracles", async function () {
@@ -979,7 +2146,10 @@ describe("MNDContract", function () {
           await secondUser.getAddress(),
           2
         )
-    ).to.be.revertedWith("Soulbound: Non-transferable token");
+    ).to.be.revertedWithCustomError(
+      mndContract,
+      "SoulboundNonTransferableToken"
+    );
   });
 
   it("Set minimum requred signatures - should work", async function () {
@@ -1089,7 +2259,10 @@ describe("MNDContract", function () {
           await secondUser.getAddress(),
           2
         )
-    ).to.be.revertedWith("Soulbound: Non-transferable token");
+    ).to.be.revertedWithCustomError(
+      mndContract,
+      "SoulboundNonTransferableToken"
+    );
   });
 
   it("Burn - empty license", async function () {
@@ -1123,8 +2296,11 @@ describe("MNDContract", function () {
       .addLicense(await firstUser.getAddress(), LICENSE_POWER);
 
     //DO TEST - transfer empty license
-    await expect(mndContract.connect(firstUser).burn(2)).to.be.revertedWith(
-      "Soulbound: Non-transferable token"
+    await expect(
+      mndContract.connect(firstUser).burn(2)
+    ).to.be.revertedWithCustomError(
+      mndContract,
+      "SoulboundNonTransferableToken"
     );
   });
 });

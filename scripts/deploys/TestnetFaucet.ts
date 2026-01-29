@@ -13,8 +13,9 @@ async function main() {
     "1500000000", // 3000 tokens
     60 * 60 * 24 // 1 day
   );
-  await testnetFaucetContract.deployed();
-  console.log("Testnet Faucet deployed to:", testnetFaucetContract.address);
+  await testnetFaucetContract.waitForDeployment();
+  const faucetAddress = await testnetFaucetContract.getAddress();
+  console.log("Testnet Faucet deployed to:", faucetAddress);
 }
 
 main()

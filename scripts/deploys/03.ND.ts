@@ -19,14 +19,15 @@ async function main() {
     { initializer: "initialize" }
   );
 
-  await ndContract.deployed();
-  console.log("ND deployed to:", ndContract.address);
+  await ndContract.waitForDeployment();
+  const proxyAddress = await ndContract.getAddress();
+  console.log("ND deployed to:", proxyAddress);
   const implAddress = await upgrades.erc1967.getImplementationAddress(
-    ndContract.address
+    proxyAddress
   );
   console.log("Implementation:", implAddress);
   const adminAddress = await upgrades.erc1967.getAdminAddress(
-    ndContract.address
+    proxyAddress
   );
   console.log("Proxy Admin:", adminAddress);
 }

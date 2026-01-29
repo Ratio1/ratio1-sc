@@ -10,8 +10,9 @@ async function main() {
     deployer
   );
   const ERC20MockContract = await ERC20MockFactory.deploy();
-  await ERC20MockContract.deployed();
-  console.log("ERC20Mock deployed to:", ERC20MockContract.address);
+  await ERC20MockContract.waitForDeployment();
+  const tokenAddress = await ERC20MockContract.getAddress();
+  console.log("ERC20Mock deployed to:", tokenAddress);
 
   await ERC20MockContract.mint(TOKENS_RECEIVER, "500000000000"); // 500k tokens
 }

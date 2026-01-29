@@ -8,6 +8,10 @@ import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import "./Controller.sol";
 import "./R1.sol";
 
+interface IBurnContract {
+    function burn(uint256 amount) external;
+}
+
 uint256 constant BURN_PERCENTAGE = 15; // 15%
 
 // Job type constants
@@ -126,6 +130,7 @@ contract CspEscrow is Initializable {
     uint256[] public closedJobs;
     mapping(address => uint256) private delegatesPermissions;
     address[] private delegatedAddresses;
+    IBurnContract public burnContract;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -202,12 +207,17 @@ contract CspEscrow is Initializable {
         address _poaiManager,
         address _usdcToken,
         address _r1Token,
+        address _burnContract,
         address _controller,
         address _uniswapV2Router,
         address _uniswapV2Pair
     ) public initializer {
         require(_usdcToken != address(0), "USDC token cannot be zero address");
         require(_r1Token != address(0), "R1 token cannot be zero address");
+        require(
+            _burnContract != address(0),
+            "Burn contract cannot be zero address"
+        );
         require(_controller != address(0), "Controller cannot be zero address");
         require(
             _uniswapV2Router != address(0),
@@ -222,6 +232,7 @@ contract CspEscrow is Initializable {
         poaiManager = IPoAIManager(_poaiManager);
         usdcToken = _usdcToken;
         r1Token = R1(_r1Token);
+        burnContract = IBurnContract(_burnContract);
         controller = Controller(_controller);
         uniswapV2Router = IUniswapV2Router02(_uniswapV2Router);
         uniswapV2Pair = IUniswapV2Pair(_uniswapV2Pair);
@@ -440,9 +451,14 @@ contract CspEscrow is Initializable {
     }
 
     // Allocate rewards to active nodes for all jobs (called from PoAI Manager)
-    function allocateRewardsToNodes() external onlyPoAIManager {
+    function allocateRewardsToNodes()
+        external
+        onlyPoAIManager
+        returns (uint256)
+    {
         uint256 lastEpoch = getCurrentEpoch() - 1;
         uint256 totalAmountToBurn = 0;
+        uint256 totalRewards = 0;
 
         // Iterate through all jobs
         for (uint256 i = 0; i < activeJobs.length; i++) {
@@ -453,23 +469,15 @@ contract CspEscrow is Initializable {
             if (job.activeNodes.length == 0) {
                 continue;
             }
+            uint256 lastPayableEpoch = job.lastExecutionEpoch - 1;
+            uint256 effectiveLastEpoch = lastEpoch < lastPayableEpoch
+                ? lastEpoch
+                : lastPayableEpoch;
             // Skip if we've already allocated for this epoch
-            if (lastAllocatedEpoch >= lastEpoch) {
+            if (lastAllocatedEpoch >= effectiveLastEpoch) {
                 continue;
             }
-            uint256 epochsToAllocate = lastEpoch - lastAllocatedEpoch;
-            // Skip if job has ended
-            if (
-                lastAllocatedEpoch + epochsToAllocate > job.lastExecutionEpoch
-            ) {
-                if (job.lastExecutionEpoch < lastAllocatedEpoch) {
-                    epochsToAllocate = 0;
-                } else {
-                    epochsToAllocate =
-                        job.lastExecutionEpoch -
-                        lastAllocatedEpoch;
-                }
-            }
+            uint256 epochsToAllocate = effectiveLastEpoch - lastAllocatedEpoch;
             if (epochsToAllocate == 0) {
                 continue;
             }
@@ -483,6 +491,7 @@ contract CspEscrow is Initializable {
                 job.activeNodes.length;
             uint256 jobAmountToBurn = amountToBurnPerNode *
                 job.activeNodes.length;
+            uint256 jobTotalRewards = rewardPerNode * job.activeNodes.length;
             for (uint256 j = 0; j < job.activeNodes.length; j++) {
                 address nodeAddress = job.activeNodes[j];
                 virtualWalletBalance[nodeAddress] += amountRewardsPerNode;
@@ -498,9 +507,10 @@ contract CspEscrow is Initializable {
 
             // Add to total burn amount
             totalAmountToBurn += jobAmountToBurn;
+            totalRewards += jobTotalRewards;
             // Update job balance and last allocated epoch
             job.balance -= int256(totalRewardsToNodes + jobAmountToBurn);
-            job.lastAllocatedEpoch = lastEpoch;
+            job.lastAllocatedEpoch = effectiveLastEpoch;
 
             require(job.balance >= 0, "No balance left"); //TODO will change in V2
         }
@@ -509,9 +519,10 @@ contract CspEscrow is Initializable {
         if (totalAmountToBurn > 0) {
             uint256 r1TokensToBurn = swapUsdcForR1(totalAmountToBurn);
             require(r1TokensToBurn > 0, "No R1 tokens to burn");
-            r1Token.burn(address(this), r1TokensToBurn);
+            burnContract.burn(r1TokensToBurn);
             emit TokensBurned(totalAmountToBurn, r1TokensToBurn);
         }
+        return totalRewards;
     }
 
     function redeemUnusedJob(
@@ -578,6 +589,14 @@ contract CspEscrow is Initializable {
             job.balance -= int256(burnCorrection);
             emit JobBalanceReconciled(jobId, burnCorrection);
         }
+    }
+
+    function setBurnContract(address newBurnContract) external onlyPoAIManager {
+        require(
+            newBurnContract != address(0),
+            "Burn contract cannot be zero address"
+        );
+        burnContract = IBurnContract(newBurnContract);
     }
 
     function reconcileAllJobs() external onlyPoAIManager {
@@ -740,10 +759,14 @@ contract CspEscrow is Initializable {
         for (uint256 i = 0; i < activeJobs.length; i++) {
             uint256 jobId = activeJobs[i];
             JobDetails storage job = jobDetails[jobId];
+            // Ensure job has ended and rewards have been allocated
+            // through the last payable epoch before reporting a job as closable.
             if (
                 job.id != 0 &&
                 job.activeNodes.length > 0 &&
-                job.lastExecutionEpoch <= currentEpoch
+                job.lastExecutionEpoch > 0 &&
+                job.lastExecutionEpoch <= currentEpoch &&
+                job.lastAllocatedEpoch >= job.lastExecutionEpoch - 1
             ) {
                 return jobId;
             }

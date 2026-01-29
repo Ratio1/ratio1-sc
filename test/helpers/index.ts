@@ -173,6 +173,20 @@ export async function signLinkNode(
   return signer.signMessage(ethers.getBytes(messageHash));
 }
 
+export async function signLinkMultiNode(
+  signer: Signer,
+  user: Signer,
+  nodeAddresses: string[]
+): Promise<string> {
+  const userAddress = await user.getAddress();
+  // Must mirror Solidity: keccak256(abi.encodePacked(addr, address[]))
+  const messageHash = ethers.solidityPackedKeccak256(
+    ["address", "address[]"],
+    [userAddress, nodeAddresses]
+  );
+  return signer.signMessage(ethers.getBytes(messageHash));
+}
+
 interface BuyLicenseParams {
   r1: R1;
   nd: NDContract;
@@ -370,6 +384,28 @@ export async function linkNodeWithSignature({
       licenseId,
       nodeAddress,
       await signLinkNode(oracleSigner, user, nodeAddress)
+    );
+}
+
+export async function linkMultiNodeWithSignature({
+  contract,
+  user,
+  licenseIds,
+  nodeAddresses,
+  oracleSigner,
+}: {
+  contract: NDContract | MNDContract;
+  user: Signer;
+  licenseIds: number[];
+  nodeAddresses: string[];
+  oracleSigner: Signer;
+}): Promise<void> {
+  await contract
+    .connect(user)
+    .linkMultiNode(
+      licenseIds,
+      nodeAddresses,
+      await signLinkMultiNode(oracleSigner, user, nodeAddresses)
     );
 }
 
