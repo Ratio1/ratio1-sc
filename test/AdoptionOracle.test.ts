@@ -234,7 +234,7 @@ describe("AdoptionOracle", function () {
       await adoptionOracle.connect(poai).recordPoaiVolume(1, 1_250_000);
 
       const percentage = await adoptionOracle.getAdoptionPercentageAtEpoch(1);
-      expect(percentage).to.equal(127n);
+      expect(percentage).to.equal(32767n);
     });
 
     it("caps adoption percentage at 100%", async function () {
@@ -242,7 +242,7 @@ describe("AdoptionOracle", function () {
       await adoptionOracle.connect(poai).recordPoaiVolume(2, 2_500_000);
 
       const percentage = await adoptionOracle.getAdoptionPercentageAtEpoch(2);
-      expect(percentage).to.equal(255n);
+      expect(percentage).to.equal(65535n);
     });
 
     it("adoption percentage reaches 100% with only one metric", async function () {
@@ -250,7 +250,7 @@ describe("AdoptionOracle", function () {
       await adoptionOracle.connect(poai).recordPoaiVolume(2, 6_000_000);
 
       const percentage = await adoptionOracle.getAdoptionPercentageAtEpoch(2);
-      expect(percentage).to.equal(255n);
+      expect(percentage).to.equal(65535n);
     });
 
     it("returns adoption percentages over a range", async function () {
@@ -258,7 +258,7 @@ describe("AdoptionOracle", function () {
       await adoptionOracle.connect(poai).recordPoaiVolume(3, 2_500_000);
 
       const range = await adoptionOracle.getAdoptionPercentagesRange(1, 3);
-      expect(range).to.deep.equal([0n, 63n, 191n]);
+      expect(range).to.deep.equal([0n, 16383n, 49151n]);
     });
   });
 

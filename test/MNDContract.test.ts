@@ -55,6 +55,7 @@ const CLIFF_PERIOD = 223n;
 const MND_MAX_MINTING_DURATION = 30 * 30;
 const ND_FULL_RELEASE_THRESHOLD = 1;
 const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 1;
+const MAX_ADOPTION_PERCENTAGE = 65_535n;
 
 const EXPECTED_COMPUTE_REWARDS_RESULT = {
   licenseId: 2n,
@@ -1066,7 +1067,7 @@ describe("MNDContract", function () {
 
     const adoptionPercentEpochTwo =
       await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochTwo);
-    expect(adoptionPercentEpochTwo).to.be.lt(255n);
+    expect(adoptionPercentEpochTwo).to.be.lt(MAX_ADOPTION_PERCENTAGE);
 
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
     await ethers.provider.send("evm_mine", []);
@@ -1100,7 +1101,8 @@ describe("MNDContract", function () {
       licenseAfterSecond.totalClaimedAmount -
       licenseBeforeSecond.totalClaimedAmount;
     const expectedAdoptionSecond =
-      (curveMaxReleaseSecond * adoptionPercentEpochTwo) / 255n;
+      (curveMaxReleaseSecond * adoptionPercentEpochTwo) /
+      MAX_ADOPTION_PERCENTAGE;
     const expectedWithheldSecond =
       curveMaxReleaseSecond - expectedAdoptionSecond;
 
@@ -1202,13 +1204,14 @@ describe("MNDContract", function () {
       licenseAfterSecond.totalClaimedAmount -
       licenseBeforeSecond.totalClaimedAmount;
     const expectedAdoptionSecond =
-      (curveMaxReleaseSecond * adoptionPercentEpochTwo) / 255n;
+      (curveMaxReleaseSecond * adoptionPercentEpochTwo) /
+      MAX_ADOPTION_PERCENTAGE;
     const expectedWithheldSecond =
       curveMaxReleaseSecond - expectedAdoptionSecond;
     const targetWithheldBuffer =
       (licenseBeforeSecond.totalClaimedAmount *
-        (255n - adoptionPercentEpochTwo)) /
-      255n;
+        (MAX_ADOPTION_PERCENTAGE - adoptionPercentEpochTwo)) /
+      MAX_ADOPTION_PERCENTAGE;
     const excessAwb =
       awbAfterFirst > targetWithheldBuffer
         ? awbAfterFirst - targetWithheldBuffer
@@ -1791,7 +1794,8 @@ describe("MNDContract", function () {
     const adoptionPercentEpochOne =
       await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochOne);
     const expectedMintedFirst =
-      (licenseAfterFirst.totalClaimedAmount * adoptionPercentEpochOne) / 255n;
+      (licenseAfterFirst.totalClaimedAmount * adoptionPercentEpochOne) /
+      MAX_ADOPTION_PERCENTAGE;
     expect(balanceAfterFirst).to.equal(expectedMintedFirst);
     expect(awbAfterFirst).to.equal(
       licenseAfterFirst.totalClaimedAmount - expectedMintedFirst
@@ -1828,13 +1832,14 @@ describe("MNDContract", function () {
     const adoptionPercentEpochTwo =
       await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochTwo);
     const expectedAdoptionSecond =
-      (curveMaxReleaseSecond * adoptionPercentEpochTwo) / 255n;
+      (curveMaxReleaseSecond * adoptionPercentEpochTwo) /
+      MAX_ADOPTION_PERCENTAGE;
     const expectedWithheldSecond =
       curveMaxReleaseSecond - expectedAdoptionSecond;
     const targetWithheldBuffer =
       (licenseAfterFirst.totalClaimedAmount *
-        (255n - adoptionPercentEpochTwo)) /
-      255n;
+        (MAX_ADOPTION_PERCENTAGE - adoptionPercentEpochTwo)) /
+      MAX_ADOPTION_PERCENTAGE;
     const expectedCarryover = awbAfterFirst - targetWithheldBuffer;
 
     const carryoverDelta =

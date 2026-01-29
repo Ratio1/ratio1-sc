@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 contract AdoptionOracle is Initializable, OwnableUpgradeable {
-    uint256 private constant MAX_ADOPTION_PERCENTAGE = 255;
+    uint256 private constant MAX_ADOPTION_PERCENTAGE = type(uint16).max;
 
     address public ndContract;
     address public poaiManager;
@@ -181,7 +181,7 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
 
     function getAdoptionPercentageAtEpoch(
         uint256 epoch
-    ) public view returns (uint8) {
+    ) public view returns (uint16) {
         return
             _calculateAdoptionPercentage(
                 getLicensesSoldAtEpoch(epoch),
@@ -192,10 +192,10 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
     function getAdoptionPercentagesRange(
         uint256 fromEpoch,
         uint256 toEpoch
-    ) public view returns (uint8[] memory) {
+    ) public view returns (uint16[] memory) {
         require(fromEpoch <= toEpoch, "Invalid epoch range");
         uint256 length = toEpoch - fromEpoch + 1;
-        uint8[] memory percentages = new uint8[](length);
+        uint16[] memory percentages = new uint16[](length);
 
         (uint256 ndIndex, bool ndFound) = _findLicensesSoldCheckpoint(
             fromEpoch
@@ -273,7 +273,7 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
     function _calculateAdoptionPercentage(
         uint256 totalLicensesSold_,
         uint256 totalPoaiVolume_
-    ) private view returns (uint8) {
+    ) private view returns (uint16) {
         uint256 ndScore = (totalLicensesSold_ * MAX_ADOPTION_PERCENTAGE) /
             ndFullReleaseThreshold;
         uint256 poaiScore = (totalPoaiVolume_ * MAX_ADOPTION_PERCENTAGE) /
@@ -282,7 +282,7 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
         if (combined > MAX_ADOPTION_PERCENTAGE) {
             combined = MAX_ADOPTION_PERCENTAGE;
         }
-        return uint8(combined);
+        return uint16(combined);
     }
 
     function _recordLicensesSold(uint256 epoch) private {

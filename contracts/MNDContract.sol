@@ -30,7 +30,7 @@ interface IAdoptionOracle {
     function getAdoptionPercentagesRange(
         uint256 fromEpoch,
         uint256 toEpoch
-    ) external view returns (uint8[] memory);
+    ) external view returns (uint16[] memory);
 }
 
 struct ComputeRewardsParams {
@@ -115,6 +115,7 @@ contract MNDContract is
 
     uint256 constant MAX_PERCENTAGE = 100_00;
     uint8 constant MAX_PERCENTAGE_UINT8 = 255;
+    uint256 constant MAX_ADOPTION_PERCENTAGE = type(uint16).max;
     uint256 public constant GENESIS_TOKEN_ID = 1;
     int256 private constant WAD = 1e18;
     SD59x18 private LOGISTIC_PLATEAU;
@@ -493,7 +494,7 @@ contract MNDContract is
         if (epochsToClaim == 0) {
             return state;
         }
-        uint8[] memory adoptionPercentages = adoptionOracle
+        uint16[] memory adoptionPercentages = adoptionOracle
             .getAdoptionPercentagesRange(firstEpochToClaim, currentEpoch - 1);
 
         if (
@@ -539,8 +540,8 @@ contract MNDContract is
 
             // Calculate AWB carryover adjustments
             uint256 targetWithheldBuffer = (state.totalClaimedAmount *
-                (MAX_PERCENTAGE_UINT8 - adoptionPercentages[i])) /
-                MAX_PERCENTAGE_UINT8;
+                (MAX_ADOPTION_PERCENTAGE - adoptionPercentages[i])) /
+                MAX_ADOPTION_PERCENTAGE;
             if (state.awbBalance > targetWithheldBuffer) {
                 uint256 excessAWB = state.awbBalance - targetWithheldBuffer;
                 uint256 maxCarryoverRelease = (epochMaxRelease *
@@ -566,7 +567,7 @@ contract MNDContract is
         uint256 totalAssignedAmount,
         uint256 maxRewardsPerEpoch,
         uint8 availabilityPercentage,
-        uint8 adoptionPercentage
+        uint16 adoptionPercentage
     ) internal pure returns (uint256 adoptionRelease, uint256 withheldRelease) {
         if (totalClaimedAmount >= totalAssignedAmount) {
             return (0, 0);
@@ -575,7 +576,7 @@ contract MNDContract is
             availabilityPercentage) / MAX_PERCENTAGE_UINT8;
         adoptionRelease =
             (availabilityMaxRelease * adoptionPercentage) /
-            MAX_PERCENTAGE_UINT8;
+            MAX_ADOPTION_PERCENTAGE;
         if (totalClaimedAmount + adoptionRelease > totalAssignedAmount) {
             adoptionRelease = totalAssignedAmount - totalClaimedAmount;
         } else {
