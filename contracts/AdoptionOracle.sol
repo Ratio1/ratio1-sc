@@ -72,11 +72,14 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
         if (newPoaiVolume == 0) {
             return;
         }
-        totalPoaiVolume += newPoaiVolume;
-        _recordPoaiVolume(epoch);
+        uint256 previousTotal = totalPoaiVolume;
+        totalPoaiVolume = previousTotal + newPoaiVolume;
+        _recordPoaiVolume(epoch, previousTotal);
     }
 
-    function setNdFullReleaseThreshold(uint256 newThreshold) external onlyOwner {
+    function setNdFullReleaseThreshold(
+        uint256 newThreshold
+    ) external onlyOwner {
         require(newThreshold != 0, "ND threshold cannot be zero");
         ndFullReleaseThreshold = newThreshold;
         emit NdFullReleaseThresholdUpdated(newThreshold);
@@ -101,7 +104,10 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
         require(epochs.length == totals.length, "Length mismatch");
         for (uint256 i = 0; i < epochs.length; i++) {
             if (i > 0) {
-                require(epochs[i] > epochs[i - 1], "Epochs not increasing");
+                require(
+                    epochs[i] == epochs[i - 1] + 1,
+                    "Epochs not contiguous"
+                );
                 require(totals[i] >= totals[i - 1], "Totals not increasing");
             }
             poaiVolumeEpochs.push(epochs[i]);
@@ -268,11 +274,9 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
         uint256 totalLicensesSold_,
         uint256 totalPoaiVolume_
     ) private view returns (uint8) {
-        uint256 ndScore =
-            (totalLicensesSold_ * MAX_ADOPTION_PERCENTAGE) /
+        uint256 ndScore = (totalLicensesSold_ * MAX_ADOPTION_PERCENTAGE) /
             ndFullReleaseThreshold;
-        uint256 poaiScore =
-            (totalPoaiVolume_ * MAX_ADOPTION_PERCENTAGE) /
+        uint256 poaiScore = (totalPoaiVolume_ * MAX_ADOPTION_PERCENTAGE) /
             poaiVolumeFullReleaseThreshold;
         uint256 combined = (ndScore + poaiScore) / 2;
         if (combined > MAX_ADOPTION_PERCENTAGE) {
@@ -297,7 +301,9 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
         }
     }
 
-    function _recordPoaiVolume(uint256 epoch) private {
+    function _recordPoaiVolume(uint256 epoch, uint256 previousTotal) private {
+        // This function ensures that all epochs are recorded, even if there are gaps
+        // This is done to allow easier monthly calculations, if needed
         uint256 len = poaiVolumeEpochs.length;
         if (len == 0) {
             poaiVolumeEpochs.push(epoch);
@@ -305,12 +311,21 @@ contract AdoptionOracle is Initializable, OwnableUpgradeable {
             return;
         }
         require(poaiVolumeEpochs[len - 1] <= epoch, "Invalid epoch order");
-        if (poaiVolumeEpochs[len - 1] < epoch) {
-            poaiVolumeEpochs.push(epoch);
-            poaiVolumeTotals.push(totalPoaiVolume);
-        } else {
+        if (poaiVolumeEpochs[len - 1] == epoch) {
             poaiVolumeTotals[len - 1] = totalPoaiVolume;
+            return;
         }
+        uint256 lastEpoch = poaiVolumeEpochs[len - 1];
+        for (
+            uint256 missingEpoch = lastEpoch + 1;
+            missingEpoch < epoch;
+            missingEpoch++
+        ) {
+            poaiVolumeEpochs.push(missingEpoch);
+            poaiVolumeTotals.push(previousTotal);
+        }
+        poaiVolumeEpochs.push(epoch);
+        poaiVolumeTotals.push(totalPoaiVolume);
     }
 
     function _findLicensesSoldCheckpoint(

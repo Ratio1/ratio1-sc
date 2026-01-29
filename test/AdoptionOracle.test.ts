@@ -43,8 +43,8 @@ describe("AdoptionOracle", function () {
     });
 
     it("initializes PoAI volume checkpoints and totals", async function () {
-      const epochs = [1, 3, 5];
-      const totals = [10n, 20n, 30n];
+      const epochs = [1, 2, 3, 4, 5];
+      const totals = [10n, 10n, 20n, 20n, 30n];
 
       await adoptionOracle.initializePoaiVolumes(epochs, totals);
 
