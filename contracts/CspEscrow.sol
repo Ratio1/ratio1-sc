@@ -451,9 +451,14 @@ contract CspEscrow is Initializable {
     }
 
     // Allocate rewards to active nodes for all jobs (called from PoAI Manager)
-    function allocateRewardsToNodes() external onlyPoAIManager {
+    function allocateRewardsToNodes()
+        external
+        onlyPoAIManager
+        returns (uint256)
+    {
         uint256 lastEpoch = getCurrentEpoch() - 1;
         uint256 totalAmountToBurn = 0;
+        uint256 totalRewards = 0;
 
         // Iterate through all jobs
         for (uint256 i = 0; i < activeJobs.length; i++) {
@@ -486,6 +491,7 @@ contract CspEscrow is Initializable {
                 job.activeNodes.length;
             uint256 jobAmountToBurn = amountToBurnPerNode *
                 job.activeNodes.length;
+            uint256 jobTotalRewards = rewardPerNode * job.activeNodes.length;
             for (uint256 j = 0; j < job.activeNodes.length; j++) {
                 address nodeAddress = job.activeNodes[j];
                 virtualWalletBalance[nodeAddress] += amountRewardsPerNode;
@@ -501,6 +507,7 @@ contract CspEscrow is Initializable {
 
             // Add to total burn amount
             totalAmountToBurn += jobAmountToBurn;
+            totalRewards += jobTotalRewards;
             // Update job balance and last allocated epoch
             job.balance -= int256(totalRewardsToNodes + jobAmountToBurn);
             job.lastAllocatedEpoch = effectiveLastEpoch;
@@ -515,6 +522,7 @@ contract CspEscrow is Initializable {
             burnContract.burn(r1TokensToBurn);
             emit TokensBurned(totalAmountToBurn, r1TokensToBurn);
         }
+        return totalRewards;
     }
 
     function redeemUnusedJob(

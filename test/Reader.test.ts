@@ -27,6 +27,7 @@ import {
   PoAIManager,
   CspEscrow,
   ERC20Mock,
+  AdoptionOracle,
 } from "../typechain-types";
 
 /*
@@ -47,6 +48,8 @@ const PERMISSION_EXTEND_NODES = 1n << 2n;
 const OWNER_ESCROW_PERMISSIONS = (1n << 256n) - 1n;
 
 describe("Reader contract", function () {
+  const ND_FULL_RELEASE_THRESHOLD = 7_500;
+  const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 2_500_000;
   /*
     .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
     .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -65,6 +68,7 @@ describe("Reader contract", function () {
   let ndContract: NDContract;
   let mndContract: MNDContract;
   let poaiManager: PoAIManager;
+  let adoptionOracle: AdoptionOracle;
   let firstUser: HardhatEthersSigner;
   let oracle_assignation_timestamp: number;
   let usdcContract: ERC20Mock;
@@ -156,6 +160,23 @@ describe("Reader contract", function () {
     await ndContract
       .connect(owner)
       .setPoAIManager(await poaiManager.getAddress());
+    const AdoptionOracleFactory = await ethers.getContractFactory(
+      "AdoptionOracle"
+    );
+    adoptionOracle = (await upgrades.deployProxy(
+      AdoptionOracleFactory,
+      [
+        await owner.getAddress(),
+        await ndContract.getAddress(),
+        await poaiManager.getAddress(),
+        ND_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+      ],
+      { initializer: "initialize" }
+    )) as AdoptionOracle;
+    await adoptionOracle.waitForDeployment();
+    await ndContract.setAdoptionOracle(await adoptionOracle.getAddress());
+    await poaiManager.setAdoptionOracle(await adoptionOracle.getAddress());
 
     const ReaderContract = await ethers.getContractFactory("Reader");
     reader = await ReaderContract.deploy();

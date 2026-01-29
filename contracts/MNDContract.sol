@@ -9,12 +9,28 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
-import {SD59x18, sd, unwrap, add, sub, mul, div, exp} from "@prb/math/src/SD59x18.sol";
+import {
+    SD59x18,
+    sd,
+    unwrap,
+    add,
+    sub,
+    mul,
+    div,
+    exp
+} from "@prb/math/src/SD59x18.sol";
 import "./R1.sol";
 import "./Controller.sol";
 
 interface IND {
     function registeredNodeAddresses(address node) external view returns (bool);
+}
+
+interface IAdoptionOracle {
+    function getAdoptionPercentagesRange(
+        uint256 fromEpoch,
+        uint256 toEpoch
+    ) external view returns (uint8[] memory);
 }
 
 struct ComputeRewardsParams {
@@ -27,6 +43,8 @@ struct ComputeRewardsParams {
 struct ComputeRewardsResult {
     uint256 licenseId;
     uint256 rewardsAmount;
+    uint256 carryoverAmount;
+    uint256 withheldAmount;
 }
 
 struct License {
@@ -50,6 +68,16 @@ struct LicenseInfo {
     uint256 claimableEpochs;
     uint256 assignTimestamp;
     address lastClaimOracle;
+}
+
+struct RewardsState {
+    uint256 totalAssignedAmount;
+    uint256 totalClaimedAmount;
+    uint256 awbBalance;
+    uint256 licenseRewards;
+    uint256 licenseCarryover;
+    uint256 withheldAmount;
+    SD59x18 licensePlateau;
 }
 
 error InvalidLicensePower();
@@ -86,7 +114,7 @@ contract MNDContract is
     //..######...#######..##....##..######.....##....##.....##.##....##....##.....######.
 
     uint256 constant MAX_PERCENTAGE = 100_00;
-    uint8 constant MAX_AVAILABILITY = 255;
+    uint8 constant MAX_PERCENTAGE_UINT8 = 255;
     uint256 public constant GENESIS_TOKEN_ID = 1;
     int256 private constant WAD = 1e18;
     SD59x18 private LOGISTIC_PLATEAU;
@@ -127,6 +155,10 @@ contract MNDContract is
     mapping(address => address) public initiatedTransferReceiver;
     mapping(address => bool) public initiatedBurn;
 
+    IAdoptionOracle public adoptionOracle;
+    mapping(uint256 => uint256) public awbBalances;
+    uint8 public maxCarryoverReleaseFactor;
+
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
     //.##.......##.....##.##.......####..##....##....##......
@@ -150,10 +182,12 @@ contract MNDContract is
         uint256 indexed licenseId,
         address oldNodeAddress
     );
-    event RewardsClaimed(
+    event RewardsClaimedV2(
         address indexed to,
         uint256 indexed licenseId,
         uint256 rewardsAmount,
+        uint256 carryoverAmount,
+        uint256 withheldAmount,
         uint256 totalEpochs
     );
 
@@ -175,6 +209,7 @@ contract MNDContract is
         LOGISTIC_PLATEAU = sd(300_505239501691000000); // 392.77
         K = sd(5e18); // 5
         MID_PRC = sd(7e17); // 0.7
+        maxCarryoverReleaseFactor = MAX_PERCENTAGE_UINT8;
 
         // Mint the first Genesis Node Deed
         uint256 tokenId = safeMint(newOwner);
@@ -198,12 +233,14 @@ contract MNDContract is
         uint256 maxPerLicense = _controller
             .MND_MAX_TOKENS_ASSIGNED_PER_LICENSE();
         if (
-            newTotalAssignedAmount == 0 || newTotalAssignedAmount > maxPerLicense
+            newTotalAssignedAmount == 0 ||
+            newTotalAssignedAmount > maxPerLicense
         ) {
             revert InvalidLicensePower();
         }
         if (
-            getUserTotalAssignedAmount(to) + newTotalAssignedAmount > maxPerLicense
+            getUserTotalAssignedAmount(to) + newTotalAssignedAmount >
+            maxPerLicense
         ) {
             revert AssignedAmountExceedsLimit();
         }
@@ -332,25 +369,32 @@ contract MNDContract is
             );
 
             License storage license = licenses[computeParams[i].licenseId];
-            uint256 rewardsAmount = calculateLicenseRewards(
+            RewardsState memory state = calculateLicenseRewards(
                 license,
                 computeParams[i]
             );
+            uint256 totalRewardsToMint = state.licenseRewards +
+                state.licenseCarryover;
 
             license.lastClaimEpoch = getCurrentEpoch();
-            license.totalClaimedAmount += rewardsAmount;
+            license.totalClaimedAmount +=
+                state.licenseRewards +
+                state.withheldAmount;
             license.lastClaimOracle = firstSigner;
-            if (rewardsAmount > 0) {
-                emit RewardsClaimed(
+            awbBalances[computeParams[i].licenseId] = state.awbBalance;
+            if (totalRewardsToMint > 0) {
+                emit RewardsClaimedV2(
                     msg.sender,
                     computeParams[i].licenseId,
-                    rewardsAmount,
+                    state.licenseRewards,
+                    state.licenseCarryover,
+                    state.withheldAmount,
                     computeParams[i].epochs.length
                 );
                 if (computeParams[i].licenseId == GENESIS_TOKEN_ID) {
-                    mintCompanyFunds(rewardsAmount);
+                    mintCompanyFunds(totalRewardsToMint);
                 } else {
-                    totalRewards += rewardsAmount;
+                    totalRewards += totalRewardsToMint;
                 }
             }
         }
@@ -393,9 +437,15 @@ contract MNDContract is
         for (uint256 i = 0; i < computeParams.length; i++) {
             ComputeRewardsParams memory params = computeParams[i];
             License memory license = licenses[params.licenseId];
+            RewardsState memory state = calculateLicenseRewards(
+                license,
+                params
+            );
             results[i] = ComputeRewardsResult({
                 licenseId: params.licenseId,
-                rewardsAmount: calculateLicenseRewards(license, params)
+                rewardsAmount: state.licenseRewards,
+                carryoverAmount: state.licenseCarryover,
+                withheldAmount: state.withheldAmount
             });
         }
 
@@ -405,20 +455,34 @@ contract MNDContract is
     function calculateLicenseRewards(
         License memory license,
         ComputeRewardsParams memory computeParam
-    ) internal view returns (uint256) {
-        uint256 currentEpoch = getCurrentEpoch();
-        uint256 licenseRewards = 0;
+    ) internal view returns (RewardsState memory state) {
+        state = RewardsState({
+            totalAssignedAmount: license.totalAssignedAmount,
+            totalClaimedAmount: license.totalClaimedAmount,
+            awbBalance: awbBalances[computeParam.licenseId],
+            licenseRewards: 0,
+            licenseCarryover: 0,
+            withheldAmount: 0,
+            licensePlateau: div(
+                sd(int256(license.totalAssignedAmount)),
+                LOGISTIC_PLATEAU
+            )
+        });
 
+        uint256 currentEpoch = getCurrentEpoch();
         if (currentEpoch < license.firstMiningEpoch) {
-            return 0;
+            return state;
         }
 
         if (license.nodeAddress != computeParam.nodeAddress) {
             revert InvalidNodeAddressForRewards();
         }
 
-        if (license.totalClaimedAmount == license.totalAssignedAmount) {
-            return 0;
+        if (
+            license.totalClaimedAmount == license.totalAssignedAmount &&
+            awbBalances[computeParam.licenseId] == 0
+        ) {
+            return state;
         }
 
         uint256 firstEpochToClaim = (license.lastClaimEpoch >=
@@ -427,55 +491,108 @@ contract MNDContract is
             : license.firstMiningEpoch;
         uint256 epochsToClaim = currentEpoch - firstEpochToClaim;
         if (epochsToClaim == 0) {
-            return 0;
+            return state;
         }
+        uint8[] memory adoptionPercentages = adoptionOracle
+            .getAdoptionPercentagesRange(firstEpochToClaim, currentEpoch - 1);
 
         if (
             computeParam.epochs.length != epochsToClaim ||
-            computeParam.availabilies.length != epochsToClaim
+            (computeParam.availabilies.length != epochsToClaim &&
+                adoptionPercentages.length != epochsToClaim)
         ) {
             revert IncorrectNumberOfParams();
         }
         if (
-            computeParam.epochs[computeParam.epochs.length - 1] != currentEpoch - 1
+            computeParam.epochs[computeParam.epochs.length - 1] !=
+            currentEpoch - 1
         ) {
             revert InvalidEpochs();
         }
 
+        uint256 maxRewardsPerEpochGnd;
         if (computeParam.licenseId == GENESIS_TOKEN_ID) {
-            uint256 maxRewardsPerEpoch = license.totalAssignedAmount /
+            maxRewardsPerEpochGnd =
+                license.totalAssignedAmount /
                 _controller.GND_MINING_EPOCHS();
-            for (uint256 i = 0; i < epochsToClaim; i++) {
-                licenseRewards +=
-                    (maxRewardsPerEpoch * computeParam.availabilies[i]) /
-                    MAX_AVAILABILITY;
-            }
-        } else {
-            SD59x18 licensePlateau = div(
-                sd(int256(license.totalAssignedAmount)),
-                LOGISTIC_PLATEAU
-            );
-            for (uint256 i = 0; i < epochsToClaim; i++) {
-                uint256 maxRewardsPerEpoch = calculateEpochRelease(
+        }
+        for (uint256 i = 0; i < computeParam.epochs.length; i++) {
+            // Gather data for epoch reward calculation
+            uint256 epochMaxRelease = computeParam.licenseId == GENESIS_TOKEN_ID
+                ? maxRewardsPerEpochGnd
+                : calculateMndEpochRelease(
                     computeParam.epochs[i],
                     license.firstMiningEpoch,
-                    licensePlateau
+                    state.licensePlateau
                 );
-                licenseRewards +=
-                    (maxRewardsPerEpoch * computeParam.availabilies[i]) /
-                    MAX_AVAILABILITY;
-            }
-        }
+            // Calculate adoption rewards for the epoch
+            (
+                uint256 adoptionRelease,
+                uint256 withheldRelease
+            ) = calculateAdoptionRelease(
+                    state.totalClaimedAmount,
+                    state.totalAssignedAmount,
+                    epochMaxRelease,
+                    computeParam.availabilies[i],
+                    adoptionPercentages[i]
+                );
 
-        uint256 maxRemainingClaimAmount = license.totalAssignedAmount -
-            license.totalClaimedAmount;
-        if (licenseRewards > maxRemainingClaimAmount) {
-            return maxRemainingClaimAmount;
+            // Calculate AWB carryover adjustments
+            uint256 targetWithheldBuffer = (state.totalClaimedAmount *
+                (MAX_PERCENTAGE_UINT8 - adoptionPercentages[i])) /
+                MAX_PERCENTAGE_UINT8;
+            if (state.awbBalance > targetWithheldBuffer) {
+                uint256 excessAWB = state.awbBalance - targetWithheldBuffer;
+                uint256 maxCarryoverRelease = (epochMaxRelease *
+                    maxCarryoverReleaseFactor) / MAX_PERCENTAGE_UINT8;
+                if (excessAWB > maxCarryoverRelease) {
+                    state.licenseCarryover += maxCarryoverRelease;
+                    state.awbBalance -= maxCarryoverRelease;
+                } else {
+                    state.licenseCarryover += excessAWB;
+                    state.awbBalance -= excessAWB;
+                }
+            }
+
+            state.licenseRewards += adoptionRelease;
+            state.awbBalance += withheldRelease;
+            state.withheldAmount += withheldRelease;
+            state.totalClaimedAmount += adoptionRelease + withheldRelease;
         }
-        return licenseRewards;
     }
 
-    function calculateEpochRelease(
+    function calculateAdoptionRelease(
+        uint256 totalClaimedAmount,
+        uint256 totalAssignedAmount,
+        uint256 maxRewardsPerEpoch,
+        uint8 availabilityPercentage,
+        uint8 adoptionPercentage
+    ) internal pure returns (uint256 adoptionRelease, uint256 withheldRelease) {
+        if (totalClaimedAmount >= totalAssignedAmount) {
+            return (0, 0);
+        }
+        uint256 availabilityMaxRelease = (maxRewardsPerEpoch *
+            availabilityPercentage) / MAX_PERCENTAGE_UINT8;
+        adoptionRelease =
+            (availabilityMaxRelease * adoptionPercentage) /
+            MAX_PERCENTAGE_UINT8;
+        if (totalClaimedAmount + adoptionRelease > totalAssignedAmount) {
+            adoptionRelease = totalAssignedAmount - totalClaimedAmount;
+        } else {
+            withheldRelease = availabilityMaxRelease - adoptionRelease;
+            if (
+                totalClaimedAmount + adoptionRelease + withheldRelease >
+                totalAssignedAmount
+            ) {
+                withheldRelease =
+                    totalAssignedAmount -
+                    totalClaimedAmount -
+                    adoptionRelease;
+            }
+        }
+    }
+
+    function calculateMndEpochRelease(
         uint256 currentEpoch,
         uint256 firstMiningEpoch,
         SD59x18 plateau
@@ -591,6 +708,7 @@ contract MNDContract is
             totalLicensesAssignedTokensAmount -= remainingAmount;
             registeredNodeAddresses[license.nodeAddress] = false;
             nodeToLicenseId[license.nodeAddress] = 0;
+            delete awbBalances[tokenId];
             delete licenses[tokenId];
         } else {
             if (
@@ -643,6 +761,15 @@ contract MNDContract is
 
     function setNDContract(address ndContract_) public onlyOwner {
         _ndContract = IND(ndContract_);
+    }
+
+    function setAdoptionOracle(address adoptionOracle_) public onlyOwner {
+        require(adoptionOracle_ != address(0), "Invalid adoption oracle");
+        adoptionOracle = IAdoptionOracle(adoptionOracle_);
+    }
+
+    function setMaxCarryoverReleaseFactor(uint8 newFactor) public onlyOwner {
+        maxCarryoverReleaseFactor = newFactor;
     }
 
     function setMNDReleaseParams(

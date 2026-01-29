@@ -25,6 +25,10 @@ interface IPoAIManager {
     ) external view returns (uint256 usdcRewards, uint256 r1Rewards);
 }
 
+interface IAdoptionOracle {
+    function recordLicenseSales(uint256 epoch, uint256 licensesSold) external;
+}
+
 struct ComputeRewardsParams {
     uint256 licenseId;
     address nodeAddress;
@@ -165,6 +169,7 @@ contract NDContract is
     uint256 public directAddLpPercentage;
 
     IPoAIManager public poaiManager;
+    IAdoptionOracle public adoptionOracle;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -355,6 +360,10 @@ contract NDContract is
             revert PriceTierOversold();
         }
 
+        adoptionOracle.recordLicenseSales(
+            getCurrentEpoch(),
+            mintedTokens.length
+        );
         emit LicensesCreated(
             msg.sender,
             invoiceUuid,
@@ -829,6 +838,10 @@ contract NDContract is
 
     function setPoAIManager(address _poaiManager) public onlyOwner {
         poaiManager = IPoAIManager(_poaiManager);
+    }
+
+    function setAdoptionOracle(address adoptionOracle_) public onlyOwner {
+        adoptionOracle = IAdoptionOracle(adoptionOracle_);
     }
 
     function setDirectAddLpPercentage(

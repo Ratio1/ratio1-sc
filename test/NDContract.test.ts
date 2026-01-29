@@ -8,6 +8,7 @@ import {
   deployNDContract,
   deployR1,
   deployUniswapMocks,
+  generateInvoiceUuid,
   NODE_ADDRESS,
   NULL_ADDRESS,
   ONE_DAY_IN_SECS,
@@ -21,7 +22,7 @@ import {
   START_EPOCH_TIMESTAMP,
   takeSnapshot,
 } from "./helpers";
-import { Controller, NDContract, R1 } from "../typechain-types";
+import { AdoptionOracle, Controller, NDContract, R1 } from "../typechain-types";
 import { v4 as uuidv4 } from "uuid";
 import { BigNumberish } from "ethers";
 
@@ -124,6 +125,8 @@ const EXPECTED_PRICE_TIERS = [
 ];
 
 describe("NDContract", function () {
+  const ND_FULL_RELEASE_THRESHOLD = 7_500;
+  const POAI_VOLUME_FULL_RELEASE_THRESHOLD = 2_500_000;
   /*
   .##......##..#######..########..##.......########......######...########.##....##.########.########.....###....########.####..#######..##....##
   .##..##..##.##.....##.##.....##.##.......##.....##....##....##..##.......###...##.##.......##.....##...##.##......##.....##..##.....##.###...##
@@ -137,6 +140,7 @@ describe("NDContract", function () {
   let ndContract: NDContract;
   let controllerContract: Controller;
   let r1Contract: R1;
+  let adoptionOracle: AdoptionOracle;
   let owner: HardhatEthersSigner;
   let firstUser: HardhatEthersSigner;
   let secondUser: HardhatEthersSigner;
@@ -234,6 +238,22 @@ describe("NDContract", function () {
     );
     await poaiManager.waitForDeployment();
     await ndContract.setPoAIManager(await poaiManager.getAddress());
+    const AdoptionOracleFactory =
+      await ethers.getContractFactory("AdoptionOracle");
+    adoptionOracle = (await upgrades.deployProxy(
+      AdoptionOracleFactory,
+      [
+        await owner.getAddress(),
+        await ndContract.getAddress(),
+        await poaiManager.getAddress(),
+        ND_FULL_RELEASE_THRESHOLD,
+        POAI_VOLUME_FULL_RELEASE_THRESHOLD,
+      ],
+      { initializer: "initialize" }
+    )) as AdoptionOracle;
+    await adoptionOracle.waitForDeployment();
+    await ndContract.setAdoptionOracle(await adoptionOracle.getAddress());
+    await poaiManager.setAdoptionOracle(await adoptionOracle.getAddress());
 
     snapshotId = await takeSnapshot();
   });
@@ -1804,6 +1824,71 @@ describe("NDContract", function () {
   it("Unban license - not banned license", async function () {
     await expect(ndContract.connect(owner).unbanLicense(1))
       .to.be.revertedWithCustomError(ndContract, "LicenseNotBanned");
+  });
+
+  it("Tracks licenses sold checkpoints across epochs", async function () {
+    const firstInvoiceUuid = generateInvoiceUuid("licenses-epoch-0");
+    const firstSignature = await signBuyLicense(
+      backend,
+      await firstUser.getAddress(),
+      firstInvoiceUuid,
+      10000,
+      20
+    );
+    const pricePerLicense = await ndContract.getLicenseTokenPrice();
+
+    await buyLicenseWithMintAndAllowanceHelper({
+      r1: r1Contract,
+      nd: ndContract,
+      mintAuthority: owner,
+      buyer: firstUser,
+      pricePerLicense,
+      licenseCount: 2,
+      priceTier: 1,
+      invoiceUuid: firstInvoiceUuid,
+      usdMintLimit: 10000,
+      vatPercent: 20,
+      signature: firstSignature,
+    });
+
+    const firstEpoch = await ndContract.getCurrentEpoch();
+    const firstRange = await adoptionOracle.getLicensesSoldRange(
+      firstEpoch,
+      firstEpoch
+    );
+    expect(firstRange[0]).to.equal(2n);
+
+    await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS]);
+    await ethers.provider.send("evm_mine", []);
+
+    const secondInvoiceUuid = generateInvoiceUuid("licenses-epoch-1");
+    const secondSignature = await signBuyLicense(
+      backend,
+      await firstUser.getAddress(),
+      secondInvoiceUuid,
+      10000,
+      20
+    );
+    await buyLicenseWithMintAndAllowanceHelper({
+      r1: r1Contract,
+      nd: ndContract,
+      mintAuthority: owner,
+      buyer: firstUser,
+      pricePerLicense: await ndContract.getLicenseTokenPrice(),
+      licenseCount: 1,
+      priceTier: 1,
+      invoiceUuid: secondInvoiceUuid,
+      usdMintLimit: 10000,
+      vatPercent: 20,
+      signature: secondSignature,
+    });
+
+    const secondEpoch = await ndContract.getCurrentEpoch();
+    const range = await adoptionOracle.getLicensesSoldRange(
+      firstEpoch,
+      secondEpoch
+    );
+    expect(range).to.deep.equal([2n, 3n]);
   });
 
   it.skip("Buy all license ", async function () {

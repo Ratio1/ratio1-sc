@@ -50,6 +50,10 @@ interface IMND {
     ) external view returns (MNDLicense[] memory);
 }
 
+interface IAdoptionOracle {
+    function recordPoaiVolume(uint256 epoch, uint256 volume) external;
+}
+
 struct DeprecatedNodesTransitionProposal {
     address proposer;
     address[] newActiveNodes;
@@ -158,6 +162,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     // Mapping from delegated address to CSP Escrow address
     mapping(address => address) public delegatedAddressToEscrow;
     address public burnContract;
+    IAdoptionOracle public adoptionOracle;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -232,6 +237,10 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         uniswapV2Router = _uniswapV2Router;
         uniswapV2Pair = _uniswapV2Pair;
         nextJobId = 1;
+    }
+
+    function setAdoptionOracle(address adoptionOracle_) public onlyOwner {
+        adoptionOracle = IAdoptionOracle(adoptionOracle_);
     }
 
     // Deploy a new CSP Escrow contract for a given owner
@@ -483,11 +492,16 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     // Public function to allocate rewards across all CSP Escrows
     function allocateRewardsAcrossAllEscrows() external {
         uint256 escrowCount = allEscrows.length;
+        uint256 totalRewards = 0;
         for (uint256 i = 0; i < escrowCount; i++) {
             address escrowAddress = allEscrows[i];
-            CspEscrow(escrowAddress).allocateRewardsToNodes();
+            totalRewards += CspEscrow(escrowAddress).allocateRewardsToNodes();
         }
-        lastAllocatedEpoch = getCurrentEpoch() - 1;
+        uint256 lastEpoch = getCurrentEpoch() - 1;
+        if (totalRewards > 0) {
+            adoptionOracle.recordPoaiVolume(lastEpoch, totalRewards);
+        }
+        lastAllocatedEpoch = lastEpoch;
     }
 
     function getNewJobId() external onlyCspEscrow returns (uint256) {

@@ -13,3 +13,5 @@ bin
 /.vscode
 .idea/
 *.DS_Store
+
+CONTINUITY.md
