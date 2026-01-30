@@ -30,13 +30,12 @@ contract GratitudeBurn is Initializable, ReentrancyGuardUpgradeable {
     mapping(bytes32 => uint256) private totalBurnedByApp;
     mapping(address => bool) private hasBurned;
     uint256 private uniqueBurnersCount;
+    uint256 private totalBurned;
 
     address[TOP_BURNERS] private topBurners;
-    uint256[TOP_BURNERS] private topBurnerTotals;
     uint256 private topBurnersCount;
 
     bytes32[TOP_APPS] private topApps;
-    uint256[TOP_APPS] private topAppTotals;
     uint256 private topAppsCount;
 
     error AppNotRegistered();
@@ -94,15 +93,11 @@ contract GratitudeBurn is Initializable, ReentrancyGuardUpgradeable {
         if (amount == 0) {
             revert InvalidAmount();
         }
-        if (!apps[appId].exists) {
+        if (appId != bytes32(0) && !apps[appId].exists) {
             revert AppNotRegistered();
         }
 
-        bool success = r1Token.transferFrom(
-            msg.sender,
-            address(this),
-            amount
-        );
+        bool success = r1Token.transferFrom(msg.sender, address(this), amount);
         if (!success) {
             revert R1TransferFailed();
         }
@@ -112,8 +107,13 @@ contract GratitudeBurn is Initializable, ReentrancyGuardUpgradeable {
         uint256 userTotal = totalBurnedByUser[msg.sender] + amount;
         totalBurnedByUser[msg.sender] = userTotal;
 
-        uint256 appTotal = totalBurnedByApp[appId] + amount;
-        totalBurnedByApp[appId] = appTotal;
+        totalBurned += amount;
+
+        uint256 appTotal = 0;
+        if (appId != bytes32(0)) {
+            appTotal = totalBurnedByApp[appId] + amount;
+            totalBurnedByApp[appId] = appTotal;
+        }
 
         if (!hasBurned[msg.sender]) {
             hasBurned[msg.sender] = true;
@@ -121,14 +121,20 @@ contract GratitudeBurn is Initializable, ReentrancyGuardUpgradeable {
         }
 
         _updateTopBurners(msg.sender, userTotal);
-        _updateTopApps(appId, appTotal);
+        if (appId != bytes32(0)) {
+            _updateTopApps(appId, appTotal);
+        }
 
         emit BurnRecorded(msg.sender, appId, amount, userTotal, appTotal);
     }
 
     function getApp(
         bytes32 appId
-    ) external view returns (string memory name, string memory slug, bool exists) {
+    )
+        external
+        view
+        returns (string memory name, string memory slug, bool exists)
+    {
         App storage app = apps[appId];
         return (app.name, app.slug, app.exists);
     }
@@ -153,6 +159,10 @@ contract GratitudeBurn is Initializable, ReentrancyGuardUpgradeable {
         return uniqueBurnersCount;
     }
 
+    function getTotalBurned() external view returns (uint256) {
+        return totalBurned;
+    }
+
     function getTopBurners()
         external
         view
@@ -161,25 +171,27 @@ contract GratitudeBurn is Initializable, ReentrancyGuardUpgradeable {
             uint256[TOP_BURNERS] memory totals
         )
     {
-        return (topBurners, topBurnerTotals);
+        users = topBurners;
+        for (uint256 i = 0; i < TOP_BURNERS; i++) {
+            totals[i] = totalBurnedByUser[users[i]];
+        }
     }
 
     function getTopApps()
         external
         view
-        returns (
-            bytes32[TOP_APPS] memory ids,
-            uint256[TOP_APPS] memory totals
-        )
+        returns (bytes32[TOP_APPS] memory ids, uint256[TOP_APPS] memory totals)
     {
-        return (topApps, topAppTotals);
+        ids = topApps;
+        for (uint256 i = 0; i < TOP_APPS; i++) {
+            totals[i] = totalBurnedByApp[ids[i]];
+        }
     }
 
     function _updateTopBurners(address user, uint256 total) internal {
         uint256 count = topBurnersCount;
         for (uint256 i = 0; i < count; i++) {
             if (topBurners[i] == user) {
-                topBurnerTotals[i] = total;
                 _bubbleUpBurners(i);
                 return;
             }
@@ -187,45 +199,41 @@ contract GratitudeBurn is Initializable, ReentrancyGuardUpgradeable {
 
         if (count < TOP_BURNERS) {
             topBurners[count] = user;
-            topBurnerTotals[count] = total;
             topBurnersCount = count + 1;
             _bubbleUpBurners(count);
             return;
         }
 
-        if (total <= topBurnerTotals[TOP_BURNERS - 1]) {
+        if (total <= totalBurnedByUser[topBurners[TOP_BURNERS - 1]]) {
             return;
         }
 
         topBurners[TOP_BURNERS - 1] = user;
-        topBurnerTotals[TOP_BURNERS - 1] = total;
         _bubbleUpBurners(TOP_BURNERS - 1);
     }
 
     function _bubbleUpBurners(uint256 index) internal {
         while (index > 0) {
             uint256 prev = index - 1;
-            if (topBurnerTotals[index] <= topBurnerTotals[prev]) {
+            if (
+                totalBurnedByUser[topBurners[index]] <=
+                totalBurnedByUser[topBurners[prev]]
+            ) {
                 break;
             }
-            _swapBurners(index, prev);
+            _swapTopBurners(index, prev);
             index = prev;
         }
     }
 
-    function _swapBurners(uint256 i, uint256 j) internal {
+    function _swapTopBurners(uint256 i, uint256 j) internal {
         (topBurners[i], topBurners[j]) = (topBurners[j], topBurners[i]);
-        (topBurnerTotals[i], topBurnerTotals[j]) = (
-            topBurnerTotals[j],
-            topBurnerTotals[i]
-        );
     }
 
     function _updateTopApps(bytes32 appId, uint256 total) internal {
         uint256 count = topAppsCount;
         for (uint256 i = 0; i < count; i++) {
             if (topApps[i] == appId) {
-                topAppTotals[i] = total;
                 _bubbleUpApps(i);
                 return;
             }
@@ -233,37 +241,34 @@ contract GratitudeBurn is Initializable, ReentrancyGuardUpgradeable {
 
         if (count < TOP_APPS) {
             topApps[count] = appId;
-            topAppTotals[count] = total;
             topAppsCount = count + 1;
             _bubbleUpApps(count);
             return;
         }
 
-        if (total <= topAppTotals[TOP_APPS - 1]) {
+        if (total <= totalBurnedByApp[topApps[TOP_APPS - 1]]) {
             return;
         }
 
         topApps[TOP_APPS - 1] = appId;
-        topAppTotals[TOP_APPS - 1] = total;
         _bubbleUpApps(TOP_APPS - 1);
     }
 
     function _bubbleUpApps(uint256 index) internal {
         while (index > 0) {
             uint256 prev = index - 1;
-            if (topAppTotals[index] <= topAppTotals[prev]) {
+            if (
+                totalBurnedByApp[topApps[index]] <=
+                totalBurnedByApp[topApps[prev]]
+            ) {
                 break;
             }
-            _swapApps(index, prev);
+            _swapTopApps(index, prev);
             index = prev;
         }
     }
 
-    function _swapApps(uint256 i, uint256 j) internal {
+    function _swapTopApps(uint256 i, uint256 j) internal {
         (topApps[i], topApps[j]) = (topApps[j], topApps[i]);
-        (topAppTotals[i], topAppTotals[j]) = (
-            topAppTotals[j],
-            topAppTotals[i]
-        );
     }
 }

@@ -22,11 +22,11 @@ describe("GratitudeBurn", function () {
 
   async function deployGratitudeBurn(): Promise<GratitudeBurn> {
     const factory = await ethers.getContractFactory("GratitudeBurn");
-    const hub = (await upgrades.deployProxy(
+    const hub = await upgrades.deployProxy(
       factory,
       [await r1.getAddress(), await burnContract.getAddress()],
       { initializer: "initialize" }
-    )) as GratitudeBurn;
+    );
     await hub.waitForDeployment();
     return hub;
   }
@@ -57,9 +57,7 @@ describe("GratitudeBurn", function () {
     await r1.setNdContract(await owner.getAddress());
 
     const burnFactory = await ethers.getContractFactory("BurnContract");
-    burnContract = (await burnFactory.deploy(
-      await r1.getAddress()
-    )) as BurnContract;
+    burnContract = await burnFactory.deploy(await r1.getAddress());
     await burnContract.waitForDeployment();
     await r1.addBurner(await burnContract.getAddress());
 
@@ -77,7 +75,10 @@ describe("GratitudeBurn", function () {
     const slug = "test-app";
     const expectedAppId = ethers.keccak256(ethers.toUtf8Bytes(slug));
 
-    const returnedAppId = await gratitudeBurn.registerApp.staticCall(name, slug);
+    const returnedAppId = await gratitudeBurn.registerApp.staticCall(
+      name,
+      slug
+    );
     expect(returnedAppId).to.equal(expectedAppId);
 
     await expect(gratitudeBurn.registerApp(name, slug))
@@ -120,6 +121,21 @@ describe("GratitudeBurn", function () {
     ).to.be.revertedWithCustomError(gratitudeBurn, "AppNotRegistered");
   });
 
+  it("burn succeeds with appId zero without registration", async function () {
+    await mintAndApprove(user1, ONE_TOKEN);
+
+    await expect(gratitudeBurn.connect(user1).burn(ONE_TOKEN, ethers.ZeroHash))
+      .to.emit(gratitudeBurn, "BurnRecorded")
+      .withArgs(user1.address, ethers.ZeroHash, ONE_TOKEN, ONE_TOKEN, 0);
+
+    expect(await gratitudeBurn.getAppTotal(ethers.ZeroHash)).to.equal(0);
+    expect(await gratitudeBurn.getTotalBurned()).to.equal(ONE_TOKEN);
+
+    const [apps, totals] = await gratitudeBurn.getTopApps();
+    expect(apps[0]).to.equal(ethers.ZeroHash);
+    expect(totals[0]).to.equal(0);
+  });
+
   it("burn transfers, delegates to burnerContract, and records totals", async function () {
     const appId = await registerApp("Burnable", "burnable");
     const amount = ONE_TOKEN * 3n;
@@ -135,6 +151,7 @@ describe("GratitudeBurn", function () {
     expect(await gratitudeBurn.getUserTotal(user1.address)).to.equal(amount);
     expect(await gratitudeBurn.getAppTotal(appId)).to.equal(amount);
     expect(await gratitudeBurn.getUniqueBurnersCount()).to.equal(1);
+    expect(await gratitudeBurn.getTotalBurned()).to.equal(amount);
   });
 
   it("totals and uniqueBurnersCount update correctly across multiple burns", async function () {
@@ -160,6 +177,7 @@ describe("GratitudeBurn", function () {
     );
     expect(await gratitudeBurn.getAppTotal(appId)).to.equal(ONE_TOKEN * 7n);
     expect(await gratitudeBurn.getUniqueBurnersCount()).to.equal(2);
+    expect(await gratitudeBurn.getTotalBurned()).to.equal(ONE_TOKEN * 7n);
   });
 
   it("top burners inserts, updates, and bubbles up", async function () {
@@ -203,7 +221,9 @@ describe("GratitudeBurn", function () {
       const signer = signers[i];
       const amount = ONE_TOKEN * BigInt(i + 1);
       await r1.mint(signer.address, amount);
-      await r1.connect(signer).approve(await gratitudeBurn.getAddress(), amount);
+      await r1
+        .connect(signer)
+        .approve(await gratitudeBurn.getAddress(), amount);
       await gratitudeBurn.connect(signer).burn(amount, appId);
     }
 
@@ -295,5 +315,6 @@ describe("GratitudeBurn", function () {
     expect(await gratitudeBurn.getAppTotal(appA)).to.equal(ONE_TOKEN * 2n);
     expect(await gratitudeBurn.getAppTotal(appB)).to.equal(ONE_TOKEN * 3n);
     expect(await gratitudeBurn.getUniqueBurnersCount()).to.equal(1);
+    expect(await gratitudeBurn.getTotalBurned()).to.equal(ONE_TOKEN * 5n);
   });
 });
