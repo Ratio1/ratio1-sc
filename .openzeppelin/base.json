@@ -34,6 +34,16 @@
       "address": "0x93caaC52b4D0a452012218591B0b53cD41C3F830",
       "txHash": "0x1d677ce9563a04e16a090cdec47a14810282c76f49915fcf08fe34dfc864f113",
       "kind": "transparent"
+    },
+    {
+      "address": "0x8268d4E4f8f7637F8f80dD14372E63DFE4e37ae9",
+      "txHash": "0xd1779d697e0ee5fb22b6d7913d41ec34e9abed6eac975fabf785d826c17e0eea",
+      "kind": "transparent"
+    },
+    {
+      "address": "0x7839b6A5607F90aCC17ca8042DA795131f2ab046",
+      "txHash": "0x6f07f833e89eccffcef089b5da5cb7eaac8c3da1607574237cf1b37fc2ccf528",
+      "kind": "transparent"
     }
   ],
   "impls": {
@@ -14583,6 +14593,265 @@
               "label": "_owner",
               "type": "t_address",
               "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "76f52757733f77d2860135a174fbc639232e0817f53fd7fa4965e924a817f3fc": {
+      "address": "0x7E0cc77aeF780a40aE3437FB3F883f52166dC3F3",
+      "txHash": "0x15c034700a53d18a7cb15d6343413741038d02b20a0abf7db4a1befc20fd68bb",
+      "layout": {
+        "solcVersion": "0.8.22",
+        "storage": [
+          {
+            "label": "r1Token",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_contract(IERC20)474",
+            "contract": "GratitudeBurn",
+            "src": "contracts/GratitudeBurn.sol:23"
+          },
+          {
+            "label": "burnerContract",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_contract(IBurnContract)485",
+            "contract": "GratitudeBurn",
+            "src": "contracts/GratitudeBurn.sol:24"
+          },
+          {
+            "label": "apps",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_mapping(t_bytes32,t_struct(App)505_storage)",
+            "contract": "GratitudeBurn",
+            "src": "contracts/GratitudeBurn.sol:26"
+          },
+          {
+            "label": "appIds",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_array(t_bytes32)dyn_storage",
+            "contract": "GratitudeBurn",
+            "src": "contracts/GratitudeBurn.sol:27"
+          },
+          {
+            "label": "totalBurnedByUser",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "GratitudeBurn",
+            "src": "contracts/GratitudeBurn.sol:29"
+          },
+          {
+            "label": "totalBurnedByApp",
+            "offset": 0,
+            "slot": "5",
+            "type": "t_mapping(t_bytes32,t_uint256)",
+            "contract": "GratitudeBurn",
+            "src": "contracts/GratitudeBurn.sol:30"
+          },
+          {
+            "label": "hasBurned",
+            "offset": 0,
+            "slot": "6",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "GratitudeBurn",
+            "src": "contracts/GratitudeBurn.sol:31"
+          },
+          {
+            "label": "uniqueBurnersCount",
+            "offset": 0,
+            "slot": "7",
+            "type": "t_uint256",
+            "contract": "GratitudeBurn",
+            "src": "contracts/GratitudeBurn.sol:32"
+          },
+          {
+            "label": "totalBurned",
+            "offset": 0,
+            "slot": "8",
+            "type": "t_uint256",
+            "contract": "GratitudeBurn",
+            "src": "contracts/GratitudeBurn.sol:33"
+          },
+          {
+            "label": "topBurners",
+            "offset": 0,
+            "slot": "9",
+            "type": "t_array(t_address)20_storage",
+            "contract": "GratitudeBurn",
+            "src": "contracts/GratitudeBurn.sol:35"
+          },
+          {
+            "label": "topBurnersCount",
+            "offset": 0,
+            "slot": "29",
+            "type": "t_uint256",
+            "contract": "GratitudeBurn",
+            "src": "contracts/GratitudeBurn.sol:36"
+          },
+          {
+            "label": "topApps",
+            "offset": 0,
+            "slot": "30",
+            "type": "t_array(t_bytes32)50_storage",
+            "contract": "GratitudeBurn",
+            "src": "contracts/GratitudeBurn.sol:38"
+          },
+          {
+            "label": "topAppsCount",
+            "offset": 0,
+            "slot": "80",
+            "type": "t_uint256",
+            "contract": "GratitudeBurn",
+            "src": "contracts/GratitudeBurn.sol:39"
+          }
+        ],
+        "types": {
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)7_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ReentrancyGuardStorage)69_storage": {
+            "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
+            "members": [
+              {
+                "label": "_status",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_address)20_storage": {
+            "label": "address[20]",
+            "numberOfBytes": "640"
+          },
+          "t_array(t_bytes32)50_storage": {
+            "label": "bytes32[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_array(t_bytes32)dyn_storage": {
+            "label": "bytes32[]",
+            "numberOfBytes": "32"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IBurnContract)485": {
+            "label": "contract IBurnContract",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IERC20)474": {
+            "label": "contract IERC20",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_struct(App)505_storage)": {
+            "label": "mapping(bytes32 => struct GratitudeBurn.App)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_uint256)": {
+            "label": "mapping(bytes32 => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_string_storage": {
+            "label": "string",
+            "numberOfBytes": "32"
+          },
+          "t_struct(App)505_storage": {
+            "label": "struct GratitudeBurn.App",
+            "members": [
+              {
+                "label": "name",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "slug",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "exists",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.ReentrancyGuard": [
+            {
+              "contract": "ReentrancyGuardUpgradeable",
+              "label": "_status",
+              "type": "t_uint256",
+              "src": "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol:43",
               "offset": 0,
               "slot": "0"
             }
