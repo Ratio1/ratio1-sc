@@ -9,7 +9,7 @@ interface IBurnContract {
     function burn(uint256 amount) external;
 }
 
-contract BurnHub is Initializable, ReentrancyGuardUpgradeable {
+contract GratitudeBurn is Initializable, ReentrancyGuardUpgradeable {
     uint256 public constant TOP_BURNERS = 20;
     uint256 public constant TOP_APPS = 50;
     uint256 public constant MAX_SLUG_LENGTH = 32;
