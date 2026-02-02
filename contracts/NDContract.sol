@@ -573,10 +573,10 @@ contract NDContract is
             revert InvalidEpochs();
         }
 
+        uint256 maxReleasePerDay = _controller.ND_MAX_RELEASE_PER_DAY();
         for (uint256 i = 0; i < epochsToClaim; i++) {
             licenseRewards +=
-                (_controller.ND_MAX_RELEASE_PER_DAY() *
-                    computeParam.availabilies[i]) /
+                (maxReleasePerDay * computeParam.availabilies[i]) /
                 MAX_AVAILABILITY;
         }
 
