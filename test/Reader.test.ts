@@ -301,6 +301,9 @@ describe("Reader contract", function () {
   type UserEscrowDetailsOutput = Awaited<
     ReturnType<Reader["getUserEscrowDetails"]>
   >;
+  type LicenseListItemOutput = Awaited<
+    ReturnType<Reader["getLicensesPage"]>
+  >[2][number];
 
   function formatOracleDetails(oracle: OracleDetailsOutput) {
     return {
@@ -341,6 +344,20 @@ describe("Reader contract", function () {
       escrowAddress: details[1],
       escrowOwner: details[2],
       permissions: details[3],
+    };
+  }
+
+  function formatLicenseListItem(item: LicenseListItemOutput) {
+    return {
+      licenseType: item[0],
+      licenseId: item[1],
+      owner: item[2],
+      nodeAddress: item[3],
+      totalAssignedAmount: item[4],
+      totalClaimedAmount: item[5],
+      assignTimestamp: item[6],
+      awbBalance: item[7],
+      isBanned: item[8],
     };
   }
 
@@ -652,6 +669,115 @@ describe("Reader contract", function () {
     expect(mapped).to.deep.equal({
       mndSupply: 1n,
       ndSupply: 0n,
+    });
+  });
+
+  it("Get licenses page - returns MND first then ND", async function () {
+    await mndContract.addLicense(await firstUser.getAddress(), 2n);
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      owner,
+      await ndContract.getLicenseTokenPrice(),
+      1,
+      1,
+      10000,
+      20,
+      await createLicenseSignature(backend, owner, invoiceUuid, 10000)
+    );
+
+    const ndLicenseOne = await ndContract.licenses(1);
+
+    const result = await reader.getLicensesPage(1, 2);
+
+    expect({
+      mndSupply: result[0],
+      ndSupply: result[1],
+      licenses: result[2].map(formatLicenseListItem),
+    }).to.deep.equal({
+      mndSupply: 2n,
+      ndSupply: 1n,
+      licenses: [
+        {
+          licenseType: 2n,
+          licenseId: 2n,
+          owner: await firstUser.getAddress(),
+          nodeAddress: NULL_ADDRESS,
+          totalAssignedAmount: 2n,
+          totalClaimedAmount: 0n,
+          assignTimestamp: 0n,
+          awbBalance: 0n,
+          isBanned: false,
+        },
+        {
+          licenseType: 1n,
+          licenseId: 1n,
+          owner: await owner.getAddress(),
+          nodeAddress: NULL_ADDRESS,
+          totalAssignedAmount: 1575188843457943924200n,
+          totalClaimedAmount: 0n,
+          assignTimestamp: ndLicenseOne.assignTimestamp,
+          awbBalance: 0n,
+          isBanned: false,
+        },
+      ],
+    });
+  });
+
+  it("Get licenses page - skips burned MND and ND licenses", async function () {
+    await mndContract.addLicense(await firstUser.getAddress(), 2n);
+    await buyLicenseWithMintAndAllowance(
+      r1Contract,
+      ndContract,
+      owner,
+      owner,
+      await ndContract.getLicenseTokenPrice(),
+      1,
+      1,
+      10000,
+      20,
+      await createLicenseSignature(backend, owner, invoiceUuid, 10000)
+    );
+
+    await mndContract.initiateBurn(await firstUser.getAddress());
+    await mndContract.connect(firstUser).burn(2);
+    await ndContract.connect(owner).burn(1);
+
+    const result = await reader.getLicensesPage(0, 10);
+    const mapped = result[2].map(formatLicenseListItem);
+
+    expect({
+      mndSupply: result[0],
+      ndSupply: result[1],
+      licenses: mapped,
+    }).to.deep.equal({
+      mndSupply: 1n,
+      ndSupply: 0n,
+      licenses: [
+        {
+          licenseType: 3n,
+          licenseId: 1n,
+          owner: await owner.getAddress(),
+          nodeAddress: NULL_ADDRESS,
+          totalAssignedAmount: 46761182022000000000000000n,
+          totalClaimedAmount: 0n,
+          assignTimestamp: 0n,
+          awbBalance: 0n,
+          isBanned: false,
+        },
+      ],
+    });
+
+    const emptyPage = await reader.getLicensesPage(99, 10);
+    expect({
+      mndSupply: emptyPage[0],
+      ndSupply: emptyPage[1],
+      length: emptyPage[2].length,
+    }).to.deep.equal({
+      mndSupply: 1n,
+      ndSupply: 0n,
+      length: 0,
     });
   });
 

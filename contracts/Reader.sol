@@ -46,6 +46,18 @@ struct LicenseDetails {
     uint256 r1PoaiRewards;
 }
 
+struct LicenseListItem {
+    LicenseType licenseType;
+    uint256 licenseId;
+    address owner;
+    address nodeAddress;
+    uint256 totalAssignedAmount;
+    uint256 totalClaimedAmount;
+    uint256 assignTimestamp;
+    uint256 awbBalance;
+    bool isBanned;
+}
+
 struct OracleDetails {
     address oracleAddress;
     uint256 signaturesCount;
@@ -134,13 +146,16 @@ interface IND is IBaseDeed {
         uint256 licenseId
     ) external view returns (NDLicense memory);
     function getNodeOwner(address nodeAddress) external view returns (address);
-    function isNodeAlreadyLinked(address nodeAddress) external view returns (bool);
+    function isNodeAlreadyLinked(
+        address nodeAddress
+    ) external view returns (bool);
 }
 
 interface IMND is IBaseDeed {
     function licenses(
         uint256 licenseId
     ) external view returns (MNDLicense memory);
+    function awbBalances(uint256 licenseId) external view returns (uint256);
 }
 
 interface IPoAIManager {
@@ -317,6 +332,76 @@ contract Reader is Initializable {
         returns (uint256 mndSupply, uint256 ndSupply)
     {
         return (mndContract.totalSupply(), ndContract.totalSupply());
+    }
+
+    function getLicensesPage(
+        uint256 offset,
+        uint256 limit
+    )
+        public
+        view
+        returns (
+            uint256 mndSupply,
+            uint256 ndSupply,
+            LicenseListItem[] memory licenses
+        )
+    {
+        mndSupply = mndContract.totalSupply();
+        ndSupply = ndContract.totalSupply();
+        uint256 totalSupply = mndSupply + ndSupply;
+
+        if (offset >= totalSupply || limit == 0) {
+            return (mndSupply, ndSupply, new LicenseListItem[](0));
+        }
+
+        uint256 endExclusive = offset + limit;
+        if (endExclusive > totalSupply) {
+            endExclusive = totalSupply;
+        }
+
+        uint256 pageSize = endExclusive - offset;
+        licenses = new LicenseListItem[](pageSize);
+
+        for (uint256 i = 0; i < pageSize; i++) {
+            uint256 globalIndex = offset + i;
+            if (globalIndex < mndSupply) {
+                uint256 mndLicenseId = mndContract.tokenByIndex(globalIndex);
+                MNDLicense memory mndLicense = mndContract.licenses(
+                    mndLicenseId
+                );
+                uint256 awbBalance = mndContract.awbBalances(mndLicenseId);
+                licenses[i] = LicenseListItem({
+                    licenseType: mndLicenseId == GENESIS_TOKEN_ID
+                        ? LicenseType.GND
+                        : LicenseType.MND,
+                    licenseId: mndLicenseId,
+                    owner: mndContract.ownerOf(mndLicenseId),
+                    nodeAddress: mndLicense.nodeAddress,
+                    totalAssignedAmount: mndLicense.totalAssignedAmount,
+                    totalClaimedAmount: mndLicense.totalClaimedAmount,
+                    assignTimestamp: mndLicense.assignTimestamp,
+                    awbBalance: awbBalance,
+                    isBanned: false
+                });
+            } else {
+                uint256 ndIndex = globalIndex - mndSupply;
+                uint256 ndLicenseId = ndContract.tokenByIndex(ndIndex);
+                NDLicense memory ndLicense = ndContract.licenses(ndLicenseId);
+                licenses[i] = LicenseListItem({
+                    licenseType: LicenseType.ND,
+                    licenseId: ndLicenseId,
+                    owner: ndContract.ownerOf(ndLicenseId),
+                    nodeAddress: ndLicense.nodeAddress,
+                    totalAssignedAmount: ND_LICENSE_ASSIGNED_TOKENS,
+                    totalClaimedAmount: ndLicense.totalClaimedAmount,
+                    assignTimestamp: ndLicense.assignTimestamp,
+                    awbBalance: 0,
+                    isBanned: ndLicense.isBanned
+                });
+            }
+        }
+
+        return (mndSupply, ndSupply, licenses);
     }
 
     function getAllMndsDetails()
