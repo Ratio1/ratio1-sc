@@ -2,6 +2,8 @@
 const fs = require("fs");
 const path = require("path");
 
+const MAX_DEPLOYED_BYTECODE_SIZE = 24576;
+
 function parseArgs(argv) {
   const args = {};
   for (let i = 2; i < argv.length; i++) {
@@ -30,6 +32,17 @@ function readReport(filePath) {
   }
   const data = JSON.parse(fs.readFileSync(resolved, "utf8"));
   return data;
+}
+
+function readOptionalReport(filePath) {
+  if (!filePath) {
+    return {};
+  }
+  const resolved = path.resolve(filePath);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Report not found at ${resolved}`);
+  }
+  return JSON.parse(fs.readFileSync(resolved, "utf8"));
 }
 
 function collectMethods(report) {
@@ -97,6 +110,21 @@ function collectDeployments(report) {
   return map;
 }
 
+function collectContractSizes(report) {
+  const map = new Map();
+  if (!report || typeof report !== "object") {
+    return map;
+  }
+  for (const [contract, size] of Object.entries(report)) {
+    const parsed = typeof size === "number" ? size : Number(size);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      continue;
+    }
+    map.set(contract, Math.round(parsed));
+  }
+  return map;
+}
+
 function formatNumber(value) {
   if (value === undefined || value === null) {
     return "—";
@@ -126,6 +154,25 @@ function formatPercent(base, pr) {
   const delta = ((pr - base) / base) * 100;
   const sign = delta > 0 ? "+" : "";
   return `${sign}${delta.toFixed(2)}%`;
+}
+
+function formatSizeLimit(size, limit) {
+  if (size === undefined || size === null) {
+    return "—";
+  }
+  const percent = (size / limit) * 100;
+  return `${percent.toFixed(2)}%${size > limit ? " (OVER)" : ""}`;
+}
+
+function formatSizeLimitDelta(baseSize, prSize, limit) {
+  if (baseSize === undefined || baseSize === null || prSize === undefined || prSize === null) {
+    return "—";
+  }
+  const basePercent = (baseSize / limit) * 100;
+  const prPercent = (prSize / limit) * 100;
+  const delta = prPercent - basePercent;
+  const sign = delta > 0 ? "+" : "";
+  return `${sign}${delta.toFixed(2)}pp`;
 }
 
 function formatCalls(baseCalls, prCalls) {
@@ -176,7 +223,7 @@ function computeDiffs(baseMap, prMap, accessor) {
   return { rows, baseTotal, prTotal };
 }
 
-function buildTable(rows, options = {}) {
+function buildMethodTable(rows, options = {}) {
   const { includeCalls = true } = options;
   const filteredRows = rows.filter(
     (row) => row.baseAvg !== undefined || row.prAvg !== undefined
@@ -225,6 +272,61 @@ function buildTable(rows, options = {}) {
   return lines.join("\n");
 }
 
+function buildDeploymentTable(rows, maxSize = MAX_DEPLOYED_BYTECODE_SIZE) {
+  const filteredRows = rows.filter(
+    (row) =>
+      row.baseAvg !== undefined ||
+      row.prAvg !== undefined ||
+      row.baseSize !== undefined ||
+      row.prSize !== undefined
+  );
+  if (filteredRows.length === 0) {
+    return null;
+  }
+
+  const header = [
+    "Contract",
+    "Base Avg Gas",
+    "PR Avg Gas",
+    "Δ Gas",
+    "Δ %",
+    "Base Size (bytes)",
+    "PR Size (bytes)",
+    "Δ Size (bytes)",
+    `Base Limit Usage (${formatNumber(maxSize)} bytes max)`,
+    `PR Limit Usage (${formatNumber(maxSize)} bytes max)`,
+    "Δ Limit Usage",
+  ];
+
+  const lines = [];
+  lines.push(`| ${header.join(" | ")} |`);
+  lines.push(`| ${header.map(() => "---").join(" | ")} |`);
+  for (const row of filteredRows) {
+    lines.push(
+      `| ${row.contract} | ${formatNumber(row.baseAvg)} | ${formatNumber(
+        row.prAvg
+      )} | ${formatDelta(row.baseAvg, row.prAvg)} | ${formatPercent(
+        row.baseAvg,
+        row.prAvg
+      )} | ${formatNumber(row.baseSize)} | ${formatNumber(
+        row.prSize
+      )} | ${formatDelta(row.baseSize, row.prSize)} | ${formatSizeLimit(
+        row.baseSize,
+        maxSize
+      )} | ${formatSizeLimit(
+        row.prSize,
+        maxSize
+      )} | ${formatSizeLimitDelta(
+        row.baseSize,
+        row.prSize,
+        maxSize
+      )} |`
+    );
+  }
+
+  return lines.join("\n");
+}
+
 function filterTopChanges(rows, limit = 15) {
   const sorted = [...rows].sort((a, b) => {
     const aDelta = a.delta === undefined ? 0 : Math.abs(a.delta);
@@ -267,9 +369,13 @@ function main() {
   const outputPath = args.out || "gas-report-comment.md";
   const baseSha = args.baseSha || "";
   const prSha = args.prSha || "";
+  const baseSizesPath = args.baseSizes;
+  const prSizesPath = args.prSizes;
 
   const baseReport = readReport(basePath);
   const prReport = readReport(prPath);
+  const baseContractSizes = collectContractSizes(readOptionalReport(baseSizesPath));
+  const prContractSizes = collectContractSizes(readOptionalReport(prSizesPath));
 
   const {
     rows: methodRows,
@@ -310,9 +416,22 @@ function main() {
   deploymentRows.sort((a, b) =>
     (a.contract || "").localeCompare(b.contract || "")
   );
+  for (const row of deploymentRows) {
+    row.baseSize = baseContractSizes.get(row.contract);
+    row.prSize = prContractSizes.get(row.contract);
+  }
 
   const topMethodChanges = filterTopChanges(methodRows);
-  const topDeploymentChanges = filterTopChanges(deploymentRows, 10);
+  let topDeploymentChanges = filterTopChanges(deploymentRows, 10);
+  if (topDeploymentChanges.length === 0) {
+    topDeploymentChanges = [...deploymentRows]
+      .sort((a, b) => (b.prSize ?? 0) - (a.prSize ?? 0))
+      .slice(0, 10);
+  }
+
+  const largestPrDeployment = [...deploymentRows]
+    .filter((row) => typeof row.prSize === "number")
+    .sort((a, b) => (b.prSize ?? 0) - (a.prSize ?? 0))[0];
 
   const lines = [];
   lines.push("<!-- gas-report -->");
@@ -332,10 +451,20 @@ function main() {
   lines.push(
     buildSummary("Deployment gas total", deploymentBaseTotal, deploymentPrTotal)
   );
+  if (largestPrDeployment) {
+    lines.push(
+      `- **Largest deployment bytecode (PR):** ${
+        largestPrDeployment.contract
+      } (${formatNumber(largestPrDeployment.prSize)} bytes, ${formatSizeLimit(
+        largestPrDeployment.prSize,
+        MAX_DEPLOYED_BYTECODE_SIZE
+      )})`
+    );
+  }
   lines.push("");
 
   lines.push("### Largest method changes");
-  const topMethodsTable = buildTable(topMethodChanges);
+  const topMethodsTable = buildMethodTable(topMethodChanges);
   if (!topMethodsTable) {
     lines.push("No significant method gas differences detected.");
   } else {
@@ -344,15 +473,7 @@ function main() {
   lines.push("");
 
   lines.push("### Deployment changes");
-  const topDeploymentTable = buildTable(
-    topDeploymentChanges.map((row) => ({
-      contract: row.contract,
-      baseAvg: row.baseAvg,
-      prAvg: row.prAvg,
-      delta: row.delta,
-    })),
-    { includeCalls: false }
-  );
+  const topDeploymentTable = buildDeploymentTable(topDeploymentChanges);
   if (!topDeploymentTable) {
     lines.push("No deployment gas differences detected.");
   } else {
@@ -360,7 +481,7 @@ function main() {
   }
   lines.push("");
 
-  const allMethodsTable = buildTable(methodRows);
+  const allMethodsTable = buildMethodTable(methodRows);
   if (allMethodsTable && methodRows.length > topMethodChanges.length) {
     lines.push("<details><summary>All method measurements</summary>\n");
     lines.push(allMethodsTable);
@@ -369,15 +490,7 @@ function main() {
   }
 
   if (deploymentRows.length > topDeploymentChanges.length) {
-    const fullDeploymentsTable = buildTable(
-      deploymentRows.map((row) => ({
-        contract: row.contract,
-        baseAvg: row.baseAvg,
-        prAvg: row.prAvg,
-        delta: row.delta,
-      })),
-      { includeCalls: false }
-    );
+    const fullDeploymentsTable = buildDeploymentTable(deploymentRows);
     if (fullDeploymentsTable) {
       lines.push("<details><summary>All deployments</summary>\n");
       lines.push(fullDeploymentsTable);
