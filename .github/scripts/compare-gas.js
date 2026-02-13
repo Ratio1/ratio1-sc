@@ -165,7 +165,12 @@ function formatSizeLimit(size, limit) {
 }
 
 function formatSizeLimitDelta(baseSize, prSize, limit) {
-  if (baseSize === undefined || baseSize === null || prSize === undefined || prSize === null) {
+  if (
+    baseSize === undefined ||
+    baseSize === null ||
+    prSize === undefined ||
+    prSize === null
+  ) {
     return "—";
   }
   const basePercent = (baseSize / limit) * 100;
@@ -290,11 +295,9 @@ function buildDeploymentTable(rows, maxSize = MAX_DEPLOYED_BYTECODE_SIZE) {
     "PR Avg Gas",
     "Δ Gas",
     "Δ %",
-    "Base Size (bytes)",
-    "PR Size (bytes)",
     "Δ Size (bytes)",
-    `Base Limit Usage (${formatNumber(maxSize)} bytes max)`,
-    `PR Limit Usage (${formatNumber(maxSize)} bytes max)`,
+    "Base Limit Usage",
+    "PR Limit Usage",
     "Δ Limit Usage",
   ];
 
@@ -308,15 +311,10 @@ function buildDeploymentTable(rows, maxSize = MAX_DEPLOYED_BYTECODE_SIZE) {
       )} | ${formatDelta(row.baseAvg, row.prAvg)} | ${formatPercent(
         row.baseAvg,
         row.prAvg
-      )} | ${formatNumber(row.baseSize)} | ${formatNumber(
-        row.prSize
       )} | ${formatDelta(row.baseSize, row.prSize)} | ${formatSizeLimit(
         row.baseSize,
         maxSize
-      )} | ${formatSizeLimit(
-        row.prSize,
-        maxSize
-      )} | ${formatSizeLimitDelta(
+      )} | ${formatSizeLimit(row.prSize, maxSize)} | ${formatSizeLimitDelta(
         row.baseSize,
         row.prSize,
         maxSize
@@ -374,7 +372,9 @@ function main() {
 
   const baseReport = readReport(basePath);
   const prReport = readReport(prPath);
-  const baseContractSizes = collectContractSizes(readOptionalReport(baseSizesPath));
+  const baseContractSizes = collectContractSizes(
+    readOptionalReport(baseSizesPath)
+  );
   const prContractSizes = collectContractSizes(readOptionalReport(prSizesPath));
 
   const {
