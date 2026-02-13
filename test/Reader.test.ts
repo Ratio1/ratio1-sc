@@ -356,7 +356,8 @@ describe("Reader contract", function () {
       totalAssignedAmount: item[4],
       totalClaimedAmount: item[5],
       assignTimestamp: item[6],
-      isBanned: item[7],
+      awbBalance: item[7],
+      isBanned: item[8],
     };
   }
 
@@ -706,6 +707,7 @@ describe("Reader contract", function () {
           totalAssignedAmount: 2n,
           totalClaimedAmount: 0n,
           assignTimestamp: 0n,
+          awbBalance: 0n,
           isBanned: false,
         },
         {
@@ -716,6 +718,7 @@ describe("Reader contract", function () {
           totalAssignedAmount: 1575188843457943924200n,
           totalClaimedAmount: 0n,
           assignTimestamp: ndLicenseOne.assignTimestamp,
+          awbBalance: 0n,
           isBanned: false,
         },
       ],
@@ -760,6 +763,7 @@ describe("Reader contract", function () {
           totalAssignedAmount: 46761182022000000000000000n,
           totalClaimedAmount: 0n,
           assignTimestamp: 0n,
+          awbBalance: 0n,
           isBanned: false,
         },
       ],

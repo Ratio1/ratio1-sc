@@ -54,6 +54,7 @@ struct LicenseListItem {
     uint256 totalAssignedAmount;
     uint256 totalClaimedAmount;
     uint256 assignTimestamp;
+    uint256 awbBalance;
     bool isBanned;
 }
 
@@ -145,13 +146,16 @@ interface IND is IBaseDeed {
         uint256 licenseId
     ) external view returns (NDLicense memory);
     function getNodeOwner(address nodeAddress) external view returns (address);
-    function isNodeAlreadyLinked(address nodeAddress) external view returns (bool);
+    function isNodeAlreadyLinked(
+        address nodeAddress
+    ) external view returns (bool);
 }
 
 interface IMND is IBaseDeed {
     function licenses(
         uint256 licenseId
     ) external view returns (MNDLicense memory);
+    function awbBalances(uint256 licenseId) external view returns (uint256);
 }
 
 interface IPoAIManager {
@@ -365,6 +369,7 @@ contract Reader is Initializable {
                 MNDLicense memory mndLicense = mndContract.licenses(
                     mndLicenseId
                 );
+                uint256 awbBalance = mndContract.awbBalances(mndLicenseId);
                 licenses[i] = LicenseListItem({
                     licenseType: mndLicenseId == GENESIS_TOKEN_ID
                         ? LicenseType.GND
@@ -375,6 +380,7 @@ contract Reader is Initializable {
                     totalAssignedAmount: mndLicense.totalAssignedAmount,
                     totalClaimedAmount: mndLicense.totalClaimedAmount,
                     assignTimestamp: mndLicense.assignTimestamp,
+                    awbBalance: awbBalance,
                     isBanned: false
                 });
             } else {
@@ -389,6 +395,7 @@ contract Reader is Initializable {
                     totalAssignedAmount: ND_LICENSE_ASSIGNED_TOKENS,
                     totalClaimedAmount: ndLicense.totalClaimedAmount,
                     assignTimestamp: ndLicense.assignTimestamp,
+                    awbBalance: 0,
                     isBanned: ndLicense.isBanned
                 });
             }
