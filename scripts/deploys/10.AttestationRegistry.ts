@@ -4,8 +4,8 @@ import { POAI_MANAGER_ADDR, SAFE_ADDR } from "../configs/constants";
 async function main() {
   const [deployer] = await ethers.getSigners();
 
-  console.log("Deploying TestAttestationRegistry...");
-  const factory = await ethers.getContractFactory("TestAttestationRegistry", deployer);
+  console.log("Deploying AttestationRegistry...");
+  const factory = await ethers.getContractFactory("AttestationRegistry", deployer);
   const registry = await upgrades.deployProxy(
     factory,
     [
@@ -21,9 +21,9 @@ async function main() {
   const implAddress = await upgrades.erc1967.getImplementationAddress(proxyAddress);
   const adminAddress = await upgrades.erc1967.getAdminAddress(proxyAddress);
 
-  console.log("TestAttestationRegistry deployed to:", proxyAddress);
-  console.log("TestAttestationRegistry Implementation:", implAddress);
-  console.log("TestAttestationRegistry Proxy Admin:", adminAddress);
+  console.log("AttestationRegistry deployed to:", proxyAddress);
+  console.log("AttestationRegistry Implementation:", implAddress);
+  console.log("AttestationRegistry Proxy Admin:", adminAddress);
 }
 
 main()

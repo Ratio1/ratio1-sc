@@ -1,16 +1,16 @@
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import { TestAttestationRegistry } from "../typechain-types";
+import { AttestationRegistry } from "../typechain-types";
 
-describe("TestAttestationRegistry", function () {
-  let registry: TestAttestationRegistry;
+describe("AttestationRegistry", function () {
+  let registry: AttestationRegistry;
   let owner: HardhatEthersSigner;
   let nodeSigner: HardhatEthersSigner;
   let relayer: HardhatEthersSigner;
   let other: HardhatEthersSigner;
 
-  const DOMAIN = ethers.keccak256(ethers.toUtf8Bytes("RATIO1_TEST_ATTESTATION_V1"));
+  const DOMAIN = ethers.keccak256(ethers.toUtf8Bytes("RATIO1_ATTESTATION_V1"));
   const APP_ID = ethers.keccak256(ethers.toUtf8Bytes("redmesh"));
   const TEST_MODE_SINGLE = 0;
   const NODE_COUNT = 3;
@@ -19,15 +19,15 @@ describe("TestAttestationRegistry", function () {
   const CID_OBFUSCATED = "0x61626364657576777879"; // abcdeuvwxy
   const CONTENT_HASH = ethers.keccak256(ethers.toUtf8Bytes("cid:bafybeigdyr"));
 
-  async function deployRegistry(): Promise<TestAttestationRegistry> {
-    const factory = await ethers.getContractFactory("TestAttestationRegistry");
+  async function deployRegistry(): Promise<AttestationRegistry> {
+    const factory = await ethers.getContractFactory("AttestationRegistry");
     const contract = await upgrades.deployProxy(
       factory,
       [owner.address, owner.address, false],
       { initializer: "initialize" }
     );
     await contract.waitForDeployment();
-    return contract as unknown as TestAttestationRegistry;
+    return contract as unknown as AttestationRegistry;
   }
 
   function buildDigest(
@@ -121,7 +121,7 @@ describe("TestAttestationRegistry", function () {
           signature
         )
     )
-      .to.emit(registry, "TestAttestationStored")
+      .to.emit(registry, "AttestationStored")
       .withArgs(
         APP_ID,
         0,

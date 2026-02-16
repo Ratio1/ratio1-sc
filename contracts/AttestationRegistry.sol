@@ -6,18 +6,18 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
-contract TestAttestationRegistry is Initializable, OwnableUpgradeable {
+contract AttestationRegistry is Initializable, OwnableUpgradeable {
     using MessageHashUtils for bytes32;
 
     bytes32 public constant ATTESTATION_DOMAIN =
-        keccak256("RATIO1_TEST_ATTESTATION_V1");
+        keccak256("RATIO1_ATTESTATION_V1");
 
     enum TestMode {
         SINGLE,
         CONTINUOUS
     }
 
-    struct TestAttestation {
+    struct Attestation {
         address node;
         uint16 nodeCount;
         uint8 vulnerabilityScore;
@@ -37,7 +37,7 @@ contract TestAttestationRegistry is Initializable, OwnableUpgradeable {
     event PoaiManagerUpdated(address indexed oldPoaiManager, address indexed newPoaiManager);
     event NodeWhitelistEnforcementUpdated(bool enabled);
     event NodeAllowed(address indexed node, bool isAllowed);
-    event TestAttestationStored(
+    event AttestationStored(
         bytes32 indexed appId,
         uint256 indexed index,
         address indexed node,
@@ -54,7 +54,7 @@ contract TestAttestationRegistry is Initializable, OwnableUpgradeable {
     bool public nodeWhitelistEnforced;
 
     mapping(address => bool) public allowedNodes;
-    mapping(bytes32 => TestAttestation[]) private appIdToAttestations;
+    mapping(bytes32 => Attestation[]) private appIdToAttestations;
 
     function initialize(
         address newOwner,
@@ -101,7 +101,7 @@ contract TestAttestationRegistry is Initializable, OwnableUpgradeable {
     function getAttestation(
         bytes32 appId,
         uint256 index
-    ) external view returns (TestAttestation memory) {
+    ) external view returns (Attestation memory) {
         return appIdToAttestations[appId][index];
     }
 
@@ -167,7 +167,7 @@ contract TestAttestationRegistry is Initializable, OwnableUpgradeable {
         // TODO: when external job references are added back to attestations,
         // verify `node` is active for that job in PoAIManager before storing.
 
-        TestAttestation memory attestation = TestAttestation({
+        Attestation memory attestation = Attestation({
             node: node,
             nodeCount: nodeCount,
             vulnerabilityScore: vulnerabilityScore,
@@ -180,7 +180,7 @@ contract TestAttestationRegistry is Initializable, OwnableUpgradeable {
         appIdToAttestations[appId].push(attestation);
         index = appIdToAttestations[appId].length - 1;
 
-        emit TestAttestationStored(
+        emit AttestationStored(
             appId,
             index,
             node,
