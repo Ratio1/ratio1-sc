@@ -168,12 +168,87 @@ describe("AttestationRegistry", function () {
     expect(await registry.getRedmeshAttestationCount()).to.equal(2);
   });
 
-  it("only owner can manage PoAI manager", async function () {
-    await expect(
-      registry.connect(other).setPoaiManager(other.address)
-    ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+  it("returns paginated attestations in both orders", async function () {
+    const firstSig = await signAttestation(
+      nodeSigner,
+      TEST_MODE_SINGLE,
+      NODE_COUNT,
+      10
+    );
+    const secondSig = await signAttestation(
+      nodeSigner,
+      TEST_MODE_SINGLE,
+      NODE_COUNT,
+      20
+    );
+    const thirdSig = await signAttestation(
+      nodeSigner,
+      TEST_MODE_SINGLE,
+      NODE_COUNT,
+      30
+    );
 
-    await registry.connect(owner).setPoaiManager(other.address);
-    expect(await registry.poaiManager()).to.equal(other.address);
+    await registry.submitRedmeshAttestation(
+      TEST_MODE_SINGLE,
+      NODE_COUNT,
+      10,
+      IP_OBFUSCATED,
+      CID_OBFUSCATED,
+      firstSig
+    );
+    await registry.submitRedmeshAttestation(
+      TEST_MODE_SINGLE,
+      NODE_COUNT,
+      20,
+      IP_OBFUSCATED,
+      CID_OBFUSCATED,
+      secondSig
+    );
+    await registry.submitRedmeshAttestation(
+      TEST_MODE_SINGLE,
+      NODE_COUNT,
+      30,
+      IP_OBFUSCATED,
+      CID_OBFUSCATED,
+      thirdSig
+    );
+
+    const forward = await registry.getRedmeshAttestations(1, 2, false);
+    expect(forward.length).to.equal(2);
+    expect(forward[0].vulnerabilityScore).to.equal(20);
+    expect(forward[1].vulnerabilityScore).to.equal(30);
+
+    const reverse = await registry.getRedmeshAttestations(1, 2, true);
+    expect(reverse.length).to.equal(2);
+    expect(reverse[0].vulnerabilityScore).to.equal(20);
+    expect(reverse[1].vulnerabilityScore).to.equal(10);
+
+    const empty = await registry.getRedmeshAttestations(10, 2, true);
+    expect(empty.length).to.equal(0);
+  });
+
+  it("reverts initialize for zero addresses", async function () {
+    const factory = await ethers.getContractFactory("AttestationRegistry");
+    await expect(
+      upgrades.deployProxy(
+        factory,
+        [ethers.ZeroAddress, owner.address],
+        { initializer: "initialize" }
+      )
+    ).to.be.revertedWithCustomError(
+      factory,
+      "InvalidAddress"
+    );
+
+    await expect(
+      upgrades.deployProxy(
+        factory,
+        [owner.address, ethers.ZeroAddress],
+        { initializer: "initialize" }
+      )
+    ).to.be.revertedWithCustomError(
+      factory,
+      "InvalidAddress"
+    );
   });
 });

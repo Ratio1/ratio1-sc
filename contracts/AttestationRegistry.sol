@@ -12,7 +12,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
     bytes32 public constant REDMESH_ATTESTATION_DOMAIN =
         keccak256("RATIO1_REDMESH_ATTESTATION_V1");
 
-    enum TestMode {
+    enum RedmeshTestMode {
         SINGLE,
         CONTINUOUS
     }
@@ -26,13 +26,11 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         bytes10 cidObfuscated;
     }
 
-    error InvalidPoaiManager();
-    error InvalidNodeAddress();
+    error InvalidAddress();
     error InvalidTestMode();
     error InvalidVulnerabilityScore();
     error InvalidNodeSignature();
 
-    event PoaiManagerUpdated(address indexed oldPoaiManager, address indexed newPoaiManager);
     event RedmeshAttestationStored(
         uint256 indexed index,
         address indexed node,
@@ -52,22 +50,13 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         address poaiManager_
     ) public initializer {
         if (newOwner == address(0)) {
-            revert InvalidNodeAddress();
+            revert InvalidAddress();
         }
         if (poaiManager_ == address(0)) {
-            revert InvalidPoaiManager();
+            revert InvalidAddress();
         }
         __Ownable_init(newOwner);
         poaiManager = poaiManager_;
-    }
-
-    function setPoaiManager(address poaiManager_) external onlyOwner {
-        if (poaiManager_ == address(0)) {
-            revert InvalidPoaiManager();
-        }
-        address oldPoaiManager = poaiManager;
-        poaiManager = poaiManager_;
-        emit PoaiManagerUpdated(oldPoaiManager, poaiManager_);
     }
 
     function getRedmeshAttestationCount() external view returns (uint256) {
@@ -78,6 +67,35 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         uint256 index
     ) external view returns (RedmeshAttestation memory) {
         return redmeshAttestations[index];
+    }
+
+    function getRedmeshAttestations(
+        uint256 offset,
+        uint256 limit,
+        bool latestFirst
+    ) external view returns (RedmeshAttestation[] memory) {
+        uint256 total = redmeshAttestations.length;
+        if (offset >= total || limit == 0) {
+            return new RedmeshAttestation[](0);
+        }
+
+        uint256 count = total - offset;
+        if (limit < count) {
+            count = limit;
+        }
+
+        RedmeshAttestation[] memory page = new RedmeshAttestation[](count);
+        if (latestFirst) {
+            uint256 start = total - 1 - offset;
+            for (uint256 i = 0; i < count; i++) {
+                page[i] = redmeshAttestations[start - i];
+            }
+        } else {
+            for (uint256 i = 0; i < count; i++) {
+                page[i] = redmeshAttestations[offset + i];
+            }
+        }
+        return page;
     }
 
     function getRedmeshAttestationDigest(
@@ -108,7 +126,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         bytes10 cidObfuscated,
         bytes calldata nodeSignature
     ) external returns (uint256 index, address node) {
-        if (testMode > uint8(TestMode.CONTINUOUS)) {
+        if (testMode > uint8(RedmeshTestMode.CONTINUOUS)) {
             revert InvalidTestMode();
         }
         if (vulnerabilityScore > 100) {
