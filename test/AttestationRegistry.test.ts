@@ -10,8 +10,7 @@ describe("AttestationRegistry", function () {
   let relayer: HardhatEthersSigner;
   let other: HardhatEthersSigner;
 
-  const DOMAIN = ethers.keccak256(ethers.toUtf8Bytes("RATIO1_ATTESTATION_V1"));
-  const APP_ID = ethers.keccak256(ethers.toUtf8Bytes("redmesh"));
+  const DOMAIN = ethers.keccak256(ethers.toUtf8Bytes("RATIO1_REDMESH_ATTESTATION_V1"));
   const TEST_MODE_SINGLE = 0;
   const NODE_COUNT = 3;
   const VULNERABILITY_SCORE = 74;
@@ -31,7 +30,6 @@ describe("AttestationRegistry", function () {
   }
 
   function buildDigest(
-    appId: string,
     testMode: number,
     nodeCount: number,
     vulnerabilityScore: number,
@@ -40,10 +38,9 @@ describe("AttestationRegistry", function () {
     contentHash: string
   ): string {
     return ethers.solidityPackedKeccak256(
-      ["bytes32", "bytes32", "uint8", "uint16", "uint8", "bytes2", "bytes10", "bytes32"],
+      ["bytes32", "uint8", "uint16", "uint8", "bytes2", "bytes10", "bytes32"],
       [
         DOMAIN,
-        appId,
         testMode,
         nodeCount,
         vulnerabilityScore,
@@ -56,7 +53,6 @@ describe("AttestationRegistry", function () {
 
   async function signAttestation(
     signer: HardhatEthersSigner,
-    appId = APP_ID,
     testMode = TEST_MODE_SINGLE,
     nodeCount = NODE_COUNT,
     vulnerabilityScore = VULNERABILITY_SCORE,
@@ -65,7 +61,6 @@ describe("AttestationRegistry", function () {
     contentHash = CONTENT_HASH
   ): Promise<string> {
     const digest = buildDigest(
-      appId,
       testMode,
       nodeCount,
       vulnerabilityScore,
@@ -87,7 +82,6 @@ describe("AttestationRegistry", function () {
 
     const signature = await signAttestation(nodeSigner);
     const expectedDigest = buildDigest(
-      APP_ID,
       TEST_MODE_SINGLE,
       NODE_COUNT,
       VULNERABILITY_SCORE,
@@ -96,8 +90,7 @@ describe("AttestationRegistry", function () {
       CONTENT_HASH
     );
     expect(
-      await registry.getAttestationDigest(
-        APP_ID,
+      await registry.getRedmeshAttestationDigest(
         TEST_MODE_SINGLE,
         NODE_COUNT,
         VULNERABILITY_SCORE,
@@ -110,8 +103,7 @@ describe("AttestationRegistry", function () {
     await expect(
       registry
         .connect(relayer)
-        .submitAttestation(
-          APP_ID,
+        .submitRedmeshAttestation(
           TEST_MODE_SINGLE,
           NODE_COUNT,
           VULNERABILITY_SCORE,
@@ -121,9 +113,8 @@ describe("AttestationRegistry", function () {
           signature
         )
     )
-      .to.emit(registry, "AttestationStored")
+      .to.emit(registry, "RedmeshAttestationStored")
       .withArgs(
-        APP_ID,
         0,
         nodeSigner.address,
         TEST_MODE_SINGLE,
@@ -135,8 +126,8 @@ describe("AttestationRegistry", function () {
         relayer.address
       );
 
-    expect(await registry.getAttestationCount(APP_ID)).to.equal(1);
-    const attestation = await registry.getAttestation(APP_ID, 0);
+    expect(await registry.getRedmeshAttestationCount()).to.equal(1);
+    const attestation = await registry.getRedmeshAttestation(0);
     expect(attestation.node).to.equal(nodeSigner.address);
     expect(attestation.nodeCount).to.equal(NODE_COUNT);
     expect(attestation.vulnerabilityScore).to.equal(VULNERABILITY_SCORE);
@@ -149,7 +140,6 @@ describe("AttestationRegistry", function () {
   it("reverts when vulnerability score exceeds 100", async function () {
     const signature = await signAttestation(
       nodeSigner,
-      APP_ID,
       TEST_MODE_SINGLE,
       NODE_COUNT,
       101,
@@ -159,8 +149,7 @@ describe("AttestationRegistry", function () {
     );
 
     await expect(
-      registry.submitAttestation(
-        APP_ID,
+      registry.submitRedmeshAttestation(
         TEST_MODE_SINGLE,
         NODE_COUNT,
         101,
@@ -177,8 +166,7 @@ describe("AttestationRegistry", function () {
     const signature = await signAttestation(nodeSigner);
 
     await expect(
-      registry.submitAttestation(
-        APP_ID,
+      registry.submitRedmeshAttestation(
         TEST_MODE_SINGLE,
         NODE_COUNT,
         VULNERABILITY_SCORE,
@@ -197,8 +185,7 @@ describe("AttestationRegistry", function () {
     await registry.connect(owner).setNodeAllowed(nodeSigner.address, true);
 
     const signature = await signAttestation(nodeSigner);
-    await registry.submitAttestation(
-      APP_ID,
+    await registry.submitRedmeshAttestation(
       TEST_MODE_SINGLE,
       NODE_COUNT,
       VULNERABILITY_SCORE,
@@ -207,8 +194,7 @@ describe("AttestationRegistry", function () {
       CONTENT_HASH,
       signature
     );
-    await registry.submitAttestation(
-      APP_ID,
+    await registry.submitRedmeshAttestation(
       TEST_MODE_SINGLE,
       NODE_COUNT,
       VULNERABILITY_SCORE,
@@ -218,7 +204,7 @@ describe("AttestationRegistry", function () {
       signature
     );
 
-    expect(await registry.getAttestationCount(APP_ID)).to.equal(2);
+    expect(await registry.getRedmeshAttestationCount()).to.equal(2);
   });
 
   it("only owner can manage PoAI manager and node whitelist settings", async function () {

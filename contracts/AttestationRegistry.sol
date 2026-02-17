@@ -9,15 +9,15 @@ import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 contract AttestationRegistry is Initializable, OwnableUpgradeable {
     using MessageHashUtils for bytes32;
 
-    bytes32 public constant ATTESTATION_DOMAIN =
-        keccak256("RATIO1_ATTESTATION_V1");
+    bytes32 public constant REDMESH_ATTESTATION_DOMAIN =
+        keccak256("RATIO1_REDMESH_ATTESTATION_V1");
 
     enum TestMode {
         SINGLE,
         CONTINUOUS
     }
 
-    struct Attestation {
+    struct RedmeshAttestation {
         address node;
         uint16 nodeCount;
         uint8 vulnerabilityScore;
@@ -37,8 +37,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
     event PoaiManagerUpdated(address indexed oldPoaiManager, address indexed newPoaiManager);
     event NodeWhitelistEnforcementUpdated(bool enabled);
     event NodeAllowed(address indexed node, bool isAllowed);
-    event AttestationStored(
-        bytes32 indexed appId,
+    event RedmeshAttestationStored(
         uint256 indexed index,
         address indexed node,
         uint8 testMode,
@@ -54,7 +53,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
     bool public nodeWhitelistEnforced;
 
     mapping(address => bool) public allowedNodes;
-    mapping(bytes32 => Attestation[]) private appIdToAttestations;
+    RedmeshAttestation[] private redmeshAttestations;
 
     function initialize(
         address newOwner,
@@ -94,19 +93,17 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         emit NodeAllowed(node, isAllowed);
     }
 
-    function getAttestationCount(bytes32 appId) external view returns (uint256) {
-        return appIdToAttestations[appId].length;
+    function getRedmeshAttestationCount() external view returns (uint256) {
+        return redmeshAttestations.length;
     }
 
-    function getAttestation(
-        bytes32 appId,
+    function getRedmeshAttestation(
         uint256 index
-    ) external view returns (Attestation memory) {
-        return appIdToAttestations[appId][index];
+    ) external view returns (RedmeshAttestation memory) {
+        return redmeshAttestations[index];
     }
 
-    function getAttestationDigest(
-        bytes32 appId,
+    function getRedmeshAttestationDigest(
         uint8 testMode,
         uint16 nodeCount,
         uint8 vulnerabilityScore,
@@ -117,8 +114,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         return
             keccak256(
                 abi.encodePacked(
-                    ATTESTATION_DOMAIN,
-                    appId,
+                    REDMESH_ATTESTATION_DOMAIN,
                     testMode,
                     nodeCount,
                     vulnerabilityScore,
@@ -129,8 +125,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
             );
     }
 
-    function submitAttestation(
-        bytes32 appId,
+    function submitRedmeshAttestation(
         uint8 testMode,
         uint16 nodeCount,
         uint8 vulnerabilityScore,
@@ -146,8 +141,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
             revert InvalidVulnerabilityScore();
         }
 
-        bytes32 digest = getAttestationDigest(
-            appId,
+        bytes32 digest = getRedmeshAttestationDigest(
             testMode,
             nodeCount,
             vulnerabilityScore,
@@ -164,10 +158,11 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
             revert NodeNotAllowed(node);
         }
 
-        // TODO: when external job references are added back to attestations,
-        // verify `node` is active for that job in PoAIManager before storing.
+        // TODO: when external job references are added back to RedMesh
+        // attestations, verify `node` is active for that job in PoAIManager
+        // before storing.
 
-        Attestation memory attestation = Attestation({
+        RedmeshAttestation memory attestation = RedmeshAttestation({
             node: node,
             nodeCount: nodeCount,
             vulnerabilityScore: vulnerabilityScore,
@@ -177,11 +172,10 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
             contentHash: contentHash
         });
 
-        appIdToAttestations[appId].push(attestation);
-        index = appIdToAttestations[appId].length - 1;
+        redmeshAttestations.push(attestation);
+        index = redmeshAttestations.length - 1;
 
-        emit AttestationStored(
-            appId,
+        emit RedmeshAttestationStored(
             index,
             node,
             testMode,
