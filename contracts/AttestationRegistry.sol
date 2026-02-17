@@ -24,7 +24,6 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         uint8 testMode;
         bytes2 ipObfuscated;
         bytes10 cidObfuscated;
-        bytes32 contentHash;
     }
 
     error InvalidPoaiManager();
@@ -45,7 +44,6 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         uint8 vulnerabilityScore,
         bytes2 ipObfuscated,
         bytes10 cidObfuscated,
-        bytes32 contentHash,
         address submitter
     );
 
@@ -108,8 +106,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         uint16 nodeCount,
         uint8 vulnerabilityScore,
         bytes2 ipObfuscated,
-        bytes10 cidObfuscated,
-        bytes32 contentHash
+        bytes10 cidObfuscated
     ) public pure returns (bytes32) {
         return
             keccak256(
@@ -119,8 +116,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
                     nodeCount,
                     vulnerabilityScore,
                     ipObfuscated,
-                    cidObfuscated,
-                    contentHash
+                    cidObfuscated
                 )
             );
     }
@@ -131,7 +127,6 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         uint8 vulnerabilityScore,
         bytes2 ipObfuscated,
         bytes10 cidObfuscated,
-        bytes32 contentHash,
         bytes calldata nodeSignature
     ) external returns (uint256 index, address node) {
         if (testMode > uint8(TestMode.CONTINUOUS)) {
@@ -146,8 +141,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
             nodeCount,
             vulnerabilityScore,
             ipObfuscated,
-            cidObfuscated,
-            contentHash
+            cidObfuscated
         );
 
         node = ECDSA.recover(digest.toEthSignedMessageHash(), nodeSignature);
@@ -168,8 +162,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
             vulnerabilityScore: vulnerabilityScore,
             testMode: testMode,
             ipObfuscated: ipObfuscated,
-            cidObfuscated: cidObfuscated,
-            contentHash: contentHash
+            cidObfuscated: cidObfuscated
         });
 
         redmeshAttestations.push(attestation);
@@ -183,7 +176,6 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
             vulnerabilityScore,
             ipObfuscated,
             cidObfuscated,
-            contentHash,
             msg.sender
         );
     }

@@ -16,7 +16,6 @@ describe("AttestationRegistry", function () {
   const VULNERABILITY_SCORE = 74;
   const IP_OBFUSCATED = "0x863a"; // 134..58
   const CID_OBFUSCATED = "0x61626364657576777879"; // abcdeuvwxy
-  const CONTENT_HASH = ethers.keccak256(ethers.toUtf8Bytes("cid:bafybeigdyr"));
 
   async function deployRegistry(): Promise<AttestationRegistry> {
     const factory = await ethers.getContractFactory("AttestationRegistry");
@@ -34,11 +33,10 @@ describe("AttestationRegistry", function () {
     nodeCount: number,
     vulnerabilityScore: number,
     ipObfuscated: string,
-    cidObfuscated: string,
-    contentHash: string
+    cidObfuscated: string
   ): string {
     return ethers.solidityPackedKeccak256(
-      ["bytes32", "uint8", "uint16", "uint8", "bytes2", "bytes10", "bytes32"],
+      ["bytes32", "uint8", "uint16", "uint8", "bytes2", "bytes10"],
       [
         DOMAIN,
         testMode,
@@ -46,7 +44,6 @@ describe("AttestationRegistry", function () {
         vulnerabilityScore,
         ipObfuscated,
         cidObfuscated,
-        contentHash,
       ]
     );
   }
@@ -57,16 +54,14 @@ describe("AttestationRegistry", function () {
     nodeCount = NODE_COUNT,
     vulnerabilityScore = VULNERABILITY_SCORE,
     ipObfuscated = IP_OBFUSCATED,
-    cidObfuscated = CID_OBFUSCATED,
-    contentHash = CONTENT_HASH
+    cidObfuscated = CID_OBFUSCATED
   ): Promise<string> {
     const digest = buildDigest(
       testMode,
       nodeCount,
       vulnerabilityScore,
       ipObfuscated,
-      cidObfuscated,
-      contentHash
+      cidObfuscated
     );
     return signer.signMessage(ethers.getBytes(digest));
   }
@@ -86,8 +81,7 @@ describe("AttestationRegistry", function () {
       NODE_COUNT,
       VULNERABILITY_SCORE,
       IP_OBFUSCATED,
-      CID_OBFUSCATED,
-      CONTENT_HASH
+      CID_OBFUSCATED
     );
     expect(
       await registry.getRedmeshAttestationDigest(
@@ -95,8 +89,7 @@ describe("AttestationRegistry", function () {
         NODE_COUNT,
         VULNERABILITY_SCORE,
         IP_OBFUSCATED,
-        CID_OBFUSCATED,
-        CONTENT_HASH
+        CID_OBFUSCATED
       )
     ).to.equal(expectedDigest);
 
@@ -109,7 +102,6 @@ describe("AttestationRegistry", function () {
           VULNERABILITY_SCORE,
           IP_OBFUSCATED,
           CID_OBFUSCATED,
-          CONTENT_HASH,
           signature
         )
     )
@@ -122,7 +114,6 @@ describe("AttestationRegistry", function () {
         VULNERABILITY_SCORE,
         IP_OBFUSCATED,
         CID_OBFUSCATED,
-        CONTENT_HASH,
         relayer.address
       );
 
@@ -134,7 +125,6 @@ describe("AttestationRegistry", function () {
     expect(attestation.testMode).to.equal(TEST_MODE_SINGLE);
     expect(attestation.ipObfuscated).to.equal(IP_OBFUSCATED);
     expect(attestation.cidObfuscated).to.equal(CID_OBFUSCATED);
-    expect(attestation.contentHash).to.equal(CONTENT_HASH);
   });
 
   it("reverts when vulnerability score exceeds 100", async function () {
@@ -144,8 +134,7 @@ describe("AttestationRegistry", function () {
       NODE_COUNT,
       101,
       IP_OBFUSCATED,
-      CID_OBFUSCATED,
-      CONTENT_HASH
+      CID_OBFUSCATED
     );
 
     await expect(
@@ -155,7 +144,6 @@ describe("AttestationRegistry", function () {
         101,
         IP_OBFUSCATED,
         CID_OBFUSCATED,
-        CONTENT_HASH,
         signature
       )
     ).to.be.revertedWithCustomError(registry, "InvalidVulnerabilityScore");
@@ -172,7 +160,6 @@ describe("AttestationRegistry", function () {
         VULNERABILITY_SCORE,
         IP_OBFUSCATED,
         CID_OBFUSCATED,
-        CONTENT_HASH,
         signature
       )
     )
@@ -191,7 +178,6 @@ describe("AttestationRegistry", function () {
       VULNERABILITY_SCORE,
       IP_OBFUSCATED,
       CID_OBFUSCATED,
-      CONTENT_HASH,
       signature
     );
     await registry.submitRedmeshAttestation(
@@ -200,7 +186,6 @@ describe("AttestationRegistry", function () {
       VULNERABILITY_SCORE,
       IP_OBFUSCATED,
       CID_OBFUSCATED,
-      CONTENT_HASH,
       signature
     );
 
