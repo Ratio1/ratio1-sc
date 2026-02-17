@@ -11,7 +11,6 @@ async function main() {
     [
       SAFE_ADDR, // newOwner
       POAI_MANAGER_ADDR, // poaiManager
-      false, // nodeWhitelistEnforced
     ],
     { initializer: "initialize" }
   );

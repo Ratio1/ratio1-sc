@@ -21,7 +21,7 @@ describe("AttestationRegistry", function () {
     const factory = await ethers.getContractFactory("AttestationRegistry");
     const contract = await upgrades.deployProxy(
       factory,
-      [owner.address, owner.address, false],
+      [owner.address, owner.address],
       { initializer: "initialize" }
     );
     await contract.waitForDeployment();
@@ -72,9 +72,6 @@ describe("AttestationRegistry", function () {
   });
 
   it("stores attestation using recovered node signer even when tx sender differs", async function () {
-    await registry.connect(owner).setNodeWhitelistEnforced(true);
-    await registry.connect(owner).setNodeAllowed(nodeSigner.address, true);
-
     const signature = await signAttestation(nodeSigner);
     const expectedDigest = buildDigest(
       TEST_MODE_SINGLE,
@@ -149,28 +146,7 @@ describe("AttestationRegistry", function () {
     ).to.be.revertedWithCustomError(registry, "InvalidVulnerabilityScore");
   });
 
-  it("enforces node whitelist when enabled", async function () {
-    await registry.connect(owner).setNodeWhitelistEnforced(true);
-    const signature = await signAttestation(nodeSigner);
-
-    await expect(
-      registry.submitRedmeshAttestation(
-        TEST_MODE_SINGLE,
-        NODE_COUNT,
-        VULNERABILITY_SCORE,
-        IP_OBFUSCATED,
-        CID_OBFUSCATED,
-        signature
-      )
-    )
-      .to.be.revertedWithCustomError(registry, "NodeNotAllowed")
-      .withArgs(nodeSigner.address);
-  });
-
   it("accepts duplicate attestations (no uniqueness enforcement)", async function () {
-    await registry.connect(owner).setNodeWhitelistEnforced(true);
-    await registry.connect(owner).setNodeAllowed(nodeSigner.address, true);
-
     const signature = await signAttestation(nodeSigner);
     await registry.submitRedmeshAttestation(
       TEST_MODE_SINGLE,
@@ -192,17 +168,9 @@ describe("AttestationRegistry", function () {
     expect(await registry.getRedmeshAttestationCount()).to.equal(2);
   });
 
-  it("only owner can manage PoAI manager and node whitelist settings", async function () {
+  it("only owner can manage PoAI manager", async function () {
     await expect(
       registry.connect(other).setPoaiManager(other.address)
-    ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
-
-    await expect(
-      registry.connect(other).setNodeWhitelistEnforced(true)
-    ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
-
-    await expect(
-      registry.connect(other).setNodeAllowed(nodeSigner.address, true)
     ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
 
     await registry.connect(owner).setPoaiManager(other.address);

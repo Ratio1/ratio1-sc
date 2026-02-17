@@ -31,11 +31,8 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
     error InvalidTestMode();
     error InvalidVulnerabilityScore();
     error InvalidNodeSignature();
-    error NodeNotAllowed(address node);
 
     event PoaiManagerUpdated(address indexed oldPoaiManager, address indexed newPoaiManager);
-    event NodeWhitelistEnforcementUpdated(bool enabled);
-    event NodeAllowed(address indexed node, bool isAllowed);
     event RedmeshAttestationStored(
         uint256 indexed index,
         address indexed node,
@@ -48,15 +45,11 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
     );
 
     address public poaiManager;
-    bool public nodeWhitelistEnforced;
-
-    mapping(address => bool) public allowedNodes;
     RedmeshAttestation[] private redmeshAttestations;
 
     function initialize(
         address newOwner,
-        address poaiManager_,
-        bool nodeWhitelistEnforced_
+        address poaiManager_
     ) public initializer {
         if (newOwner == address(0)) {
             revert InvalidNodeAddress();
@@ -66,7 +59,6 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         }
         __Ownable_init(newOwner);
         poaiManager = poaiManager_;
-        nodeWhitelistEnforced = nodeWhitelistEnforced_;
     }
 
     function setPoaiManager(address poaiManager_) external onlyOwner {
@@ -76,19 +68,6 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         address oldPoaiManager = poaiManager;
         poaiManager = poaiManager_;
         emit PoaiManagerUpdated(oldPoaiManager, poaiManager_);
-    }
-
-    function setNodeWhitelistEnforced(bool enabled) external onlyOwner {
-        nodeWhitelistEnforced = enabled;
-        emit NodeWhitelistEnforcementUpdated(enabled);
-    }
-
-    function setNodeAllowed(address node, bool isAllowed) external onlyOwner {
-        if (node == address(0)) {
-            revert InvalidNodeAddress();
-        }
-        allowedNodes[node] = isAllowed;
-        emit NodeAllowed(node, isAllowed);
     }
 
     function getRedmeshAttestationCount() external view returns (uint256) {
@@ -148,9 +127,6 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         if (node == address(0)) {
             revert InvalidNodeSignature();
         }
-        if (nodeWhitelistEnforced && !allowedNodes[node]) {
-            revert NodeNotAllowed(node);
-        }
 
         // TODO: when external job references are added back to RedMesh
         // attestations, verify `node` is active for that job in PoAIManager
@@ -179,6 +155,4 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
             msg.sender
         );
     }
-
-    uint256[44] private __gap;
 }
