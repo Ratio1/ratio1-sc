@@ -44,6 +44,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
 
     address public poaiManager;
     RedmeshAttestation[] private redmeshAttestations;
+    mapping(address => uint256[]) private tenantToRedmeshAttestationIndexes;
 
     function initialize(
         address newOwner,
@@ -61,6 +62,12 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
 
     function getRedmeshAttestationCount() external view returns (uint256) {
         return redmeshAttestations.length;
+    }
+
+    function getTenantRedmeshAttestationIndexCount(
+        address tenant
+    ) external view returns (uint256) {
+        return tenantToRedmeshAttestationIndexes[tenant].length;
     }
 
     function getRedmeshAttestation(
@@ -93,6 +100,37 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         } else {
             for (uint256 i = 0; i < count; i++) {
                 page[i] = redmeshAttestations[offset + i];
+            }
+        }
+        return page;
+    }
+
+    function getTenantRedmeshAttestationIndexes(
+        address tenant,
+        uint256 offset,
+        uint256 limit,
+        bool latestFirst
+    ) external view returns (uint256[] memory) {
+        uint256[] storage tenantIndexes = tenantToRedmeshAttestationIndexes[tenant];
+        uint256 total = tenantIndexes.length;
+        if (offset >= total || limit == 0) {
+            return new uint256[](0);
+        }
+
+        uint256 count = total - offset;
+        if (limit < count) {
+            count = limit;
+        }
+
+        uint256[] memory page = new uint256[](count);
+        if (latestFirst) {
+            uint256 start = total - 1 - offset;
+            for (uint256 i = 0; i < count; i++) {
+                page[i] = tenantIndexes[start - i];
+            }
+        } else {
+            for (uint256 i = 0; i < count; i++) {
+                page[i] = tenantIndexes[offset + i];
             }
         }
         return page;
@@ -161,6 +199,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
 
         redmeshAttestations.push(attestation);
         index = redmeshAttestations.length - 1;
+        tenantToRedmeshAttestationIndexes[msg.sender].push(index);
 
         emit RedmeshAttestationStored(
             index,

@@ -227,6 +227,61 @@ describe("AttestationRegistry", function () {
     expect(empty.length).to.equal(0);
   });
 
+  it("tracks tenant attestation indexes by submitter wallet", async function () {
+    const sig10 = await signAttestation(nodeSigner, TEST_MODE_SINGLE, NODE_COUNT, 10);
+    const sig20 = await signAttestation(nodeSigner, TEST_MODE_SINGLE, NODE_COUNT, 20);
+    const sig30 = await signAttestation(nodeSigner, TEST_MODE_SINGLE, NODE_COUNT, 30);
+
+    await registry.connect(relayer).submitRedmeshAttestation(
+      TEST_MODE_SINGLE,
+      NODE_COUNT,
+      10,
+      IP_OBFUSCATED,
+      CID_OBFUSCATED,
+      sig10
+    );
+    await registry.connect(owner).submitRedmeshAttestation(
+      TEST_MODE_SINGLE,
+      NODE_COUNT,
+      20,
+      IP_OBFUSCATED,
+      CID_OBFUSCATED,
+      sig20
+    );
+    await registry.connect(relayer).submitRedmeshAttestation(
+      TEST_MODE_SINGLE,
+      NODE_COUNT,
+      30,
+      IP_OBFUSCATED,
+      CID_OBFUSCATED,
+      sig30
+    );
+
+    expect(await registry.getTenantRedmeshAttestationIndexCount(relayer.address)).to.equal(2);
+    expect(await registry.getTenantRedmeshAttestationIndexCount(owner.address)).to.equal(1);
+    expect(await registry.getTenantRedmeshAttestationIndexCount(other.address)).to.equal(0);
+
+    const relayerForward = await registry.getTenantRedmeshAttestationIndexes(
+      relayer.address,
+      0,
+      10,
+      false
+    );
+    expect(relayerForward.length).to.equal(2);
+    expect(relayerForward[0]).to.equal(0);
+    expect(relayerForward[1]).to.equal(2);
+
+    const relayerReverse = await registry.getTenantRedmeshAttestationIndexes(
+      relayer.address,
+      0,
+      10,
+      true
+    );
+    expect(relayerReverse.length).to.equal(2);
+    expect(relayerReverse[0]).to.equal(2);
+    expect(relayerReverse[1]).to.equal(0);
+  });
+
   it("reverts initialize for zero addresses", async function () {
     const factory = await ethers.getContractFactory("AttestationRegistry");
     await expect(
