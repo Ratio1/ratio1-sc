@@ -147,6 +147,42 @@ describe("AttestationRegistry", function () {
     ).to.be.revertedWithCustomError(registry, "InvalidVulnerabilityScore");
   });
 
+  it("reverts when test mode is out of range", async function () {
+    const invalidTestMode = 2;
+    const signature = await signAttestation(
+      nodeSigner,
+      invalidTestMode,
+      NODE_COUNT,
+      VULNERABILITY_SCORE,
+      IP_OBFUSCATED,
+      CID_OBFUSCATED
+    );
+
+    await expect(
+      registry.submitRedmeshAttestation(
+        invalidTestMode,
+        NODE_COUNT,
+        VULNERABILITY_SCORE,
+        IP_OBFUSCATED,
+        CID_OBFUSCATED,
+        signature
+      )
+    ).to.be.revertedWithCustomError(registry, "InvalidTestMode");
+  });
+
+  it("reverts when node signature is malformed", async function () {
+    await expect(
+      registry.submitRedmeshAttestation(
+        TEST_MODE_SINGLE,
+        NODE_COUNT,
+        VULNERABILITY_SCORE,
+        IP_OBFUSCATED,
+        CID_OBFUSCATED,
+        "0x1234"
+      )
+    ).to.be.reverted;
+  });
+
   it("accepts duplicate attestations (no uniqueness enforcement)", async function () {
     const signature = await signAttestation(nodeSigner);
     await registry.submitRedmeshAttestation(

@@ -30,7 +30,6 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
     error InvalidAddress();
     error InvalidTestMode();
     error InvalidVulnerabilityScore();
-    error InvalidNodeSignature();
     error AttestationIndexOverflow();
 
     event RedmeshAttestationStored(
@@ -47,6 +46,11 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
     address public poaiManager;
     RedmeshAttestation[] private redmeshAttestations;
     mapping(address => uint32[]) private tenantToRedmeshAttestationIndexes;
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
 
     function initialize(
         address newOwner,
@@ -184,9 +188,6 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         );
 
         node = ECDSA.recover(digest.toEthSignedMessageHash(), nodeSignature);
-        if (node == address(0)) {
-            revert InvalidNodeSignature();
-        }
 
         // TODO: when external job references are added back to RedMesh
         // attestations, verify `node` is active for that job in PoAIManager
