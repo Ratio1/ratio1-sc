@@ -122,6 +122,7 @@ describe("AttestationRegistry", function () {
     expect(attestation.testMode).to.equal(TEST_MODE_SINGLE);
     expect(attestation.ipObfuscated).to.equal(IP_OBFUSCATED);
     expect(attestation.cidObfuscated).to.equal(CID_OBFUSCATED);
+    expect(attestation.tenant).to.equal(relayer.address);
   });
 
   it("reverts when vulnerability score exceeds 100", async function () {
@@ -280,6 +281,9 @@ describe("AttestationRegistry", function () {
     expect(relayerReverse.length).to.equal(2);
     expect(relayerReverse[0]).to.equal(2);
     expect(relayerReverse[1]).to.equal(0);
+
+    const ownerAttestation = await registry.getRedmeshAttestation(1);
+    expect(ownerAttestation.tenant).to.equal(owner.address);
   });
 
   it("reverts initialize for zero addresses", async function () {

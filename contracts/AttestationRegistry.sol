@@ -24,6 +24,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         uint8 testMode;
         bytes2 ipObfuscated;
         bytes10 cidObfuscated;
+        address tenant;
     }
 
     error InvalidAddress();
@@ -39,7 +40,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         uint8 vulnerabilityScore,
         bytes2 ipObfuscated,
         bytes10 cidObfuscated,
-        address submitter
+        address indexed submitter
     );
 
     address public poaiManager;
@@ -111,7 +112,9 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         uint256 limit,
         bool latestFirst
     ) external view returns (uint256[] memory) {
-        uint256[] storage tenantIndexes = tenantToRedmeshAttestationIndexes[tenant];
+        uint256[] storage tenantIndexes = tenantToRedmeshAttestationIndexes[
+            tenant
+        ];
         uint256 total = tenantIndexes.length;
         if (offset >= total || limit == 0) {
             return new uint256[](0);
@@ -194,7 +197,8 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
             vulnerabilityScore: vulnerabilityScore,
             testMode: testMode,
             ipObfuscated: ipObfuscated,
-            cidObfuscated: cidObfuscated
+            cidObfuscated: cidObfuscated,
+            tenant: msg.sender
         });
 
         redmeshAttestations.push(attestation);
