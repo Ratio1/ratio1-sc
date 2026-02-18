@@ -31,6 +31,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
     error InvalidTestMode();
     error InvalidVulnerabilityScore();
     error InvalidNodeSignature();
+    error AttestationIndexOverflow();
 
     event RedmeshAttestationStored(
         uint256 indexed index,
@@ -45,7 +46,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
 
     address public poaiManager;
     RedmeshAttestation[] private redmeshAttestations;
-    mapping(address => uint256[]) private tenantToRedmeshAttestationIndexes;
+    mapping(address => uint32[]) private tenantToRedmeshAttestationIndexes;
 
     function initialize(
         address newOwner,
@@ -112,7 +113,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         uint256 limit,
         bool latestFirst
     ) external view returns (uint256[] memory) {
-        uint256[] storage tenantIndexes = tenantToRedmeshAttestationIndexes[
+        uint32[] storage tenantIndexes = tenantToRedmeshAttestationIndexes[
             tenant
         ];
         uint256 total = tenantIndexes.length;
@@ -129,11 +130,11 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         if (latestFirst) {
             uint256 start = total - 1 - offset;
             for (uint256 i = 0; i < count; i++) {
-                page[i] = tenantIndexes[start - i];
+                page[i] = uint256(tenantIndexes[start - i]);
             }
         } else {
             for (uint256 i = 0; i < count; i++) {
-                page[i] = tenantIndexes[offset + i];
+                page[i] = uint256(tenantIndexes[offset + i]);
             }
         }
         return page;
@@ -203,7 +204,10 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
 
         redmeshAttestations.push(attestation);
         index = redmeshAttestations.length - 1;
-        tenantToRedmeshAttestationIndexes[msg.sender].push(index);
+        if (index > type(uint32).max) {
+            revert AttestationIndexOverflow();
+        }
+        tenantToRedmeshAttestationIndexes[msg.sender].push(uint32(index));
 
         emit RedmeshAttestationStored(
             index,
