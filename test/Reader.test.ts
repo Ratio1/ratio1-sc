@@ -1202,16 +1202,19 @@ describe("Reader contract", function () {
       return { escrowAddress };
     }
 
-    it("filters jobs by epoch delta", async function () {
+    it("filters running jobs by epochs until lastExecutionEpoch", async function () {
       await setupEscrowWithJobs();
 
       await setTimestampAndMine(START_EPOCH_TIMESTAMP + ONE_DAY_IN_SECS * 31);
 
       const deltaOne = await reader.getJobsByLastExecutionEpochDelta(1);
-      expect(deltaOne.map((job) => job.id)).to.deep.equal([1n]);
+      expect(deltaOne.map((job) => job.id)).to.deep.equal([]);
 
       const deltaZero = await reader.getJobsByLastExecutionEpochDelta(0);
       expect(deltaZero.map((job) => job.id)).to.deep.equal([2n]);
+
+      const deltaNine = await reader.getJobsByLastExecutionEpochDelta(9);
+      expect(deltaNine.map((job) => job.id)).to.deep.equal([3n]);
     });
 
     it("returns empty array when no jobs match", async function () {
