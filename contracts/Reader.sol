@@ -529,8 +529,8 @@ contract Reader is Initializable {
         for (uint256 i = 0; i < jobs.length; i++) {
             uint256 lastExecutionEpoch = jobs[i].lastExecutionEpoch;
             if (
-                lastExecutionEpoch <= currentEpoch &&
-                currentEpoch - lastExecutionEpoch == epochDelta
+                lastExecutionEpoch >= currentEpoch &&
+                lastExecutionEpoch - currentEpoch == epochDelta
             ) {
                 count++;
             }
@@ -541,8 +541,8 @@ contract Reader is Initializable {
         for (uint256 i = 0; i < jobs.length; i++) {
             uint256 lastExecutionEpoch = jobs[i].lastExecutionEpoch;
             if (
-                lastExecutionEpoch <= currentEpoch &&
-                currentEpoch - lastExecutionEpoch == epochDelta
+                lastExecutionEpoch >= currentEpoch &&
+                lastExecutionEpoch - currentEpoch == epochDelta
             ) {
                 filtered[index] = jobs[i];
                 index++;
