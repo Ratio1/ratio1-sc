@@ -44,6 +44,16 @@
       "address": "0x7839b6A5607F90aCC17ca8042DA795131f2ab046",
       "txHash": "0x6f07f833e89eccffcef089b5da5cb7eaac8c3da1607574237cf1b37fc2ccf528",
       "kind": "transparent"
+    },
+    {
+      "address": "0xEab62D4493B55da969ce612153c4eC9EBa3668b3",
+      "txHash": "0x33e73b021bc23e42b029b5255ce9a072cf92e2360e78d06003af033f6c9c186f",
+      "kind": "transparent"
+    },
+    {
+      "address": "0x0602d03E7d4646E9b22F633D8751F03502b17861",
+      "txHash": "0x4a73e269873f4eefa85d57833a9369343ab525a91b40ac56058266c4e25bbd10",
+      "kind": "transparent"
     }
   ],
   "impls": {
@@ -15749,6 +15759,193 @@
           }
         },
         "namespaces": {
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
+      }
+    },
+    "661b4468d487a5cb729002fb6e91898ab369f8490b663671ffa68cc0082f39c4": {
+      "address": "0x556034b22767161C1F9CE5990EC50F47d2705eb3",
+      "txHash": "0x7aa540563851b843ef2508fc58a1640fc3198026754e0e3147a6e353b5ccca96",
+      "layout": {
+        "solcVersion": "0.8.22",
+        "storage": [
+          {
+            "label": "poaiManager",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_address",
+            "contract": "AttestationRegistry",
+            "src": "contracts/AttestationRegistry.sol:46"
+          },
+          {
+            "label": "redmeshAttestations",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_struct(RedmeshAttestation)6995_storage)dyn_storage",
+            "contract": "AttestationRegistry",
+            "src": "contracts/AttestationRegistry.sol:47"
+          },
+          {
+            "label": "tenantToRedmeshAttestationIndexes",
+            "offset": 0,
+            "slot": "2",
+            "type": "t_mapping(t_address,t_array(t_uint32)dyn_storage)",
+            "contract": "AttestationRegistry",
+            "src": "contracts/AttestationRegistry.sol:48"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_struct(InitializableStorage)73_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(OwnableStorage)13_storage": {
+            "label": "struct OwnableUpgradeable.OwnableStorage",
+            "members": [
+              {
+                "label": "_owner",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_array(t_struct(RedmeshAttestation)6995_storage)dyn_storage": {
+            "label": "struct AttestationRegistry.RedmeshAttestation[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint32)dyn_storage": {
+            "label": "uint32[]",
+            "numberOfBytes": "32"
+          },
+          "t_bytes10": {
+            "label": "bytes10",
+            "numberOfBytes": "10"
+          },
+          "t_bytes2": {
+            "label": "bytes2",
+            "numberOfBytes": "2"
+          },
+          "t_mapping(t_address,t_array(t_uint32)dyn_storage)": {
+            "label": "mapping(address => uint32[])",
+            "numberOfBytes": "32"
+          },
+          "t_struct(RedmeshAttestation)6995_storage": {
+            "label": "struct AttestationRegistry.RedmeshAttestation",
+            "members": [
+              {
+                "label": "node",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "nodeCount",
+                "type": "t_uint16",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "vulnerabilityScore",
+                "type": "t_uint8",
+                "offset": 22,
+                "slot": "0"
+              },
+              {
+                "label": "testMode",
+                "type": "t_uint8",
+                "offset": 23,
+                "slot": "0"
+              },
+              {
+                "label": "ipObfuscated",
+                "type": "t_bytes2",
+                "offset": 24,
+                "slot": "0"
+              },
+              {
+                "label": "cidObfuscated",
+                "type": "t_bytes10",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "tenant",
+                "type": "t_address",
+                "offset": 10,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_uint16": {
+            "label": "uint16",
+            "numberOfBytes": "2"
+          },
+          "t_uint32": {
+            "label": "uint32",
+            "numberOfBytes": "4"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
           "erc7201:openzeppelin.storage.Initializable": [
             {
               "contract": "Initializable",
