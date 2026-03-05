@@ -14,6 +14,7 @@ describe("AttestationRegistry", function () {
   const TEST_MODE_SINGLE = 0;
   const NODE_COUNT = 3;
   const VULNERABILITY_SCORE = 74;
+  const EXECUTION_ID = "0x6a6f623030303031"; // job00001
   const IP_OBFUSCATED = "0x863a"; // 134..58
   const CID_OBFUSCATED = "0x61626364657576777879"; // abcdeuvwxy
 
@@ -32,16 +33,18 @@ describe("AttestationRegistry", function () {
     testMode: number,
     nodeCount: number,
     vulnerabilityScore: number,
+    executionId: string,
     ipObfuscated: string,
     cidObfuscated: string
   ): string {
     return ethers.solidityPackedKeccak256(
-      ["bytes32", "uint8", "uint16", "uint8", "bytes2", "bytes10"],
+      ["bytes32", "uint8", "uint16", "uint8", "bytes8", "bytes2", "bytes10"],
       [
         DOMAIN,
         testMode,
         nodeCount,
         vulnerabilityScore,
+        executionId,
         ipObfuscated,
         cidObfuscated,
       ]
@@ -53,6 +56,7 @@ describe("AttestationRegistry", function () {
     testMode = TEST_MODE_SINGLE,
     nodeCount = NODE_COUNT,
     vulnerabilityScore = VULNERABILITY_SCORE,
+    executionId = EXECUTION_ID,
     ipObfuscated = IP_OBFUSCATED,
     cidObfuscated = CID_OBFUSCATED
   ): Promise<string> {
@@ -60,6 +64,7 @@ describe("AttestationRegistry", function () {
       testMode,
       nodeCount,
       vulnerabilityScore,
+      executionId,
       ipObfuscated,
       cidObfuscated
     );
@@ -77,6 +82,7 @@ describe("AttestationRegistry", function () {
       TEST_MODE_SINGLE,
       NODE_COUNT,
       VULNERABILITY_SCORE,
+      EXECUTION_ID,
       IP_OBFUSCATED,
       CID_OBFUSCATED
     );
@@ -85,6 +91,7 @@ describe("AttestationRegistry", function () {
         TEST_MODE_SINGLE,
         NODE_COUNT,
         VULNERABILITY_SCORE,
+        EXECUTION_ID,
         IP_OBFUSCATED,
         CID_OBFUSCATED
       )
@@ -97,6 +104,7 @@ describe("AttestationRegistry", function () {
           TEST_MODE_SINGLE,
           NODE_COUNT,
           VULNERABILITY_SCORE,
+          EXECUTION_ID,
           IP_OBFUSCATED,
           CID_OBFUSCATED,
           signature
@@ -109,6 +117,7 @@ describe("AttestationRegistry", function () {
         TEST_MODE_SINGLE,
         NODE_COUNT,
         VULNERABILITY_SCORE,
+        EXECUTION_ID,
         IP_OBFUSCATED,
         CID_OBFUSCATED,
         relayer.address
@@ -120,6 +129,7 @@ describe("AttestationRegistry", function () {
     expect(attestation.nodeCount).to.equal(NODE_COUNT);
     expect(attestation.vulnerabilityScore).to.equal(VULNERABILITY_SCORE);
     expect(attestation.testMode).to.equal(TEST_MODE_SINGLE);
+    expect(attestation.executionId).to.equal(EXECUTION_ID);
     expect(attestation.ipObfuscated).to.equal(IP_OBFUSCATED);
     expect(attestation.cidObfuscated).to.equal(CID_OBFUSCATED);
     expect(attestation.tenant).to.equal(relayer.address);
@@ -131,6 +141,7 @@ describe("AttestationRegistry", function () {
       TEST_MODE_SINGLE,
       NODE_COUNT,
       101,
+      EXECUTION_ID,
       IP_OBFUSCATED,
       CID_OBFUSCATED
     );
@@ -140,6 +151,7 @@ describe("AttestationRegistry", function () {
         TEST_MODE_SINGLE,
         NODE_COUNT,
         101,
+        EXECUTION_ID,
         IP_OBFUSCATED,
         CID_OBFUSCATED,
         signature
@@ -154,6 +166,7 @@ describe("AttestationRegistry", function () {
       invalidTestMode,
       NODE_COUNT,
       VULNERABILITY_SCORE,
+      EXECUTION_ID,
       IP_OBFUSCATED,
       CID_OBFUSCATED
     );
@@ -163,6 +176,7 @@ describe("AttestationRegistry", function () {
         invalidTestMode,
         NODE_COUNT,
         VULNERABILITY_SCORE,
+        EXECUTION_ID,
         IP_OBFUSCATED,
         CID_OBFUSCATED,
         signature
@@ -176,6 +190,7 @@ describe("AttestationRegistry", function () {
         TEST_MODE_SINGLE,
         NODE_COUNT,
         VULNERABILITY_SCORE,
+        EXECUTION_ID,
         IP_OBFUSCATED,
         CID_OBFUSCATED,
         "0x1234"
@@ -189,6 +204,7 @@ describe("AttestationRegistry", function () {
       TEST_MODE_SINGLE,
       NODE_COUNT,
       VULNERABILITY_SCORE,
+      EXECUTION_ID,
       IP_OBFUSCATED,
       CID_OBFUSCATED,
       signature
@@ -197,6 +213,7 @@ describe("AttestationRegistry", function () {
       TEST_MODE_SINGLE,
       NODE_COUNT,
       VULNERABILITY_SCORE,
+      EXECUTION_ID,
       IP_OBFUSCATED,
       CID_OBFUSCATED,
       signature
@@ -229,6 +246,7 @@ describe("AttestationRegistry", function () {
       TEST_MODE_SINGLE,
       NODE_COUNT,
       10,
+      EXECUTION_ID,
       IP_OBFUSCATED,
       CID_OBFUSCATED,
       firstSig
@@ -237,6 +255,7 @@ describe("AttestationRegistry", function () {
       TEST_MODE_SINGLE,
       NODE_COUNT,
       20,
+      EXECUTION_ID,
       IP_OBFUSCATED,
       CID_OBFUSCATED,
       secondSig
@@ -245,6 +264,7 @@ describe("AttestationRegistry", function () {
       TEST_MODE_SINGLE,
       NODE_COUNT,
       30,
+      EXECUTION_ID,
       IP_OBFUSCATED,
       CID_OBFUSCATED,
       thirdSig
@@ -273,6 +293,7 @@ describe("AttestationRegistry", function () {
       TEST_MODE_SINGLE,
       NODE_COUNT,
       10,
+      EXECUTION_ID,
       IP_OBFUSCATED,
       CID_OBFUSCATED,
       sig10
@@ -281,6 +302,7 @@ describe("AttestationRegistry", function () {
       TEST_MODE_SINGLE,
       NODE_COUNT,
       20,
+      EXECUTION_ID,
       IP_OBFUSCATED,
       CID_OBFUSCATED,
       sig20
@@ -289,6 +311,7 @@ describe("AttestationRegistry", function () {
       TEST_MODE_SINGLE,
       NODE_COUNT,
       30,
+      EXECUTION_ID,
       IP_OBFUSCATED,
       CID_OBFUSCATED,
       sig30

@@ -19,12 +19,13 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
 
     struct RedmeshAttestation {
         address node;
-        uint16 nodeCount;
-        uint8 vulnerabilityScore;
-        uint8 testMode;
-        bytes2 ipObfuscated;
         bytes10 cidObfuscated;
+        bytes2 ipObfuscated;
+        bytes8 executionId;
         address tenant;
+        uint16 nodeCount;
+        uint8 testMode;
+        uint8 vulnerabilityScore;
     }
 
     error InvalidAddress();
@@ -33,11 +34,12 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
     error AttestationIndexOverflow();
 
     event RedmeshAttestationStored(
-        uint256 indexed index,
+        uint256 index,
         address indexed node,
         uint8 testMode,
         uint16 nodeCount,
         uint8 vulnerabilityScore,
+        bytes8 indexed executionId,
         bytes2 ipObfuscated,
         bytes10 cidObfuscated,
         address indexed submitter
@@ -148,6 +150,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         uint8 testMode,
         uint16 nodeCount,
         uint8 vulnerabilityScore,
+        bytes8 executionId,
         bytes2 ipObfuscated,
         bytes10 cidObfuscated
     ) public pure returns (bytes32) {
@@ -158,6 +161,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
                     testMode,
                     nodeCount,
                     vulnerabilityScore,
+                    executionId,
                     ipObfuscated,
                     cidObfuscated
                 )
@@ -168,6 +172,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         uint8 testMode,
         uint16 nodeCount,
         uint8 vulnerabilityScore,
+        bytes8 executionId,
         bytes2 ipObfuscated,
         bytes10 cidObfuscated,
         bytes calldata nodeSignature
@@ -178,47 +183,53 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         if (vulnerabilityScore > 100) {
             revert InvalidVulnerabilityScore();
         }
+        address submitter = msg.sender;
 
-        bytes32 digest = getRedmeshAttestationDigest(
-            testMode,
-            nodeCount,
-            vulnerabilityScore,
-            ipObfuscated,
-            cidObfuscated
-        );
-
-        node = ECDSA.recover(digest.toEthSignedMessageHash(), nodeSignature);
+        {
+            bytes32 digest = getRedmeshAttestationDigest(
+                testMode,
+                nodeCount,
+                vulnerabilityScore,
+                executionId,
+                ipObfuscated,
+                cidObfuscated
+            );
+            node = ECDSA.recover(digest.toEthSignedMessageHash(), nodeSignature);
+        }
 
         // TODO: when external job references are added back to RedMesh
         // attestations, verify `node` is active for that job in PoAIManager
         // before storing.
 
-        RedmeshAttestation memory attestation = RedmeshAttestation({
-            node: node,
-            nodeCount: nodeCount,
-            vulnerabilityScore: vulnerabilityScore,
-            testMode: testMode,
-            ipObfuscated: ipObfuscated,
-            cidObfuscated: cidObfuscated,
-            tenant: msg.sender
-        });
-
-        redmeshAttestations.push(attestation);
+        redmeshAttestations.push(
+            RedmeshAttestation({
+                node: node,
+                cidObfuscated: cidObfuscated,
+                ipObfuscated: ipObfuscated,
+                executionId: executionId,
+                tenant: submitter,
+                nodeCount: nodeCount,
+                testMode: testMode,
+                vulnerabilityScore: vulnerabilityScore
+            })
+        );
         index = redmeshAttestations.length - 1;
         if (index > type(uint32).max) {
             revert AttestationIndexOverflow();
         }
-        tenantToRedmeshAttestationIndexes[msg.sender].push(uint32(index));
+        tenantToRedmeshAttestationIndexes[submitter].push(uint32(index));
+        RedmeshAttestation storage stored = redmeshAttestations[index];
 
         emit RedmeshAttestationStored(
             index,
             node,
-            testMode,
-            nodeCount,
-            vulnerabilityScore,
-            ipObfuscated,
-            cidObfuscated,
-            msg.sender
+            stored.testMode,
+            stored.nodeCount,
+            stored.vulnerabilityScore,
+            stored.executionId,
+            stored.ipObfuscated,
+            stored.cidObfuscated,
+            submitter
         );
     }
 }
