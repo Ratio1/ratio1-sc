@@ -100,8 +100,6 @@ async function main() {
 
   const safeTransactions: SafeTransaction[] = [];
 
-  let proxyAdminAddress: string | undefined;
-
   for (const target of targets) {
     const targetAddress = ethers.getAddress(target.target);
     console.log(`----------------------------------------------------`);
@@ -117,11 +115,10 @@ async function main() {
     let safeTx: SafeTransaction;
 
     if (target.kind === "proxy") {
-      if (!proxyAdminAddress) {
-        proxyAdminAddress = await upgrades.erc1967.getAdminAddress(
-          targetAddress
-        );
-      }
+      const proxyAdminAddress = await upgrades.erc1967.getAdminAddress(
+        targetAddress
+      );
+      console.log(`Proxy admin: ${proxyAdminAddress}`);
 
       previousImplementation = await upgrades.erc1967.getImplementationAddress(
         targetAddress
@@ -156,7 +153,7 @@ async function main() {
       ]);
 
       safeTx = {
-        to: proxyAdminAddress!,
+        to: proxyAdminAddress,
         value: "0",
         data,
         contractMethod: {
