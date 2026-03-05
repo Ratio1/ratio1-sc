@@ -137,12 +137,10 @@
     },
     {
       "address": "0x428ca2fb6e543B5c159d1e6a124B615AeA15f497",
-      "txHash": "0x2aed4817d168694e253b03c9b95dddfd649bba642bb50a4f8b1e132705ead292",
       "kind": "transparent"
     },
     {
       "address": "0x6AEE4B13904B4cbeaCc8e9bBE8e25ed399C3ba69",
-      "txHash": "0x6d4e0adadd8fa07a2b6f9cb6a9ec1e92c91f66f2279718347417b2ca78874403",
       "kind": "transparent"
     }
   ],
@@ -37366,9 +37364,8 @@
         }
       }
     },
-    "661b4468d487a5cb729002fb6e91898ab369f8490b663671ffa68cc0082f39c4": {
+    "72abb8d0f724337383325d81d7a102e823139175f60a7615f19e8344241484eb": {
       "address": "0x6Be44b6939008D8652A1b0d9686eAfB5B028d5df",
-      "txHash": "0x10857f739888b0d43c56174f65204f3cea141c7245a0c1af0bc01c8dd2a1d2c2",
       "layout": {
         "solcVersion": "0.8.22",
         "storage": [
@@ -37378,23 +37375,39 @@
             "slot": "0",
             "type": "t_address",
             "contract": "AttestationRegistry",
-            "src": "contracts/AttestationRegistry.sol:46"
+            "src": "contracts/AttestationRegistry.sol:68"
           },
           {
-            "label": "redmeshAttestations",
+            "label": "redmeshTestAttestations",
             "offset": 0,
             "slot": "1",
-            "type": "t_array(t_struct(RedmeshAttestation)19928_storage)dyn_storage",
+            "type": "t_array(t_struct(RedmeshTestAttestation)5964_storage)dyn_storage",
             "contract": "AttestationRegistry",
-            "src": "contracts/AttestationRegistry.sol:47"
+            "src": "contracts/AttestationRegistry.sol:69"
           },
           {
-            "label": "tenantToRedmeshAttestationIndexes",
+            "label": "tenantToRedmeshTestAttestationIndexes",
             "offset": 0,
             "slot": "2",
             "type": "t_mapping(t_address,t_array(t_uint32)dyn_storage)",
             "contract": "AttestationRegistry",
-            "src": "contracts/AttestationRegistry.sol:48"
+            "src": "contracts/AttestationRegistry.sol:70"
+          },
+          {
+            "label": "redmeshJobStartAttestations",
+            "offset": 0,
+            "slot": "3",
+            "type": "t_array(t_struct(RedmeshJobStartAttestation)5979_storage)dyn_storage",
+            "contract": "AttestationRegistry",
+            "src": "contracts/AttestationRegistry.sol:71"
+          },
+          {
+            "label": "tenantToRedmeshJobStartAttestationIndexes",
+            "offset": 0,
+            "slot": "4",
+            "type": "t_mapping(t_address,t_array(t_uint32)dyn_storage)",
+            "contract": "AttestationRegistry",
+            "src": "contracts/AttestationRegistry.sol:72"
           }
         ],
         "types": {
@@ -37440,8 +37453,12 @@
             "label": "uint64",
             "numberOfBytes": "8"
           },
-          "t_array(t_struct(RedmeshAttestation)19928_storage)dyn_storage": {
-            "label": "struct AttestationRegistry.RedmeshAttestation[]",
+          "t_array(t_struct(RedmeshJobStartAttestation)5979_storage)dyn_storage": {
+            "label": "struct AttestationRegistry.RedmeshJobStartAttestation[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_struct(RedmeshTestAttestation)5964_storage)dyn_storage": {
+            "label": "struct AttestationRegistry.RedmeshTestAttestation[]",
             "numberOfBytes": "32"
           },
           "t_array(t_uint32)dyn_storage": {
@@ -37456,12 +37473,20 @@
             "label": "bytes2",
             "numberOfBytes": "2"
           },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_bytes8": {
+            "label": "bytes8",
+            "numberOfBytes": "8"
+          },
           "t_mapping(t_address,t_array(t_uint32)dyn_storage)": {
             "label": "mapping(address => uint32[])",
             "numberOfBytes": "32"
           },
-          "t_struct(RedmeshAttestation)19928_storage": {
-            "label": "struct AttestationRegistry.RedmeshAttestation",
+          "t_struct(RedmeshJobStartAttestation)5979_storage": {
+            "label": "struct AttestationRegistry.RedmeshJobStartAttestation",
             "members": [
               {
                 "label": "node",
@@ -37470,39 +37495,93 @@
                 "slot": "0"
               },
               {
-                "label": "nodeCount",
-                "type": "t_uint16",
+                "label": "ipObfuscated",
+                "type": "t_bytes2",
                 "offset": 20,
                 "slot": "0"
               },
               {
-                "label": "vulnerabilityScore",
-                "type": "t_uint8",
+                "label": "executionId",
+                "type": "t_bytes8",
                 "offset": 22,
+                "slot": "0"
+              },
+              {
+                "label": "nodeCount",
+                "type": "t_uint16",
+                "offset": 30,
                 "slot": "0"
               },
               {
                 "label": "testMode",
                 "type": "t_uint8",
-                "offset": 23,
-                "slot": "0"
-              },
-              {
-                "label": "ipObfuscated",
-                "type": "t_bytes2",
-                "offset": 24,
-                "slot": "0"
-              },
-              {
-                "label": "cidObfuscated",
-                "type": "t_bytes10",
                 "offset": 0,
                 "slot": "1"
               },
               {
                 "label": "tenant",
                 "type": "t_address",
-                "offset": 10,
+                "offset": 1,
+                "slot": "1"
+              },
+              {
+                "label": "nodeHashes",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "2"
+              }
+            ],
+            "numberOfBytes": "96"
+          },
+          "t_struct(RedmeshTestAttestation)5964_storage": {
+            "label": "struct AttestationRegistry.RedmeshTestAttestation",
+            "members": [
+              {
+                "label": "node",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "cidObfuscated",
+                "type": "t_bytes10",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "ipObfuscated",
+                "type": "t_bytes2",
+                "offset": 30,
+                "slot": "0"
+              },
+              {
+                "label": "executionId",
+                "type": "t_bytes8",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "tenant",
+                "type": "t_address",
+                "offset": 8,
+                "slot": "1"
+              },
+              {
+                "label": "nodeCount",
+                "type": "t_uint16",
+                "offset": 28,
+                "slot": "1"
+              },
+              {
+                "label": "testMode",
+                "type": "t_uint8",
+                "offset": 30,
+                "slot": "1"
+              },
+              {
+                "label": "vulnerabilityScore",
+                "type": "t_uint8",
+                "offset": 31,
                 "slot": "1"
               }
             ],
@@ -37551,7 +37630,10 @@
             }
           ]
         }
-      }
+      },
+      "allAddresses": [
+        "0x6Be44b6939008D8652A1b0d9686eAfB5B028d5df"
+      ]
     }
   }
 }
