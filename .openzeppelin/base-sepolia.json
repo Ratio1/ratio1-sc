@@ -36107,7 +36107,7 @@
             "label": "r1Token",
             "offset": 0,
             "slot": "0",
-            "type": "t_contract(IERC20)474",
+            "type": "t_contract(IERC20)3990",
             "contract": "GratitudeBurn",
             "src": "contracts/GratitudeBurn.sol:23"
           },
@@ -36115,7 +36115,7 @@
             "label": "burnerContract",
             "offset": 0,
             "slot": "1",
-            "type": "t_contract(IBurnContract)485",
+            "type": "t_contract(IBurnContract)24018",
             "contract": "GratitudeBurn",
             "src": "contracts/GratitudeBurn.sol:24"
           },
@@ -36123,7 +36123,7 @@
             "label": "apps",
             "offset": 0,
             "slot": "2",
-            "type": "t_mapping(t_bytes32,t_struct(App)505_storage)",
+            "type": "t_mapping(t_bytes32,t_struct(App)24038_storage)",
             "contract": "GratitudeBurn",
             "src": "contracts/GratitudeBurn.sol:26"
           },
@@ -36213,7 +36213,7 @@
             "label": "bool",
             "numberOfBytes": "1"
           },
-          "t_struct(InitializableStorage)7_storage": {
+          "t_struct(InitializableStorage)73_storage": {
             "label": "struct Initializable.InitializableStorage",
             "members": [
               {
@@ -36231,7 +36231,7 @@
             ],
             "numberOfBytes": "32"
           },
-          "t_struct(ReentrancyGuardStorage)69_storage": {
+          "t_struct(ReentrancyGuardStorage)775_storage": {
             "label": "struct ReentrancyGuardUpgradeable.ReentrancyGuardStorage",
             "members": [
               {
@@ -36271,11 +36271,11 @@
             "label": "bytes32",
             "numberOfBytes": "32"
           },
-          "t_contract(IBurnContract)485": {
+          "t_contract(IBurnContract)24018": {
             "label": "contract IBurnContract",
             "numberOfBytes": "20"
           },
-          "t_contract(IERC20)474": {
+          "t_contract(IERC20)3990": {
             "label": "contract IERC20",
             "numberOfBytes": "20"
           },
@@ -36287,7 +36287,7 @@
             "label": "mapping(address => uint256)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_bytes32,t_struct(App)505_storage)": {
+          "t_mapping(t_bytes32,t_struct(App)24038_storage)": {
             "label": "mapping(bytes32 => struct GratitudeBurn.App)",
             "numberOfBytes": "32"
           },
@@ -36299,7 +36299,7 @@
             "label": "string",
             "numberOfBytes": "32"
           },
-          "t_struct(App)505_storage": {
+          "t_struct(App)24038_storage": {
             "label": "struct GratitudeBurn.App",
             "members": [
               {
