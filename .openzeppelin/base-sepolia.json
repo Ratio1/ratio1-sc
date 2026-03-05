@@ -37384,7 +37384,7 @@
             "label": "redmeshAttestations",
             "offset": 0,
             "slot": "1",
-            "type": "t_array(t_struct(RedmeshAttestation)6995_storage)dyn_storage",
+            "type": "t_array(t_struct(RedmeshAttestation)19928_storage)dyn_storage",
             "contract": "AttestationRegistry",
             "src": "contracts/AttestationRegistry.sol:47"
           },
@@ -37440,7 +37440,7 @@
             "label": "uint64",
             "numberOfBytes": "8"
           },
-          "t_array(t_struct(RedmeshAttestation)6995_storage)dyn_storage": {
+          "t_array(t_struct(RedmeshAttestation)19928_storage)dyn_storage": {
             "label": "struct AttestationRegistry.RedmeshAttestation[]",
             "numberOfBytes": "32"
           },
@@ -37460,7 +37460,7 @@
             "label": "mapping(address => uint32[])",
             "numberOfBytes": "32"
           },
-          "t_struct(RedmeshAttestation)6995_storage": {
+          "t_struct(RedmeshAttestation)19928_storage": {
             "label": "struct AttestationRegistry.RedmeshAttestation",
             "members": [
               {
