@@ -59,7 +59,7 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         address indexed node,
         uint8 testMode,
         uint16 nodeCount,
-        bytes8 executionId,
+        bytes8 indexed executionId,
         bytes32 nodeHashes,
         bytes2 ipObfuscated,
         address indexed submitter
@@ -69,7 +69,8 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
     RedmeshTestAttestation[] private redmeshTestAttestations;
     mapping(address => uint32[]) private tenantToRedmeshTestAttestationIndexes;
     RedmeshJobStartAttestation[] private redmeshJobStartAttestations;
-    mapping(address => uint32[]) private tenantToRedmeshJobStartAttestationIndexes;
+    mapping(address => uint32[])
+        private tenantToRedmeshJobStartAttestationIndexes;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -170,7 +171,11 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         return page;
     }
 
-    function getRedmeshJobStartAttestationCount() external view returns (uint256) {
+    function getRedmeshJobStartAttestationCount()
+        external
+        view
+        returns (uint256)
+    {
         return redmeshJobStartAttestations.length;
     }
 
@@ -201,9 +206,8 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
             count = limit;
         }
 
-        RedmeshJobStartAttestation[] memory page = new RedmeshJobStartAttestation[](
-                count
-            );
+        RedmeshJobStartAttestation[]
+            memory page = new RedmeshJobStartAttestation[](count);
         if (latestFirst) {
             uint256 start = total - 1 - offset;
             for (uint256 i = 0; i < count; i++) {
@@ -223,7 +227,8 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         uint256 limit,
         bool latestFirst
     ) external view returns (uint256[] memory) {
-        uint32[] storage tenantIndexes = tenantToRedmeshJobStartAttestationIndexes[
+        uint32[]
+            storage tenantIndexes = tenantToRedmeshJobStartAttestationIndexes[
                 tenant
             ];
         uint256 total = tenantIndexes.length;
@@ -318,7 +323,10 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
                 ipObfuscated,
                 cidObfuscated
             );
-            node = ECDSA.recover(digest.toEthSignedMessageHash(), nodeSignature);
+            node = ECDSA.recover(
+                digest.toEthSignedMessageHash(),
+                nodeSignature
+            );
         }
 
         // TODO: when external job references are added back to RedMesh
@@ -378,7 +386,10 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
                 nodeHashes,
                 ipObfuscated
             );
-            node = ECDSA.recover(digest.toEthSignedMessageHash(), nodeSignature);
+            node = ECDSA.recover(
+                digest.toEthSignedMessageHash(),
+                nodeSignature
+            );
         }
 
         // TODO: when external job references are added back to RedMesh
@@ -400,7 +411,9 @@ contract AttestationRegistry is Initializable, OwnableUpgradeable {
         if (index > type(uint32).max) {
             revert AttestationIndexOverflow();
         }
-        tenantToRedmeshJobStartAttestationIndexes[submitter].push(uint32(index));
+        tenantToRedmeshJobStartAttestationIndexes[submitter].push(
+            uint32(index)
+        );
         RedmeshJobStartAttestation storage stored = redmeshJobStartAttestations[
             index
         ];
