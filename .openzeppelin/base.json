@@ -15815,14 +15815,6 @@
             "type": "t_array(t_struct(RedmeshJobStartAttestation)5979_storage)dyn_storage",
             "contract": "AttestationRegistry",
             "src": "contracts/AttestationRegistry.sol:71"
-          },
-          {
-            "label": "tenantToRedmeshJobStartAttestationIndexes",
-            "offset": 0,
-            "slot": "4",
-            "type": "t_mapping(t_address,t_array(t_uint32)dyn_storage)",
-            "contract": "AttestationRegistry",
-            "src": "contracts/AttestationRegistry.sol:72"
           }
         ],
         "types": {
