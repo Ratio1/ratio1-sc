@@ -353,6 +353,74 @@ contract CspEscrow is Initializable {
         );
     }
 
+    function extendJobsDurationBatch(
+        uint256[] calldata jobIds,
+        uint256[] calldata newLastExecutionEpochs
+    ) external onlyAllowed(PERMISSION_EXTEND_DURATION) {
+        require(jobIds.length > 0, "No jobs provided");
+        require(
+            jobIds.length == newLastExecutionEpochs.length,
+            "Array length mismatch"
+        );
+
+        uint256 currentEpoch = getCurrentEpoch();
+        uint256[] memory additionalAmounts = new uint256[](jobIds.length);
+        uint256 totalAdditionalAmount = 0;
+
+        for (uint256 i = 0; i < jobIds.length; i++) {
+            JobDetails storage job = jobDetails[jobIds[i]];
+            require(job.id != 0, "Job does not exist");
+
+            uint256 newLastExecutionEpoch = newLastExecutionEpochs[i];
+            require(
+                newLastExecutionEpoch > job.lastExecutionEpoch,
+                "New epoch must be greater"
+            );
+            require(
+                newLastExecutionEpoch > currentEpoch,
+                "New epoch must be in future"
+            );
+
+            uint256 additionalEpochs = newLastExecutionEpoch -
+                job.lastExecutionEpoch;
+            require(additionalEpochs > 0, "No additional epochs");
+
+            uint256 additionalAmount = job.pricePerEpoch *
+                job.numberOfNodesRequested *
+                additionalEpochs;
+            require(additionalAmount > 0, "No additional amount");
+
+            additionalAmounts[i] = additionalAmount;
+            totalAdditionalAmount += additionalAmount;
+        }
+
+        require(totalAdditionalAmount > 0, "No additional amount");
+        require(
+            IERC20(usdcToken).transferFrom(
+                msg.sender,
+                address(this),
+                totalAdditionalAmount
+            ),
+            "USDC transfer failed"
+        );
+
+        for (uint256 i = 0; i < jobIds.length; i++) {
+            uint256 jobId = jobIds[i];
+            uint256 newLastExecutionEpoch = newLastExecutionEpochs[i];
+            uint256 additionalAmount = additionalAmounts[i];
+            JobDetails storage job = jobDetails[jobId];
+
+            job.balance += int256(additionalAmount);
+            job.lastExecutionEpoch = newLastExecutionEpoch;
+
+            emit JobDurationExtended(
+                jobId,
+                newLastExecutionEpoch,
+                additionalAmount
+            );
+        }
+    }
+
     function extendJobNodes(
         uint256 jobId,
         uint256 newNumberOfNodesRequested
