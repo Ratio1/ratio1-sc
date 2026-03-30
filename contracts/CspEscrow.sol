@@ -461,6 +461,67 @@ contract CspEscrow is Initializable {
         );
     }
 
+    function extendJobsNodesBatch(
+        uint256[] calldata jobIds,
+        uint256[] calldata newNumberOfNodesRequested
+    ) external onlyAllowed(PERMISSION_EXTEND_NODES) {
+        require(jobIds.length > 0, "No jobs provided");
+        require(
+            jobIds.length == newNumberOfNodesRequested.length,
+            "Array length mismatch"
+        );
+
+        uint256 currentEpoch = getCurrentEpoch();
+        uint256[] memory additionalAmounts = new uint256[](jobIds.length);
+        uint256 totalAdditionalAmount = 0;
+
+        for (uint256 i = 0; i < jobIds.length; i++) {
+            JobDetails storage job = jobDetails[jobIds[i]];
+            require(job.id != 0, "Job does not exist");
+
+            uint256 newNodesCount = newNumberOfNodesRequested[i];
+            require(
+                newNodesCount > job.numberOfNodesRequested,
+                "New number of nodes must be greater"
+            );
+            require(
+                job.lastExecutionEpoch > currentEpoch,
+                "Job has already ended"
+            );
+
+            uint256 additionalNodes = newNodesCount -
+                job.numberOfNodesRequested;
+            uint256 remainingEpochs = job.lastExecutionEpoch - currentEpoch;
+            uint256 additionalAmount = job.pricePerEpoch *
+                additionalNodes *
+                remainingEpochs;
+
+            additionalAmounts[i] = additionalAmount;
+            totalAdditionalAmount += additionalAmount;
+        }
+
+        require(
+            IERC20(usdcToken).transferFrom(
+                msg.sender,
+                address(this),
+                totalAdditionalAmount
+            ),
+            "USDC transfer failed"
+        );
+
+        for (uint256 i = 0; i < jobIds.length; i++) {
+            uint256 jobId = jobIds[i];
+            uint256 newNodesCount = newNumberOfNodesRequested[i];
+            uint256 additionalAmount = additionalAmounts[i];
+            JobDetails storage job = jobDetails[jobId];
+
+            job.balance += int256(additionalAmount);
+            job.numberOfNodesRequested = newNodesCount;
+
+            emit JobNodesExtended(jobId, newNodesCount, additionalAmount);
+        }
+    }
+
     // Receive consensus-based updates from PoAI Manager
     function updateActiveNodes(
         uint256 jobId,
