@@ -1305,6 +1305,88 @@ describe("PoAIManager", function () {
     );
   });
 
+  it("should extend multiple jobs duration in a single transaction", async function () {
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+    const currentEpoch = await poaiManager.getCurrentEpoch();
+    const jobType = 1;
+    const pricePerEpoch = await cspEscrow.getPriceForJobType(jobType);
+
+    const initialEpochs = 35n;
+    const nodesJob1 = 1n;
+    const nodesJob2 = 2n;
+    const lastExecutionEpoch = currentEpoch + initialEpochs;
+
+    const initialCostJob1 = pricePerEpoch * nodesJob1 * initialEpochs;
+    const initialCostJob2 = pricePerEpoch * nodesJob2 * initialEpochs;
+    const initialTotalCost = initialCostJob1 + initialCostJob2;
+
+    await mockUsdc.mint(await user.getAddress(), initialTotalCost);
+    await mockUsdc.connect(user).approve(escrowAddress, initialTotalCost);
+
+    await cspEscrow.connect(user).createJobs([
+      {
+        jobType,
+        projectHash: ethers.keccak256(ethers.toUtf8Bytes("batch-extend-1")),
+        lastExecutionEpoch,
+        numberOfNodesRequested: nodesJob1,
+      },
+      {
+        jobType,
+        projectHash: ethers.keccak256(ethers.toUtf8Bytes("batch-extend-2")),
+        lastExecutionEpoch,
+        numberOfNodesRequested: nodesJob2,
+      },
+    ]);
+
+    const job1Before = await cspEscrow.getJobDetails(1);
+    const job2Before = await cspEscrow.getJobDetails(2);
+
+    const additionalEpochsJob1 = 10n;
+    const additionalEpochsJob2 = 15n;
+    const newLastExecutionEpochJob1 =
+      job1Before.lastExecutionEpoch + additionalEpochsJob1;
+    const newLastExecutionEpochJob2 =
+      job2Before.lastExecutionEpoch + additionalEpochsJob2;
+
+    const additionalAmountJob1 =
+      job1Before.pricePerEpoch *
+      job1Before.numberOfNodesRequested *
+      additionalEpochsJob1;
+    const additionalAmountJob2 =
+      job2Before.pricePerEpoch *
+      job2Before.numberOfNodesRequested *
+      additionalEpochsJob2;
+    const additionalTotalAmount = additionalAmountJob1 + additionalAmountJob2;
+
+    await mockUsdc.mint(await user.getAddress(), additionalTotalAmount);
+    await mockUsdc.connect(user).approve(escrowAddress, additionalTotalAmount);
+
+    await expect(
+      cspEscrow.connect(user).extendJobsDurationBatch(
+        [1n, 2n],
+        [newLastExecutionEpochJob1, newLastExecutionEpochJob2]
+      )
+    )
+      .to.emit(cspEscrow, "JobDurationExtended")
+      .withArgs(1n, newLastExecutionEpochJob1, additionalAmountJob1)
+      .and.to.emit(cspEscrow, "JobDurationExtended")
+      .withArgs(2n, newLastExecutionEpochJob2, additionalAmountJob2);
+
+    const job1After = await cspEscrow.getJobDetails(1);
+    const job2After = await cspEscrow.getJobDetails(2);
+
+    expect(job1After.lastExecutionEpoch).to.equal(newLastExecutionEpochJob1);
+    expect(job1After.balance).to.equal(job1Before.balance + additionalAmountJob1);
+    expect(job2After.lastExecutionEpoch).to.equal(newLastExecutionEpochJob2);
+    expect(job2After.balance).to.equal(job2Before.balance + additionalAmountJob2);
+    expect(await mockUsdc.balanceOf(escrowAddress)).to.equal(
+      initialTotalCost + additionalTotalAmount
+    );
+  });
+
   it("should allow CSP owner to extend job nodes with remaining epoch pricing", async function () {
     const escrowAddress = await setupUserWithEscrow(user, oracle);
     const CspEscrow = await ethers.getContractFactory("CspEscrow");
@@ -1353,6 +1435,104 @@ describe("PoAIManager", function () {
     expect(await mockUsdc.balanceOf(escrowAddress)).to.equal(
       initialCost + additionalAmount
     );
+  });
+
+  it("should allow CSP owner to batch-extend job nodes", async function () {
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+    const jobType = 1;
+    const currentEpoch = await poaiManager.getCurrentEpoch();
+    const initialEpochs = 45n;
+    const lastExecutionEpoch = currentEpoch + initialEpochs;
+    const nodesJob1 = 2n;
+    const nodesJob2 = 3n;
+    const pricePerEpoch = await cspEscrow.getPriceForJobType(jobType);
+
+    const initialCostJob1 = pricePerEpoch * nodesJob1 * initialEpochs;
+    const initialCostJob2 = pricePerEpoch * nodesJob2 * initialEpochs;
+    const initialTotalCost = initialCostJob1 + initialCostJob2;
+
+    await mockUsdc.mint(await user.getAddress(), initialTotalCost);
+    await mockUsdc.connect(user).approve(escrowAddress, initialTotalCost);
+
+    await cspEscrow.connect(user).createJobs([
+      {
+        jobType,
+        projectHash: ethers.keccak256(ethers.toUtf8Bytes("batch-extend-nodes-1")),
+        lastExecutionEpoch,
+        numberOfNodesRequested: nodesJob1,
+      },
+      {
+        jobType,
+        projectHash: ethers.keccak256(ethers.toUtf8Bytes("batch-extend-nodes-2")),
+        lastExecutionEpoch,
+        numberOfNodesRequested: nodesJob2,
+      },
+    ]);
+
+    const job1Before = await cspEscrow.getJobDetails(1);
+    const job2Before = await cspEscrow.getJobDetails(2);
+
+    const newNodesJob1 = nodesJob1 + 2n;
+    const newNodesJob2 = nodesJob2 + 1n;
+
+    const remainingEpochs = lastExecutionEpoch - currentEpoch;
+    const additionalAmountJob1 =
+      job1Before.pricePerEpoch * (newNodesJob1 - nodesJob1) * remainingEpochs;
+    const additionalAmountJob2 =
+      job2Before.pricePerEpoch * (newNodesJob2 - nodesJob2) * remainingEpochs;
+    const additionalTotalAmount = additionalAmountJob1 + additionalAmountJob2;
+
+    await mockUsdc.mint(await user.getAddress(), additionalTotalAmount);
+    await mockUsdc.connect(user).approve(escrowAddress, additionalTotalAmount);
+
+    await expect(
+      cspEscrow.connect(user).extendJobsNodesBatch(
+        [1n, 2n],
+        [newNodesJob1, newNodesJob2]
+      )
+    )
+      .to.emit(cspEscrow, "JobNodesExtended")
+      .withArgs(1n, newNodesJob1, additionalAmountJob1)
+      .and.to.emit(cspEscrow, "JobNodesExtended")
+      .withArgs(2n, newNodesJob2, additionalAmountJob2);
+
+    const job1After = await cspEscrow.getJobDetails(1);
+    const job2After = await cspEscrow.getJobDetails(2);
+
+    expect(job1After.numberOfNodesRequested).to.equal(newNodesJob1);
+    expect(job2After.numberOfNodesRequested).to.equal(newNodesJob2);
+    expect(job1After.balance).to.equal(job1Before.balance + additionalAmountJob1);
+    expect(job2After.balance).to.equal(job2Before.balance + additionalAmountJob2);
+    expect(await mockUsdc.balanceOf(escrowAddress)).to.equal(
+      initialTotalCost + additionalTotalAmount
+    );
+  });
+
+  it("should revert batch node extension with invalid arrays", async function () {
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+    await expect(
+      cspEscrow.connect(user).extendJobsNodesBatch([], [])
+    ).to.be.revertedWith("No jobs provided");
+
+    await expect(
+      cspEscrow.connect(user).extendJobsNodesBatch([1n], [2n, 3n])
+    ).to.be.revertedWith("Array length mismatch");
+  });
+
+  it("should revert batch node extension when caller is not the CSP owner", async function () {
+    const escrowAddress = await setupUserWithEscrow(user, oracle);
+    const CspEscrow = await ethers.getContractFactory("CspEscrow");
+    const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+    await expect(
+      cspEscrow.connect(other).extendJobsNodesBatch([1n], [2n])
+    ).to.be.revertedWith("Not authorized");
   });
 
   it("should revert when extending nodes for a non-existent job", async function () {
