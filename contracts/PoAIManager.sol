@@ -5,6 +5,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
 import "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./Controller.sol";
 import "./CspEscrow.sol";
 import "./R1.sol";
@@ -202,6 +203,11 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         uint256 maxAgreementCount
     );
     event JobDeregistered(uint256 indexed jobId, address indexed escrow);
+    event JobBalanceIncreased(
+        uint256 indexed jobId,
+        address indexed escrow,
+        uint256 amount
+    );
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -519,6 +525,23 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         delete jobConsensusTimestamp[jobId];
         delete jobIdToEscrow[jobId];
         emit JobDeregistered(jobId, escrowAddress);
+    }
+
+    function increaseJobBalance(
+        uint256 jobId,
+        uint256 amount
+    ) external onlyOwner {
+        address escrowAddress = jobIdToEscrow[jobId];
+        _requireJobExists(escrowAddress);
+        require(amount > 0, "Amount must be greater than 0");
+
+        require(
+            IERC20(usdcToken).transferFrom(msg.sender, escrowAddress, amount),
+            "USDC transfer failed"
+        );
+        CspEscrow(escrowAddress).increaseJobBalance(jobId, amount);
+
+        emit JobBalanceIncreased(jobId, escrowAddress, amount);
     }
 
     function registerDelegatedAddress(

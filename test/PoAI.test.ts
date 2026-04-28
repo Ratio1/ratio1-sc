@@ -456,7 +456,7 @@ describe("PoAIManager", function () {
     // Mint USDC to user and approve escrow
     const currentEpoch = await poaiManager.getCurrentEpoch();
     const lastExecutionEpoch = currentEpoch + 31n;
-    const numberOfNodesRequested = 5;
+    const numberOfNodesRequested = 2;
     const numberOfEpochs = 31;
     // Use job type 1 (ENTRY) which costs 375000 per epoch
     const jobType = 1;
@@ -1685,7 +1685,7 @@ describe("PoAIManager", function () {
 
     const jobType = 1;
     const currentEpoch = await poaiManager.getCurrentEpoch();
-    const numberOfNodesRequested = 5;
+    const numberOfNodesRequested = 2;
 
     // Test epochs < 30 (lastExecutionEpoch too close to current)
     const lastExecutionEpochTooClose = currentEpoch + 29n;
@@ -1722,7 +1722,7 @@ describe("PoAIManager", function () {
     // Mint USDC to user and approve escrow
     const currentEpoch = await poaiManager.getCurrentEpoch();
     const lastExecutionEpoch = currentEpoch + 31n;
-    const numberOfNodesRequested = 5;
+    const numberOfNodesRequested = 2;
     const numberOfEpochs = 31;
     // Use job type 1 (ENTRY) which costs 375000 per epoch
     const jobType = 1;
@@ -2038,7 +2038,7 @@ describe("PoAIManager", function () {
           jobType: 1,
           projectHash: ethers.keccak256(ethers.toUtf8Bytes("test-project")),
           lastExecutionEpoch: lastExecutionEpoch,
-          numberOfNodesRequested: 5,
+          numberOfNodesRequested: 2,
         },
       ]);
 
@@ -2076,7 +2076,7 @@ describe("PoAIManager", function () {
           jobType: 1,
           projectHash: ethers.keccak256(ethers.toUtf8Bytes("test-project")),
           lastExecutionEpoch: lastExecutionEpoch,
-          numberOfNodesRequested: 5,
+          numberOfNodesRequested: 1,
         },
       ]);
 
@@ -2116,7 +2116,7 @@ describe("PoAIManager", function () {
           jobType: 1,
           projectHash: ethers.keccak256(ethers.toUtf8Bytes("test-project")),
           lastExecutionEpoch: lastExecutionEpoch,
-          numberOfNodesRequested: 5,
+          numberOfNodesRequested: 2,
         },
       ]);
 
@@ -2136,6 +2136,45 @@ describe("PoAIManager", function () {
       expect(jobDetails.startTimestamp).to.be.gt(0);
     });
 
+    it("should not allow consensus to assign more nodes than requested", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const CspEscrow = await ethers.getContractFactory("CspEscrow");
+      const cspEscrow: CspEscrow = CspEscrow.attach(escrowAddress) as CspEscrow;
+
+      const currentEpoch = await poaiManager.getCurrentEpoch();
+      const lastExecutionEpoch = currentEpoch + 31n;
+      const pricePerEpoch = await cspEscrow.getPriceForJobType(1);
+      const totalCost = pricePerEpoch * 31n;
+      await mockUsdc.mint(await user.getAddress(), totalCost);
+      await mockUsdc.connect(user).approve(escrowAddress, totalCost);
+
+      await cspEscrow.connect(user).createJobs([
+        {
+          jobType: 1,
+          projectHash: ethers.keccak256(
+            ethers.toUtf8Bytes("too-many-nodes")
+          ),
+          lastExecutionEpoch,
+          numberOfNodesRequested: 1,
+        },
+      ]);
+
+      const consensusNodes = [
+        await oracle.getAddress(),
+        await oracle2.getAddress(),
+      ];
+
+      await poaiManager.connect(oracle).submitNodeUpdate(1, consensusNodes);
+      await poaiManager.connect(oracle2).submitNodeUpdate(1, consensusNodes);
+      await expect(
+        poaiManager.connect(oracle3).submitNodeUpdate(1, consensusNodes)
+      ).to.be.revertedWith("Invalid active nodes count");
+
+      const jobDetails = await cspEscrow.getJobDetails(1);
+      expect(jobDetails.activeNodes.length).to.equal(0);
+      expect(jobDetails.startTimestamp).to.equal(0);
+    });
+
     it("should not reach consensus when oracles disagree", async function () {
       const escrowAddress = await setupUserWithEscrow(user, oracle);
       const CspEscrow = await ethers.getContractFactory("CspEscrow");
@@ -2153,7 +2192,7 @@ describe("PoAIManager", function () {
           jobType: 1,
           projectHash: ethers.keccak256(ethers.toUtf8Bytes("test-project")),
           lastExecutionEpoch: lastExecutionEpoch,
-          numberOfNodesRequested: 5,
+          numberOfNodesRequested: 2,
         },
       ]);
 
@@ -2189,7 +2228,7 @@ describe("PoAIManager", function () {
           jobType: 1,
           projectHash: ethers.keccak256(ethers.toUtf8Bytes("test-project")),
           lastExecutionEpoch: lastExecutionEpoch,
-          numberOfNodesRequested: 5,
+          numberOfNodesRequested: 2,
         },
       ]);
 
@@ -2262,7 +2301,7 @@ describe("PoAIManager", function () {
           jobType: 1,
           projectHash: ethers.keccak256(ethers.toUtf8Bytes("test-project")),
           lastExecutionEpoch: lastExecutionEpoch,
-          numberOfNodesRequested: 5,
+          numberOfNodesRequested: 2,
         },
       ]);
 
@@ -2302,7 +2341,7 @@ describe("PoAIManager", function () {
           jobType: 1,
           projectHash: ethers.keccak256(ethers.toUtf8Bytes("test-project")),
           lastExecutionEpoch: lastExecutionEpoch,
-          numberOfNodesRequested: 5,
+          numberOfNodesRequested: 1,
         },
       ]);
 
@@ -2336,7 +2375,7 @@ describe("PoAIManager", function () {
           jobType: 1,
           projectHash: ethers.keccak256(ethers.toUtf8Bytes("test-project")),
           lastExecutionEpoch: lastExecutionEpoch,
-          numberOfNodesRequested: 5,
+          numberOfNodesRequested: 2,
         },
       ]);
 
@@ -2371,7 +2410,7 @@ describe("PoAIManager", function () {
             ethers.toUtf8Bytes("consensus-20-oracles")
           ),
           lastExecutionEpoch,
-          numberOfNodesRequested: 5,
+          numberOfNodesRequested: 2,
         },
       ]);
 
@@ -3591,7 +3630,7 @@ describe("PoAIManager", function () {
           jobType: 1,
           projectHash: ethers.keccak256(ethers.toUtf8Bytes("test-project")),
           lastExecutionEpoch: lastExecutionEpoch,
-          numberOfNodesRequested: 3,
+          numberOfNodesRequested: 1,
         },
       ]);
 
@@ -3610,6 +3649,57 @@ describe("PoAIManager", function () {
         cspEscrow,
         "RewardsAllocatedV3"
       );
+    });
+  });
+
+  describe("Job balance funding", function () {
+    it("should allow owner to fund an existing job balance through PoAI Manager", async function () {
+      const { cspEscrow, escrowAddress, jobId } = await setupPendingJob();
+      const amount = 16_125_000n;
+      const managerAddress = await poaiManager.getAddress();
+
+      await mockUsdc.mint(await owner.getAddress(), amount);
+      await mockUsdc.connect(owner).approve(managerAddress, amount);
+
+      const jobBefore = await cspEscrow.getJobDetails(jobId);
+      const escrowBalanceBefore = await mockUsdc.balanceOf(escrowAddress);
+
+      await expect(poaiManager.connect(owner).increaseJobBalance(jobId, amount))
+        .to.emit(poaiManager, "JobBalanceIncreased")
+        .withArgs(jobId, escrowAddress, amount)
+        .and.to.emit(cspEscrow, "JobBalanceIncreased")
+        .withArgs(jobId, amount);
+
+      const jobAfter = await cspEscrow.getJobDetails(jobId);
+      expect(jobAfter.balance).to.equal(jobBefore.balance + amount);
+      expect(await mockUsdc.balanceOf(escrowAddress)).to.equal(
+        escrowBalanceBefore + amount
+      );
+    });
+
+    it("should reject job balance funding from non-owner accounts", async function () {
+      const { jobId } = await setupPendingJob();
+      const amount = 1_000_000n;
+
+      await mockUsdc.mint(await user.getAddress(), amount);
+      await mockUsdc
+        .connect(user)
+        .approve(await poaiManager.getAddress(), amount);
+
+      await expect(
+        poaiManager.connect(user).increaseJobBalance(jobId, amount)
+      ).to.be.revertedWithCustomError(
+        poaiManager,
+        "OwnableUnauthorizedAccount"
+      );
+    });
+
+    it("should only allow PoAI Manager to increase escrow job balance", async function () {
+      const { cspEscrow, jobId } = await setupPendingJob();
+
+      await expect(
+        cspEscrow.connect(user).increaseJobBalance(jobId, 1_000_000n)
+      ).to.be.revertedWith("Not PoAI Manager");
     });
   });
 

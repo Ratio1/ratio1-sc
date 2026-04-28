@@ -183,6 +183,7 @@ contract CspEscrow is Initializable {
         address owner,
         uint256 refundAmount
     );
+    event JobBalanceIncreased(uint256 indexed jobId, uint256 amount);
     event JobLastExecutionEpochReconciled(
         uint256 indexed jobId,
         uint256 oldLastExecutionEpoch,
@@ -529,6 +530,11 @@ contract CspEscrow is Initializable {
     ) external onlyPoAIManager {
         JobDetails storage job = jobDetails[jobId];
         require(job.id != 0, "Job does not exist");
+        require(
+            newActiveNodes.length == 0 ||
+                newActiveNodes.length == job.numberOfNodesRequested,
+            "Invalid active nodes count"
+        );
         uint256 currentTimestamp = block.timestamp;
 
         job.activeNodes = newActiveNodes;
@@ -680,6 +686,19 @@ contract CspEscrow is Initializable {
         );
 
         emit JobRedeemed(jobId, msg.sender, refundAmount);
+    }
+
+    function increaseJobBalance(
+        uint256 jobId,
+        uint256 amount
+    ) external onlyPoAIManager {
+        JobDetails storage job = jobDetails[jobId];
+        require(job.id != 0, "Job does not exist");
+        require(amount > 0, "Amount must be greater than 0");
+        require(amount <= uint256(type(int256).max), "Amount too large");
+
+        job.balance += int256(amount);
+        emit JobBalanceIncreased(jobId, amount);
     }
 
     function reconcileJobsBalance() public onlyPoAIManager {
