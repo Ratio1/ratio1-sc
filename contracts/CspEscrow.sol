@@ -183,6 +183,7 @@ contract CspEscrow is Initializable {
         address owner,
         uint256 refundAmount
     );
+    event JobBalanceIncreased(uint256 indexed jobId, uint256 amount);
     event JobLastExecutionEpochReconciled(
         uint256 indexed jobId,
         uint256 oldLastExecutionEpoch,
@@ -353,6 +354,74 @@ contract CspEscrow is Initializable {
         );
     }
 
+    function extendJobsDurationBatch(
+        uint256[] calldata jobIds,
+        uint256[] calldata newLastExecutionEpochs
+    ) external onlyAllowed(PERMISSION_EXTEND_DURATION) {
+        require(jobIds.length > 0, "No jobs provided");
+        require(
+            jobIds.length == newLastExecutionEpochs.length,
+            "Array length mismatch"
+        );
+
+        uint256 currentEpoch = getCurrentEpoch();
+        uint256[] memory additionalAmounts = new uint256[](jobIds.length);
+        uint256 totalAdditionalAmount = 0;
+
+        for (uint256 i = 0; i < jobIds.length; i++) {
+            JobDetails storage job = jobDetails[jobIds[i]];
+            require(job.id != 0, "Job does not exist");
+
+            uint256 newLastExecutionEpoch = newLastExecutionEpochs[i];
+            require(
+                newLastExecutionEpoch > job.lastExecutionEpoch,
+                "New epoch must be greater"
+            );
+            require(
+                newLastExecutionEpoch > currentEpoch,
+                "New epoch must be in future"
+            );
+
+            uint256 additionalEpochs = newLastExecutionEpoch -
+                job.lastExecutionEpoch;
+            require(additionalEpochs > 0, "No additional epochs");
+
+            uint256 additionalAmount = job.pricePerEpoch *
+                job.numberOfNodesRequested *
+                additionalEpochs;
+            require(additionalAmount > 0, "No additional amount");
+
+            additionalAmounts[i] = additionalAmount;
+            totalAdditionalAmount += additionalAmount;
+        }
+
+        require(totalAdditionalAmount > 0, "No additional amount");
+        require(
+            IERC20(usdcToken).transferFrom(
+                msg.sender,
+                address(this),
+                totalAdditionalAmount
+            ),
+            "USDC transfer failed"
+        );
+
+        for (uint256 i = 0; i < jobIds.length; i++) {
+            uint256 jobId = jobIds[i];
+            uint256 newLastExecutionEpoch = newLastExecutionEpochs[i];
+            uint256 additionalAmount = additionalAmounts[i];
+            JobDetails storage job = jobDetails[jobId];
+
+            job.balance += int256(additionalAmount);
+            job.lastExecutionEpoch = newLastExecutionEpoch;
+
+            emit JobDurationExtended(
+                jobId,
+                newLastExecutionEpoch,
+                additionalAmount
+            );
+        }
+    }
+
     function extendJobNodes(
         uint256 jobId,
         uint256 newNumberOfNodesRequested
@@ -393,6 +462,67 @@ contract CspEscrow is Initializable {
         );
     }
 
+    function extendJobsNodesBatch(
+        uint256[] calldata jobIds,
+        uint256[] calldata newNumberOfNodesRequested
+    ) external onlyAllowed(PERMISSION_EXTEND_NODES) {
+        require(jobIds.length > 0, "No jobs provided");
+        require(
+            jobIds.length == newNumberOfNodesRequested.length,
+            "Array length mismatch"
+        );
+
+        uint256 currentEpoch = getCurrentEpoch();
+        uint256[] memory additionalAmounts = new uint256[](jobIds.length);
+        uint256 totalAdditionalAmount = 0;
+
+        for (uint256 i = 0; i < jobIds.length; i++) {
+            JobDetails storage job = jobDetails[jobIds[i]];
+            require(job.id != 0, "Job does not exist");
+
+            uint256 newNodesCount = newNumberOfNodesRequested[i];
+            require(
+                newNodesCount > job.numberOfNodesRequested,
+                "New number of nodes must be greater"
+            );
+            require(
+                job.lastExecutionEpoch > currentEpoch,
+                "Job has already ended"
+            );
+
+            uint256 additionalNodes = newNodesCount -
+                job.numberOfNodesRequested;
+            uint256 remainingEpochs = job.lastExecutionEpoch - currentEpoch;
+            uint256 additionalAmount = job.pricePerEpoch *
+                additionalNodes *
+                remainingEpochs;
+
+            additionalAmounts[i] = additionalAmount;
+            totalAdditionalAmount += additionalAmount;
+        }
+
+        require(
+            IERC20(usdcToken).transferFrom(
+                msg.sender,
+                address(this),
+                totalAdditionalAmount
+            ),
+            "USDC transfer failed"
+        );
+
+        for (uint256 i = 0; i < jobIds.length; i++) {
+            uint256 jobId = jobIds[i];
+            uint256 newNodesCount = newNumberOfNodesRequested[i];
+            uint256 additionalAmount = additionalAmounts[i];
+            JobDetails storage job = jobDetails[jobId];
+
+            job.balance += int256(additionalAmount);
+            job.numberOfNodesRequested = newNodesCount;
+
+            emit JobNodesExtended(jobId, newNodesCount, additionalAmount);
+        }
+    }
+
     // Receive consensus-based updates from PoAI Manager
     function updateActiveNodes(
         uint256 jobId,
@@ -400,6 +530,11 @@ contract CspEscrow is Initializable {
     ) external onlyPoAIManager {
         JobDetails storage job = jobDetails[jobId];
         require(job.id != 0, "Job does not exist");
+        require(
+            newActiveNodes.length == 0 ||
+                newActiveNodes.length == job.numberOfNodesRequested,
+            "Invalid active nodes count"
+        );
         uint256 currentTimestamp = block.timestamp;
 
         job.activeNodes = newActiveNodes;
@@ -551,6 +686,19 @@ contract CspEscrow is Initializable {
         );
 
         emit JobRedeemed(jobId, msg.sender, refundAmount);
+    }
+
+    function increaseJobBalance(
+        uint256 jobId,
+        uint256 amount
+    ) external onlyPoAIManager {
+        JobDetails storage job = jobDetails[jobId];
+        require(job.id != 0, "Job does not exist");
+        require(amount > 0, "Amount must be greater than 0");
+        require(amount <= uint256(type(int256).max), "Amount too large");
+
+        job.balance += int256(amount);
+        emit JobBalanceIncreased(jobId, amount);
     }
 
     function reconcileJobsBalance() public onlyPoAIManager {

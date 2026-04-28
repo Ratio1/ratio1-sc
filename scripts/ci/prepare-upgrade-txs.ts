@@ -23,6 +23,25 @@ interface SafeTransaction {
   contractInputsValues: Record<string, string>;
 }
 
+async function supportsUpgradeAndCallOnly(
+  proxyAdminAddress: string
+): Promise<boolean> {
+  const proxyAdmin = await ethers.getContractAt(
+    [
+      "function UPGRADE_INTERFACE_VERSION() view returns (string)",
+    ],
+    proxyAdminAddress
+  );
+
+  try {
+    const version = await proxyAdmin.UPGRADE_INTERFACE_VERSION();
+    console.log(`Proxy admin interface version: ${version}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function parseTargets(rawTargets: string | undefined): UpgradeTarget[] {
   if (!rawTargets) {
     throw new Error("UPGRADE_TARGETS environment variable must be provided");
@@ -100,8 +119,6 @@ async function main() {
 
   const safeTransactions: SafeTransaction[] = [];
 
-  let proxyAdminAddress: string | undefined;
-
   for (const target of targets) {
     const targetAddress = ethers.getAddress(target.target);
     console.log(`----------------------------------------------------`);
@@ -117,11 +134,13 @@ async function main() {
     let safeTx: SafeTransaction;
 
     if (target.kind === "proxy") {
-      if (!proxyAdminAddress) {
-        proxyAdminAddress = await upgrades.erc1967.getAdminAddress(
-          targetAddress
-        );
-      }
+      const proxyAdminAddress = await upgrades.erc1967.getAdminAddress(
+        targetAddress
+      );
+      console.log(`Proxy admin: ${proxyAdminAddress}`);
+      const useUpgradeAndCall = await supportsUpgradeAndCallOnly(
+        proxyAdminAddress
+      );
 
       previousImplementation = await upgrades.erc1967.getImplementationAddress(
         targetAddress
@@ -148,30 +167,59 @@ async function main() {
 
       const proxyAdmin = new ethers.Contract(proxyAdminAddress, [
         "function upgrade(address proxy, address implementation)",
+        "function upgradeAndCall(address proxy, address implementation, bytes data)",
         "function owner() view returns (address)",
       ]);
-      const data = proxyAdmin.interface.encodeFunctionData("upgrade", [
-        targetAddress,
-        newImplementationAddress,
-      ]);
+      if (useUpgradeAndCall) {
+        const data = proxyAdmin.interface.encodeFunctionData("upgradeAndCall", [
+          targetAddress,
+          newImplementationAddress,
+          "0x",
+        ]);
 
-      safeTx = {
-        to: proxyAdminAddress!,
-        value: "0",
-        data,
-        contractMethod: {
-          name: "upgrade",
-          payable: false,
-          inputs: [
-            { name: "proxy", type: "address" },
-            { name: "implementation", type: "address" },
-          ],
-        },
-        contractInputsValues: {
-          proxy: targetAddress,
-          implementation: newImplementationAddress,
-        },
-      };
+        safeTx = {
+          to: proxyAdminAddress,
+          value: "0",
+          data,
+          contractMethod: {
+            name: "upgradeAndCall",
+            payable: true,
+            inputs: [
+              { name: "proxy", type: "address" },
+              { name: "implementation", type: "address" },
+              { name: "data", type: "bytes" },
+            ],
+          },
+          contractInputsValues: {
+            proxy: targetAddress,
+            implementation: newImplementationAddress,
+            data: "0x",
+          },
+        };
+      } else {
+        const data = proxyAdmin.interface.encodeFunctionData("upgrade", [
+          targetAddress,
+          newImplementationAddress,
+        ]);
+
+        safeTx = {
+          to: proxyAdminAddress,
+          value: "0",
+          data,
+          contractMethod: {
+            name: "upgrade",
+            payable: false,
+            inputs: [
+              { name: "proxy", type: "address" },
+              { name: "implementation", type: "address" },
+            ],
+          },
+          contractInputsValues: {
+            proxy: targetAddress,
+            implementation: newImplementationAddress,
+          },
+        };
+      }
     } else {
       const beacon = await ethers.getContractAt(
         "UpgradeableBeacon",
