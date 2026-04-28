@@ -36118,7 +36118,7 @@
             "label": "burnerContract",
             "offset": 0,
             "slot": "1",
-            "type": "t_contract(IBurnContract)24960",
+            "type": "t_contract(IBurnContract)25040",
             "contract": "GratitudeBurn",
             "src": "contracts/GratitudeBurn.sol:24"
           },
@@ -36126,7 +36126,7 @@
             "label": "apps",
             "offset": 0,
             "slot": "2",
-            "type": "t_mapping(t_bytes32,t_struct(App)24980_storage)",
+            "type": "t_mapping(t_bytes32,t_struct(App)25060_storage)",
             "contract": "GratitudeBurn",
             "src": "contracts/GratitudeBurn.sol:26"
           },
@@ -36274,7 +36274,7 @@
             "label": "bytes32",
             "numberOfBytes": "32"
           },
-          "t_contract(IBurnContract)24960": {
+          "t_contract(IBurnContract)25040": {
             "label": "contract IBurnContract",
             "numberOfBytes": "20"
           },
@@ -36290,7 +36290,7 @@
             "label": "mapping(address => uint256)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_bytes32,t_struct(App)24980_storage)": {
+          "t_mapping(t_bytes32,t_struct(App)25060_storage)": {
             "label": "mapping(bytes32 => struct GratitudeBurn.App)",
             "numberOfBytes": "32"
           },
@@ -36302,7 +36302,7 @@
             "label": "string",
             "numberOfBytes": "32"
           },
-          "t_struct(App)24980_storage": {
+          "t_struct(App)25060_storage": {
             "label": "struct GratitudeBurn.App",
             "members": [
               {
