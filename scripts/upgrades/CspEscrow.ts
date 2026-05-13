@@ -19,23 +19,24 @@ async function main() {
   console.log("Validating new implementation...");
   try {
     await upgrades.validateImplementation(NewCspEscrow);
-    console.log("✅ New implementation is safe to upgrade");
+    console.log("New implementation is safe to upgrade");
   } catch (error) {
-    console.error("❌ Implementation validation failed:", error);
+    console.error("Implementation validation failed:", error);
     throw error;
   }
 
   // Deploy new implementation
   console.log("Deploying new implementation...");
   const newImplementation = await NewCspEscrow.deploy();
-  await newImplementation.deployed();
-  console.log("🔧 New implementation deployed to:", newImplementation.address);
+  await newImplementation.waitForDeployment();
+  const newImplementationAddress = await newImplementation.getAddress();
+  console.log("New implementation deployed to:", newImplementationAddress);
 
   console.log("\n========== Gnosis Safe Transaction ==========");
   console.log("To:", CSP_ESCROW_BEACON_ADDR);
   console.log("Function: upgradeTo(address implementation)");
   console.log("Arguments:");
-  console.log("  - Implementation Address:", newImplementation.address);
+  console.log("  - Implementation Address:", newImplementationAddress);
   console.log("Value: 0");
   console.log("Operation: 0 (CALL)");
   console.log("=============================================\n");

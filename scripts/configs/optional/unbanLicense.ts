@@ -1,19 +1,19 @@
 import { ethers } from "hardhat";
 import { ND_SC_ADDR } from "../constants";
 
-const ADDRESS_TO_UNBAN = "";
+const LICENSE_ID_TO_UNBAN = 0;
 
 async function main() {
 	const [deployer] = await ethers.getSigners();
 
-	const NDContractFactory = await ethers.getContractFactory(
+	const ndContract = await ethers.getContractAt(
 		"NDContract",
+		ND_SC_ADDR,
 		deployer
 	);
-	const ndContract = NDContractFactory.attach(ND_SC_ADDR);
 
-	await ndContract.unbanLicense(ADDRESS_TO_UNBAN);
-	console.log("Address", ADDRESS_TO_UNBAN, "unbanned in ND contract");
+	await ndContract.unbanLicense(LICENSE_ID_TO_UNBAN);
+	console.log("License", LICENSE_ID_TO_UNBAN, "unbanned in ND contract");
 }
 
 main()

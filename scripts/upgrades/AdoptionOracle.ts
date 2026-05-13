@@ -13,10 +13,11 @@ async function main() {
     ADOPTION_ORACLE_ADDR,
     NewAdoptionOracle
   );
-  console.log("🔧 New implementation address:", upgradeTx);
+  console.log("New implementation address:", upgradeTx);
 
-  const admin = await upgrades.admin.getInstance();
-  const proxyAdminAddress = admin.address;
+  const proxyAdminAddress = await upgrades.erc1967.getAdminAddress(
+    ADOPTION_ORACLE_ADDR
+  );
   console.log("ProxyAdmin address:", proxyAdminAddress);
 
   console.log("========== Gnosis Safe Transaction ==========");

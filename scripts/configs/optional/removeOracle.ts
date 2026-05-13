@@ -1,5 +1,5 @@
 import { ethers } from "hardhat";
-import { CONTROLLER_ADDR, NEW_REQUIRED_SIGNATURES } from "../constants";
+import { CONTROLLER_ADDR, ORACLE_ADDR } from "../constants";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -10,8 +10,8 @@ async function main() {
     deployer
   );
 
-  await controller.setMinimumRequiredSignatures(NEW_REQUIRED_SIGNATURES);
-  console.log("Minimum required signatures set in Controller");
+  await controller.removeOracle(ORACLE_ADDR);
+  console.log("Oracle", ORACLE_ADDR, "removed from Controller");
 }
 
 main()

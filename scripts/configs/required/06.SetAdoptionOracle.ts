@@ -1,6 +1,7 @@
 import { ethers } from "hardhat";
 import {
   ADOPTION_ORACLE_ADDR,
+  MND_SC_ADDR,
   ND_SC_ADDR,
   POAI_MANAGER_ADDR,
 } from "../constants";
@@ -13,6 +14,11 @@ async function main() {
     ND_SC_ADDR,
     deployer
   );
+  const mndContract = await ethers.getContractAt(
+    "MNDContract",
+    MND_SC_ADDR,
+    deployer
+  );
   const poaiManager = await ethers.getContractAt(
     "PoAIManager",
     POAI_MANAGER_ADDR,
@@ -21,6 +27,9 @@ async function main() {
 
   await ndContract.setAdoptionOracle(ADOPTION_ORACLE_ADDR);
   console.log("ND adoptionOracle set");
+
+  await mndContract.setAdoptionOracle(ADOPTION_ORACLE_ADDR);
+  console.log("MND adoptionOracle set");
 
   await poaiManager.setAdoptionOracle(ADOPTION_ORACLE_ADDR);
   console.log("PoAIManager adoptionOracle set");
