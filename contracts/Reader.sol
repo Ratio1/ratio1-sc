@@ -176,6 +176,7 @@ interface IPoAIManager {
     function getAddressRegistration(
         address account
     ) external view returns (bool isActive, address escrowAddress);
+    function getCspTier(address account) external view returns (uint8);
 }
 
 interface ICspEscrow {
@@ -651,6 +652,10 @@ contract Reader is Initializable {
                 escrowOwner: escrowOwner,
                 permissions: permissions
             });
+    }
+
+    function getCspTier(address account) external view returns (uint8) {
+        return poaiManager.getCspTier(account);
     }
 
     function _isOracle(

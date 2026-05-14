@@ -106,6 +106,7 @@ error DelegateNotRegistered();
 error AlreadyReconciled();
 error TimestampBeforeStartEpoch();
 error NotCspEscrow();
+error CspEscrowDoesNotExist();
 
 contract PoAIManager is Initializable, OwnableUpgradeable {
     //..######..########..#######..########.....###.....######...########
@@ -208,6 +209,11 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         address indexed escrow,
         uint256 amount
     );
+    event CspTierUpdated(
+        address indexed cspOwner,
+        address indexed escrow,
+        uint8 newTier
+    );
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -281,6 +287,16 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         for (uint256 i = 0; i < escrowCount; i++) {
             CspEscrow(allEscrows[i]).setBurnContract(newBurnContract);
         }
+    }
+
+    function setCspTier(address cspOwner, uint8 newTier) external onlyOwner {
+        address escrowAddress = ownerToEscrow[cspOwner];
+        if (escrowAddress == address(0)) {
+            revert CspEscrowDoesNotExist();
+        }
+
+        CspEscrow(escrowAddress).setCspTier(newTier);
+        emit CspTierUpdated(cspOwner, escrowAddress, newTier);
     }
 
     // Internal function to check if user owns at least one ND or MND with a linked node address that is an oracle
@@ -808,6 +824,18 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             return (true, delegatedEscrow);
         }
         return (false, address(0));
+    }
+
+    function getCspTier(address account) external view returns (uint8) {
+        address escrowAddress = ownerToEscrow[account];
+        if (escrowAddress == address(0)) {
+            escrowAddress = delegatedAddressToEscrow[account];
+        }
+        if (escrowAddress == address(0)) {
+            return 0;
+        }
+
+        return CspEscrow(escrowAddress).cspTier();
     }
 
     // Get all job IDs that have node updates submitted but no consensus reached yet that a specific oracle has not submitted yet
