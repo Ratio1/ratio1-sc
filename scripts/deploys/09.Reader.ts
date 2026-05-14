@@ -6,6 +6,9 @@ import {
   POAI_MANAGER_ADDR,
   R1_TOKEN_ADDR,
 } from "../configs/constants";
+import { sleep } from "../utils/sleep";
+
+const PROXY_INDEXING_DELAY_MS = 5000;
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -24,6 +27,8 @@ async function main() {
   await readerContract.waitForDeployment();
   const proxyAddress = await readerContract.getAddress();
   console.log("Reader deployed to:", proxyAddress);
+  await sleep(PROXY_INDEXING_DELAY_MS);
+
   const implAddress = await upgrades.erc1967.getImplementationAddress(
     proxyAddress
   );

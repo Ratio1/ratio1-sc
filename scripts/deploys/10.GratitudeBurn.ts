@@ -1,5 +1,8 @@
 import { ethers, upgrades } from "hardhat";
 import { BURN_CONTRACT_ADDR, R1_TOKEN_ADDR } from "../configs/constants";
+import { sleep } from "../utils/sleep";
+
+const PROXY_INDEXING_DELAY_MS = 5000;
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -20,6 +23,7 @@ async function main() {
   await gratitudeBurn.waitForDeployment();
   const proxyAddress = await gratitudeBurn.getAddress();
   console.log("GratitudeBurn deployed to:", proxyAddress);
+  await sleep(PROXY_INDEXING_DELAY_MS);
 
   const implAddress = await upgrades.erc1967.getImplementationAddress(
     proxyAddress
