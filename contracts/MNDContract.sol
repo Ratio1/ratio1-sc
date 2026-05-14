@@ -36,8 +36,9 @@ interface IAdoptionOracle {
 struct ComputeRewardsParams {
     uint256 licenseId;
     address nodeAddress;
-    uint256[] epochs;
-    uint8[] availabilies;
+    uint256 fromEpoch;
+    uint256 toEpoch;
+    bytes packedAvailabilities;
 }
 
 struct ComputeRewardsResult {
@@ -390,7 +391,7 @@ contract MNDContract is
                     state.licenseRewards,
                     state.licenseCarryover,
                     state.withheldAmount,
-                    computeParams[i].epochs.length
+                    computeParams[i].packedAvailabilities.length
                 );
                 if (computeParams[i].licenseId == GENESIS_TOKEN_ID) {
                     mintCompanyFunds(totalRewardsToMint);
@@ -498,15 +499,14 @@ contract MNDContract is
             .getAdoptionPercentagesRange(firstEpochToClaim, currentEpoch - 1);
 
         if (
-            computeParam.epochs.length != epochsToClaim ||
-            (computeParam.availabilies.length != epochsToClaim &&
-                adoptionPercentages.length != epochsToClaim)
+            computeParam.packedAvailabilities.length != epochsToClaim ||
+            adoptionPercentages.length != epochsToClaim
         ) {
             revert IncorrectNumberOfParams();
         }
         if (
-            computeParam.epochs[computeParam.epochs.length - 1] !=
-            currentEpoch - 1
+            computeParam.fromEpoch != firstEpochToClaim ||
+            computeParam.toEpoch != currentEpoch - 1
         ) {
             revert InvalidEpochs();
         }
@@ -517,12 +517,12 @@ contract MNDContract is
                 license.totalAssignedAmount /
                 _controller.GND_MINING_EPOCHS();
         }
-        for (uint256 i = 0; i < computeParam.epochs.length; i++) {
+        for (uint256 i = 0; i < computeParam.packedAvailabilities.length; i++) {
             // Gather data for epoch reward calculation
             uint256 epochMaxRelease = computeParam.licenseId == GENESIS_TOKEN_ID
                 ? maxRewardsPerEpochGnd
                 : calculateMndEpochRelease(
-                    computeParam.epochs[i],
+                    computeParam.fromEpoch + i,
                     license.firstMiningEpoch,
                     state.licensePlateau
                 );
@@ -534,7 +534,7 @@ contract MNDContract is
                     state.totalClaimedAmount,
                     state.totalAssignedAmount,
                     epochMaxRelease,
-                    computeParam.availabilies[i],
+                    uint8(computeParam.packedAvailabilities[i]),
                     adoptionPercentages[i]
                 );
 
@@ -864,8 +864,9 @@ contract MNDContract is
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 computeParam.nodeAddress,
-                computeParam.epochs,
-                computeParam.availabilies
+                computeParam.fromEpoch,
+                computeParam.toEpoch,
+                computeParam.packedAvailabilities
             )
         );
         bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(

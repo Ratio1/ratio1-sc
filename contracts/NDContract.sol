@@ -32,8 +32,9 @@ interface IAdoptionOracle {
 struct ComputeRewardsParams {
     uint256 licenseId;
     address nodeAddress;
-    uint256[] epochs;
-    uint8[] availabilies;
+    uint256 fromEpoch;
+    uint256 toEpoch;
+    bytes packedAvailabilities;
 }
 
 struct ComputeRewardsResult {
@@ -508,7 +509,7 @@ contract NDContract is
                     msg.sender,
                     computeParams[i].licenseId,
                     rewardsAmount,
-                    computeParams[i].epochs.length
+                    computeParams[i].packedAvailabilities.length
                 );
             }
         }
@@ -561,14 +562,13 @@ contract NDContract is
         }
 
         if (
-            computeParam.epochs.length != epochsToClaim ||
-            computeParam.availabilies.length != epochsToClaim
+            computeParam.packedAvailabilities.length != epochsToClaim
         ) {
             revert IncorrectNumberOfParams();
         }
         if (
-            computeParam.epochs[computeParam.epochs.length - 1] !=
-            currentEpoch - 1
+            computeParam.fromEpoch != license.lastClaimEpoch ||
+            computeParam.toEpoch != currentEpoch - 1
         ) {
             revert InvalidEpochs();
         }
@@ -576,7 +576,8 @@ contract NDContract is
         uint256 maxReleasePerDay = _controller.ND_MAX_RELEASE_PER_DAY();
         for (uint256 i = 0; i < epochsToClaim; i++) {
             licenseRewards +=
-                (maxReleasePerDay * computeParam.availabilies[i]) /
+                (maxReleasePerDay *
+                    uint8(computeParam.packedAvailabilities[i])) /
                 MAX_AVAILABILITY;
         }
 
@@ -980,8 +981,9 @@ contract NDContract is
         bytes32 messageHash = keccak256(
             abi.encodePacked(
                 computeParam.nodeAddress,
-                computeParam.epochs,
-                computeParam.availabilies
+                computeParam.fromEpoch,
+                computeParam.toEpoch,
+                computeParam.packedAvailabilities
             )
         );
         bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(

@@ -17,6 +17,7 @@ import {
   setTimestampAndMine,
   signBuyLicense,
   signComputeParams,
+  packedComputeParams,
   signLinkMultiNode,
   signLinkNode,
   START_EPOCH_TIMESTAMP,
@@ -1149,7 +1150,7 @@ describe("NDContract", function () {
     //DO TEST
     let result = await ndContract
       .connect(owner)
-      .calculateRewards([COMPUTE_PARAMS]);
+      .calculateRewards([packedComputeParams(COMPUTE_PARAMS)]);
     const formattedResults = result.map(formatRewardsResult);
     expect(formattedResults[0]).to.deep.equal(EXPECTED_COMPUTE_REWARDS_RESULT);
   });
@@ -1180,7 +1181,7 @@ describe("NDContract", function () {
     );
     await ndContract
       .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
+      .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT + userPreviousBalance
     );
@@ -1221,21 +1222,24 @@ describe("NDContract", function () {
     let userPreviousBalance = await r1Contract.balanceOf(
       await firstUser.getAddress()
     );
-    await ndContract.connect(firstUser).claimRewards(
-      [
-        {
-          licenseId: 1,
-          nodeAddress,
-          epochs: [1, 2, 3, 4, 5],
-          availabilies: [0, 0, 0, 0, 0],
-        },
-      ],
-      [
-        [
-          "0xc17b67684afb68fe25fb7ba6ec7fdf08c4d5fc8970ab03a7b3659a20d5df620314cb35b90deddff9cbc13668cc964e13816be73f308402e9903dae422106ca5d1c",
-        ],
-      ]
-    );
+    const zeroAvailabilityParams = {
+      licenseId: 1,
+      nodeAddress,
+      epochs: [1, 2, 3, 4, 5],
+      availabilies: [0, 0, 0, 0, 0],
+    };
+    const zeroAvailabilitySignature = await signComputeParams({
+      signer: backend,
+      nodeAddress,
+      epochs: zeroAvailabilityParams.epochs,
+      availabilities: zeroAvailabilityParams.availabilies,
+    });
+    await ndContract
+      .connect(firstUser)
+      .claimRewards(
+        [packedComputeParams(zeroAvailabilityParams)],
+        [[ethers.getBytes(zeroAvailabilitySignature)]]
+      );
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       userPreviousBalance
     );
@@ -1266,7 +1270,10 @@ describe("NDContract", function () {
       ndContract
         .connect(firstUser)
         .claimRewards(
-          [COMPUTE_PARAMS, COMPUTE_PARAMS],
+          [
+            packedComputeParams(COMPUTE_PARAMS),
+            packedComputeParams(COMPUTE_PARAMS),
+          ],
           [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWithCustomError(ndContract, "MismatchedInputArraysLength");
@@ -1295,7 +1302,7 @@ describe("NDContract", function () {
       ndContract
         .connect(secondUser)
         .claimRewards(
-          [COMPUTE_PARAMS],
+          [packedComputeParams(COMPUTE_PARAMS)],
           [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWithCustomError(ndContract, "NotLicenseOwner");
@@ -1324,7 +1331,7 @@ describe("NDContract", function () {
       ndContract
         .connect(firstUser)
         .claimRewards(
-          [COMPUTE_PARAMS],
+          [packedComputeParams(COMPUTE_PARAMS)],
           [[await computeSignatureBytes(secondUser)]]
         )
     ).to.be.revertedWith("Invalid oracle signature");
@@ -1354,7 +1361,7 @@ describe("NDContract", function () {
       ndContract
         .connect(firstUser)
         .claimRewards(
-          [COMPUTE_PARAMS],
+          [packedComputeParams(COMPUTE_PARAMS)],
           [
             [
               await computeSignatureBytes(backend),
@@ -1394,7 +1401,7 @@ describe("NDContract", function () {
     await ndContract
       .connect(firstUser)
       .claimRewards(
-        [COMPUTE_PARAMS],
+        [packedComputeParams(COMPUTE_PARAMS)],
         [
           [
             await computeSignatureBytes(backend),
@@ -1431,7 +1438,7 @@ describe("NDContract", function () {
       ndContract
         .connect(firstUser)
         .claimRewards(
-          [COMPUTE_PARAMS],
+          [packedComputeParams(COMPUTE_PARAMS)],
           [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWith("Insufficient signatures");
@@ -1461,7 +1468,7 @@ describe("NDContract", function () {
       ndContract
         .connect(firstUser)
         .claimRewards(
-          [COMPUTE_PARAMS],
+          [packedComputeParams(COMPUTE_PARAMS)],
           [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWithCustomError(ndContract, "InvalidNodeAddressForRewards");
@@ -1485,13 +1492,14 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_increaseTime", [ONE_DAY_IN_SECS * 5]);
     await ethers.provider.send("evm_mine", []);
 
-    COMPUTE_PARAMS.epochs = [1, 2, 3, 4, 5, 6, 7, 8];
+    COMPUTE_PARAMS.epochs = [0, 1, 2, 3, 4];
+    COMPUTE_PARAMS.availabilies = [255, 255, 255, 255];
     //DO TEST
     await expect(
       ndContract
         .connect(firstUser)
         .claimRewards(
-          [COMPUTE_PARAMS],
+          [packedComputeParams(COMPUTE_PARAMS)],
           [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWithCustomError(ndContract, "IncorrectNumberOfParams");
@@ -1523,14 +1531,14 @@ describe("NDContract", function () {
     );
     await ndContract
       .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
+      .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT + userPreviousBalance
     );
     //should not modify amount
     await ndContract
       .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
+      .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT + userPreviousBalance
     );
@@ -1568,7 +1576,7 @@ describe("NDContract", function () {
     );
     await ndContract
       .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
+      .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       expected_result + userPreviousBalance
     );
@@ -1582,7 +1590,7 @@ describe("NDContract", function () {
     await ethers.provider.send("evm_mine", []);
     await ndContract
       .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
+      .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(backend)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       expected_result + userPreviousBalance //should not be changed
     );
@@ -1627,7 +1635,7 @@ describe("NDContract", function () {
     await ndContract
       .connect(firstUser)
       .claimRewards(
-        [COMPUTE_PARAMS],
+        [packedComputeParams(COMPUTE_PARAMS)],
         [
           [
             await computeSignatureBytes(oracle1),
@@ -1749,7 +1757,7 @@ describe("NDContract", function () {
       ndContract
         .connect(firstUser)
         .claimRewards(
-          [COMPUTE_PARAMS],
+          [packedComputeParams(COMPUTE_PARAMS)],
           [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWithCustomError(ndContract, "LicenseBanned");
@@ -1805,14 +1813,14 @@ describe("NDContract", function () {
       ndContract
         .connect(firstUser)
         .claimRewards(
-          [COMPUTE_PARAMS],
+          [packedComputeParams(COMPUTE_PARAMS)],
           [[await computeSignatureBytes(backend)]]
         )
     ).to.be.revertedWithCustomError(ndContract, "LicenseBanned");
     await ndContract.connect(owner).unbanLicense(1);
     await ndContract
       .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(backend)]]);
+      .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(backend)]]);
   });
 
   it("Unban license - not the owner", async function () {
