@@ -1030,6 +1030,43 @@ describe("Reader contract", function () {
     });
   });
 
+  describe("getCspTier", function () {
+    it("returns tier for owner, delegate, and unregistered account", async function () {
+      await buyLicenseWithMintAndAllowance(
+        r1Contract,
+        ndContract,
+        owner,
+        owner,
+        await ndContract.getLicenseTokenPrice(),
+        1,
+        1,
+        10000,
+        20,
+        await createLicenseSignature(backend, owner, invoiceUuid, 10000)
+      );
+      await linkNode(ndContract, owner, 1, await backend.getAddress());
+
+      await poaiManager.connect(owner).deployCspEscrow();
+      const escrowAddress = await poaiManager.ownerToEscrow(
+        await owner.getAddress()
+      );
+      const cspEscrow = (await ethers.getContractAt(
+        "CspEscrow",
+        escrowAddress
+      )) as unknown as CspEscrow;
+      const delegateAddress = await firstUser.getAddress();
+
+      await cspEscrow
+        .connect(owner)
+        .setDelegatePermissions(delegateAddress, PERMISSION_CREATE_JOBS);
+      await poaiManager.connect(owner).setCspTier(await owner.getAddress(), 2);
+
+      expect(await reader.getCspTier(await owner.getAddress())).to.equal(2);
+      expect(await reader.getCspTier(delegateAddress)).to.equal(2);
+      expect(await reader.getCspTier(await backend.getAddress())).to.equal(0);
+    });
+  });
+
   describe("getNdNodesOwners", function () {
     it("returns owners for ND nodes", async function () {
       await buyLicenseWithMintAndAllowance(
