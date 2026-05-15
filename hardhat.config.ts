@@ -35,7 +35,7 @@ const config: HardhatUserConfig = {
     },
     baseSepolia: {
       chainId: 84532,
-      url: "https://base-sepolia-rpc.publicnode.com",
+      url: "https://base-sepolia.drpc.org",
       accounts,
     },
     base: {
