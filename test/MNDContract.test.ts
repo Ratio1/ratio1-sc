@@ -14,6 +14,7 @@ import {
   revertSnapshotAndCapture,
   setTimestampAndMine,
   signComputeParams,
+  packedComputeParams,
   signLinkMultiNode,
   signLinkNode,
   START_EPOCH_TIMESTAMP,
@@ -883,7 +884,7 @@ describe("MNDContract", function () {
     await ethers.provider.send("evm_mine", []);
 
     //DO TEST
-    let result = await mndContract.calculateRewards([COMPUTE_PARAMS]);
+    let result = await mndContract.calculateRewards([packedComputeParams(COMPUTE_PARAMS)]);
     expect({
       licenseId: result[0].licenseId,
       rewardsAmount: result[0].rewardsAmount,
@@ -904,12 +905,12 @@ describe("MNDContract", function () {
 
     //DO TEST
     let result = await mndContract.calculateRewards([
-      {
+      packedComputeParams({
         licenseId: 2,
         nodeAddress: NODE_ADDRESS,
         epochs: [223],
         availabilies: [255],
-      },
+      }),
     ]);
     expect({
       licenseId: result[0].licenseId,
@@ -954,7 +955,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(firstUser)
       .claimRewards(
-        [zeroAdoptionParams],
+        [packedComputeParams(zeroAdoptionParams)],
         [[ethers.getBytes(zeroAdoptionSignature)]]
       );
 
@@ -1000,7 +1001,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([params], [[ethers.getBytes(paramsSignature)]]);
+      .claimRewards([packedComputeParams(params)], [[ethers.getBytes(paramsSignature)]]);
 
     const awbBalance = await mndContract.awbBalances(2);
     const license = await mndContract.licenses(2);
@@ -1053,7 +1054,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([epochOneParams], [[ethers.getBytes(epochOneSignature)]]);
+      .claimRewards([packedComputeParams(epochOneParams)], [[ethers.getBytes(epochOneSignature)]]);
 
     const awbAfterFirst = await mndContract.awbBalances(2);
     expect(awbAfterFirst).to.equal(0n);
@@ -1090,7 +1091,7 @@ describe("MNDContract", function () {
     const licenseBeforeSecond = await mndContract.licenses(2);
     await mndContract
       .connect(firstUser)
-      .claimRewards([epochTwoParams], [[ethers.getBytes(epochTwoSignature)]]);
+      .claimRewards([packedComputeParams(epochTwoParams)], [[ethers.getBytes(epochTwoSignature)]]);
     const mintedAfterSecond = await r1Contract.balanceOf(
       await firstUser.getAddress()
     );
@@ -1154,7 +1155,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([epochOneParams], [[ethers.getBytes(epochOneSignature)]]);
+      .claimRewards([packedComputeParams(epochOneParams)], [[ethers.getBytes(epochOneSignature)]]);
 
     const adoptionPercentEpochOne =
       await adoptionOracleOverride.getAdoptionPercentageAtEpoch(epochOne);
@@ -1193,7 +1194,7 @@ describe("MNDContract", function () {
     const licenseBeforeSecond = await mndContract.licenses(2);
     await mndContract
       .connect(firstUser)
-      .claimRewards([epochTwoParams], [[ethers.getBytes(epochTwoSignature)]]);
+      .claimRewards([packedComputeParams(epochTwoParams)], [[ethers.getBytes(epochTwoSignature)]]);
     const mintedAfterSecond = await r1Contract.balanceOf(
       await firstUser.getAddress()
     );
@@ -1260,7 +1261,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([params], [[ethers.getBytes(signature)]]);
+      .claimRewards([packedComputeParams(params)], [[ethers.getBytes(signature)]]);
 
     const minted = await r1Contract.balanceOf(await firstUser.getAddress());
     const license = await mndContract.licenses(2);
@@ -1306,7 +1307,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([params], [[ethers.getBytes(signature)]]);
+      .claimRewards([packedComputeParams(params)], [[ethers.getBytes(signature)]]);
 
     const minted = await r1Contract.balanceOf(await firstUser.getAddress());
     const license = await mndContract.licenses(2);
@@ -1354,7 +1355,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([epochOneParams], [[ethers.getBytes(epochOneSignature)]]);
+      .claimRewards([packedComputeParams(epochOneParams)], [[ethers.getBytes(epochOneSignature)]]);
 
     const licenseAfterFirst = await mndContract.licenses(2);
     const awbAfterFirst = await mndContract.awbBalances(2);
@@ -1380,7 +1381,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([epochTwoParams], [[ethers.getBytes(epochTwoSignature)]]);
+      .claimRewards([packedComputeParams(epochTwoParams)], [[ethers.getBytes(epochTwoSignature)]]);
 
     const mintedAfterSecond = await r1Contract.balanceOf(
       await firstUser.getAddress()
@@ -1434,7 +1435,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([epochOneParams], [[ethers.getBytes(epochOneSignature)]]);
+      .claimRewards([packedComputeParams(epochOneParams)], [[ethers.getBytes(epochOneSignature)]]);
 
     const awbAfterFirst = await mndContract.awbBalances(2);
     const licenseAfterFirst = await mndContract.licenses(2);
@@ -1460,7 +1461,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([epochTwoParams], [[ethers.getBytes(epochTwoSignature)]]);
+      .claimRewards([packedComputeParams(epochTwoParams)], [[ethers.getBytes(epochTwoSignature)]]);
 
     const mintedAfterSecond = await r1Contract.balanceOf(
       await firstUser.getAddress()
@@ -1521,7 +1522,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([buildParams], [[ethers.getBytes(buildSignature)]]);
+      .claimRewards([packedComputeParams(buildParams)], [[ethers.getBytes(buildSignature)]]);
 
     const awbAfterBuild = await mndContract.awbBalances(2);
     expect(awbAfterBuild).to.be.gt(0n);
@@ -1547,7 +1548,7 @@ describe("MNDContract", function () {
     const licenseBeforeJump = await mndContract.licenses(2);
     await mndContract
       .connect(firstUser)
-      .claimRewards([epochJumpParams], [[ethers.getBytes(epochJumpSignature)]]);
+      .claimRewards([packedComputeParams(epochJumpParams)], [[ethers.getBytes(epochJumpSignature)]]);
     const mintedAfterJump = await r1Contract.balanceOf(
       await firstUser.getAddress()
     );
@@ -1582,7 +1583,7 @@ describe("MNDContract", function () {
     const licenseBeforeNext = await mndContract.licenses(2);
     await mndContract
       .connect(firstUser)
-      .claimRewards([epochNextParams], [[ethers.getBytes(epochNextSignature)]]);
+      .claimRewards([packedComputeParams(epochNextParams)], [[ethers.getBytes(epochNextSignature)]]);
     const mintedAfterNext = await r1Contract.balanceOf(
       await firstUser.getAddress()
     );
@@ -1641,7 +1642,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([earlyParams], [[ethers.getBytes(earlySignature)]]);
+      .claimRewards([packedComputeParams(earlyParams)], [[ethers.getBytes(earlySignature)]]);
 
     const awbAfterEarly = await mndContract.awbBalances(2);
     const licenseAfterEarly = await mndContract.licenses(2);
@@ -1668,7 +1669,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([plateauParams], [[ethers.getBytes(plateauSignature)]]);
+      .claimRewards([packedComputeParams(plateauParams)], [[ethers.getBytes(plateauSignature)]]);
 
     const mintedAfterPlateau = await r1Contract.balanceOf(
       await firstUser.getAddress()
@@ -1699,7 +1700,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(firstUser)
       .claimRewards(
-        [plateauNextParams],
+        [packedComputeParams(plateauNextParams)],
         [[ethers.getBytes(plateauNextSignature)]]
       );
 
@@ -1784,7 +1785,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([epochOneParams], [[ethers.getBytes(epochOneSignature)]]);
+      .claimRewards([packedComputeParams(epochOneParams)], [[ethers.getBytes(epochOneSignature)]]);
 
     const balanceAfterFirst = await r1Contract.balanceOf(
       await firstUser.getAddress()
@@ -1818,7 +1819,7 @@ describe("MNDContract", function () {
     });
     await mndContract
       .connect(firstUser)
-      .claimRewards([epochTwoParams], [[ethers.getBytes(epochTwoSignature)]]);
+      .claimRewards([packedComputeParams(epochTwoParams)], [[ethers.getBytes(epochTwoSignature)]]);
 
     const balanceAfterSecond = await r1Contract.balanceOf(
       await firstUser.getAddress()
@@ -1870,7 +1871,7 @@ describe("MNDContract", function () {
     //DO TEST
     await mndContract
       .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]]);
+      .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(oracle)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT
     );
@@ -1899,7 +1900,7 @@ describe("MNDContract", function () {
     //DO TEST
     await mndContract
       .connect(owner)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]]);
+      .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(oracle)]]);
     expect(await r1Contract.balanceOf(newLpWallet)).to.equal(
       76489386831087123287670n
     );
@@ -1931,14 +1932,14 @@ describe("MNDContract", function () {
     //DO TEST
     await mndContract
       .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]]);
+      .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(oracle)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT
     );
     //should not modify amount
     await mndContract
       .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]]);
+      .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(oracle)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT
     );
@@ -1956,7 +1957,7 @@ describe("MNDContract", function () {
     //DO TEST - should not claim anything
     await mndContract
       .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]]);
+      .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(oracle)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       0n
     );
@@ -1984,7 +1985,10 @@ describe("MNDContract", function () {
     );
     await mndContract
       .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]]);
+      .claimRewards(
+        [packedComputeParams(COMPUTE_PARAMS)],
+        [[await computeSignatureBytes(oracle)]]
+      );
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       LICENSE_POWER
     );
@@ -1996,7 +2000,7 @@ describe("MNDContract", function () {
     await ethers.provider.send("evm_mine", []);
     await mndContract
       .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]]);
+      .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(oracle)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       LICENSE_POWER //should not be changed
     );
@@ -2017,7 +2021,7 @@ describe("MNDContract", function () {
     await expect(
       mndContract
         .connect(secondUser)
-        .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]])
+        .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(oracle)]])
     ).to.be.revertedWithCustomError(mndContract, "NotLicenseOwner");
   });
 
@@ -2037,7 +2041,7 @@ describe("MNDContract", function () {
       mndContract
         .connect(firstUser)
         .claimRewards(
-          [COMPUTE_PARAMS],
+          [packedComputeParams(COMPUTE_PARAMS)],
           [[await computeSignatureBytes(firstUser)]]
         )
     ).to.be.revertedWith("Invalid oracle signature");
@@ -2059,7 +2063,7 @@ describe("MNDContract", function () {
     await expect(
       mndContract
         .connect(firstUser)
-        .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]])
+        .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(oracle)]])
     ).to.be.revertedWithCustomError(
       mndContract,
       "InvalidNodeAddressForRewards"
@@ -2076,12 +2080,19 @@ describe("MNDContract", function () {
       ONE_DAY_IN_SECS * (Number(CLIFF_PERIOD) + 5),
     ]);
     await ethers.provider.send("evm_mine", []);
-    COMPUTE_PARAMS.epochs = [1, 2, 3, 4, 5, 6, 7, 8];
+    COMPUTE_PARAMS.epochs = [
+      Number(CLIFF_PERIOD),
+      Number(CLIFF_PERIOD) + 1,
+      Number(CLIFF_PERIOD) + 2,
+      Number(CLIFF_PERIOD) + 3,
+      Number(CLIFF_PERIOD) + 4,
+    ];
+    COMPUTE_PARAMS.availabilies = [255, 255, 255, 255];
     //DO TEST
     await expect(
       mndContract
         .connect(firstUser)
-        .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]])
+        .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(oracle)]])
     ).to.be.revertedWithCustomError(mndContract, "IncorrectNumberOfParams");
   });
 
@@ -2112,7 +2123,7 @@ describe("MNDContract", function () {
     await mndContract
       .connect(firstUser)
       .claimRewards(
-        [COMPUTE_PARAMS],
+        [packedComputeParams(COMPUTE_PARAMS)],
         [
           [
             await computeSignatureBytes(oracle1),
@@ -2164,7 +2175,7 @@ describe("MNDContract", function () {
     //DO TEST
     await mndContract
       .connect(firstUser)
-      .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]]);
+      .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(oracle)]]);
     expect(await r1Contract.balanceOf(await firstUser.getAddress())).to.equal(
       REWARDS_AMOUNT
     );
@@ -2185,7 +2196,7 @@ describe("MNDContract", function () {
     await expect(
       mndContract
         .connect(firstUser)
-        .claimRewards([COMPUTE_PARAMS], [[await computeSignatureBytes(oracle)]])
+        .claimRewards([packedComputeParams(COMPUTE_PARAMS)], [[await computeSignatureBytes(oracle)]])
     ).to.be.revertedWith("Insufficient signatures");
   });
 
