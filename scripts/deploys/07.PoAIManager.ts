@@ -11,6 +11,9 @@ import {
   CSP_ESCROW_IMPLEMENTATION_ADDR,
   BURN_CONTRACT_ADDR,
 } from "../configs/constants";
+import { sleep } from "../utils/sleep";
+
+const PROXY_INDEXING_DELAY_MS = 5000;
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -40,6 +43,7 @@ async function main() {
   await poaiManager.waitForDeployment();
   const proxyAddress = await poaiManager.getAddress();
   console.log("PoAIManager deployed to:", proxyAddress);
+  await sleep(PROXY_INDEXING_DELAY_MS);
 
   const implAddress = await upgrades.erc1967.getImplementationAddress(
     proxyAddress

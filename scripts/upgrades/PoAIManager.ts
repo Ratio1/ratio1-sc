@@ -1,6 +1,7 @@
 import { ethers, upgrades } from "hardhat";
+import { POAI_MANAGER_ADDR } from "../configs/constants";
 
-const proxyAddress = "0xa8d7FFCE91a888872A9f5431B4Dd6c0c135055c1";
+const proxyAddress = POAI_MANAGER_ADDR;
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -21,20 +22,20 @@ async function main() {
   console.log("Validating new implementation...");
   try {
     await upgrades.validateImplementation(NewPoAIManager);
-    console.log("✅ New implementation is safe to upgrade");
+    console.log("New implementation is safe to upgrade");
   } catch (error) {
-    console.error("❌ Implementation validation failed:", error);
+    console.error("Implementation validation failed:", error);
     throw error;
   }
 
   // Prepare the upgrade
   console.log("Preparing upgrade...");
   const upgradeTx = await upgrades.prepareUpgrade(proxyAddress, NewPoAIManager);
-  console.log("🔧 New implementation address:", upgradeTx);
+  console.log("New implementation address:", upgradeTx);
 
-  // Get ProxyAdmin
-  const admin = await upgrades.admin.getInstance();
-  const proxyAdminAddress = admin.address;
+  const proxyAdminAddress = await upgrades.erc1967.getAdminAddress(
+    proxyAddress
+  );
   console.log("ProxyAdmin address:", proxyAdminAddress);
 
   console.log("\n========== Gnosis Safe Transaction ==========");

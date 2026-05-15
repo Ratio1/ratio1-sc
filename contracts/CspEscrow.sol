@@ -131,6 +131,7 @@ contract CspEscrow is Initializable {
     mapping(address => uint256) private delegatesPermissions;
     address[] private delegatedAddresses;
     IBurnContract public burnContract;
+    uint8 public cspTier;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -194,6 +195,7 @@ contract CspEscrow is Initializable {
         uint256 permissions
     );
     event DelegateRemoved(address indexed delegate);
+    event CspTierUpdated(uint8 previousTier, uint8 newTier);
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -745,6 +747,12 @@ contract CspEscrow is Initializable {
             "Burn contract cannot be zero address"
         );
         burnContract = IBurnContract(newBurnContract);
+    }
+
+    function setCspTier(uint8 newTier) external onlyPoAIManager {
+        uint8 previousTier = cspTier;
+        cspTier = newTier;
+        emit CspTierUpdated(previousTier, newTier);
     }
 
     function reconcileAllJobs() external onlyPoAIManager {

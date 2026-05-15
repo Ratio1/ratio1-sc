@@ -9,8 +9,8 @@ async function main() {
     deployer
   );
   const testnetFaucetContract = await TestnetFaucetContractFactory.deploy(
-    "0x2d6a9cda5179399Ee6c44d78550696e68400F677",
-    "1500000000", // 3000 tokens
+    R1_TOKEN_ADDR,
+    ethers.parseEther("3000"),
     60 * 60 * 24 // 1 day
   );
   await testnetFaucetContract.waitForDeployment();

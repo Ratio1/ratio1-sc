@@ -1,5 +1,9 @@
 import { ethers } from "hardhat";
-import { SAFE_ADDR } from "../configs/constants";
+import {
+  EPOCH_DURATION,
+  SAFE_ADDR,
+  START_EPOCH_TIMESTAMP,
+} from "../configs/constants";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -9,8 +13,8 @@ async function main() {
     deployer
   );
   const controllerContract = await ControllerContractFactory.deploy(
-    1748016000,
-    86400,
+    START_EPOCH_TIMESTAMP,
+    EPOCH_DURATION,
     SAFE_ADDR
   );
   await controllerContract.waitForDeployment();

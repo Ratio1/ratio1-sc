@@ -448,6 +448,97 @@ describe("PoAIManager", function () {
       );
   });
 
+  describe("CSP tiers", function () {
+    it("defaults newly deployed CSP escrow tier to zero", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const cspEscrow = (await ethers.getContractAt(
+        "CspEscrow",
+        escrowAddress
+      )) as unknown as CspEscrow;
+
+      expect(await cspEscrow.cspTier()).to.equal(0);
+      expect(await poaiManager.getCspTier(await user.getAddress())).to.equal(0);
+    });
+
+    it("allows PoAI manager owner to update CSP tier", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const userAddress = await user.getAddress();
+      const cspEscrow = (await ethers.getContractAt(
+        "CspEscrow",
+        escrowAddress
+      )) as unknown as CspEscrow;
+
+      await expect(poaiManager.connect(owner).setCspTier(userAddress, 1))
+        .to.emit(cspEscrow, "CspTierUpdated")
+        .withArgs(0, 1)
+        .and.to.emit(poaiManager, "CspTierUpdated")
+        .withArgs(userAddress, escrowAddress, 1);
+
+      expect(await cspEscrow.cspTier()).to.equal(1);
+      expect(await poaiManager.getCspTier(userAddress)).to.equal(1);
+
+      await poaiManager.connect(owner).setCspTier(userAddress, 2);
+
+      expect(await cspEscrow.cspTier()).to.equal(2);
+      expect(await poaiManager.getCspTier(userAddress)).to.equal(2);
+    });
+
+    it("prevents non-owner accounts from updating CSP tier", async function () {
+      await setupUserWithEscrow(user, oracle);
+
+      await expect(
+        poaiManager.connect(user).setCspTier(await user.getAddress(), 1)
+      ).to.be.revertedWithCustomError(
+        poaiManager,
+        "OwnableUnauthorizedAccount"
+      );
+    });
+
+    it("reverts when setting tier for an owner without escrow", async function () {
+      await expect(
+        poaiManager.connect(owner).setCspTier(await other.getAddress(), 1)
+      ).to.be.revertedWithCustomError(
+        poaiManager,
+        "CspEscrowDoesNotExist"
+      );
+    });
+
+    it("prevents direct escrow tier updates by non-manager accounts", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const cspEscrow = (await ethers.getContractAt(
+        "CspEscrow",
+        escrowAddress
+      )) as unknown as CspEscrow;
+
+      await expect(cspEscrow.connect(user).setCspTier(1)).to.be.revertedWith(
+        "Not PoAI Manager"
+      );
+    });
+
+    it("returns delegated escrow tier for delegated addresses", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const userAddress = await user.getAddress();
+      const delegateAddress = await other.getAddress();
+      const cspEscrow = (await ethers.getContractAt(
+        "CspEscrow",
+        escrowAddress
+      )) as unknown as CspEscrow;
+
+      await cspEscrow
+        .connect(user)
+        .setDelegatePermissions(delegateAddress, PERMISSION_CREATE_JOBS);
+      await poaiManager.connect(owner).setCspTier(userAddress, 2);
+
+      expect(await poaiManager.getCspTier(delegateAddress)).to.equal(2);
+    });
+
+    it("returns zero tier for unregistered addresses", async function () {
+      expect(await poaiManager.getCspTier(await other.getAddress())).to.equal(
+        0
+      );
+    });
+  });
+
   it("should allow CSP owner to create a job", async function () {
     const escrowAddress = await setupUserWithEscrow(user, oracle);
     const CspEscrow = await ethers.getContractFactory("CspEscrow");

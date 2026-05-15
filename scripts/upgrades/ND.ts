@@ -1,6 +1,7 @@
 import { ethers, upgrades } from "hardhat";
+import { ND_SC_ADDR } from "../configs/constants";
 
-const proxyAddress = "0xE658DF6dA3FB5d4FBa562F1D5934bd0F9c6bd423";
+const proxyAddress = ND_SC_ADDR;
 
 async function main() {
   const NewNDContract = await ethers.getContractFactory("NDContract");
@@ -11,11 +12,11 @@ async function main() {
   console.log("Previous implementation:", prevImpl);
 
   const upgradeTx = await upgrades.prepareUpgrade(proxyAddress, NewNDContract);
-  console.log("🔧 New implementation address:", upgradeTx);
+  console.log("New implementation address:", upgradeTx);
 
-  // Get ProxyAdmin
-  const admin = await upgrades.admin.getInstance();
-  const proxyAdminAddress = admin.address;
+  const proxyAdminAddress = await upgrades.erc1967.getAdminAddress(
+    proxyAddress
+  );
   console.log("ProxyAdmin address:", proxyAdminAddress);
 
   console.log("========== Gnosis Safe Transaction ==========");

@@ -1,6 +1,7 @@
 import { ethers, upgrades } from "hardhat";
+import { READER_ADDR } from "../configs/constants";
 
-const proxyAddress = "0xa2fDD4c7E93790Ff68a01f01AA789D619F12c6AC";
+const proxyAddress = READER_ADDR;
 
 async function main() {
   const NewReaderContract = await ethers.getContractFactory("Reader");
@@ -14,11 +15,11 @@ async function main() {
     proxyAddress,
     NewReaderContract
   );
-  console.log("🔧 New implementation address:", upgradeTx);
+  console.log("New implementation address:", upgradeTx);
 
-  // Get ProxyAdmin
-  const admin = await upgrades.admin.getInstance();
-  const proxyAdminAddress = admin.address;
+  const proxyAdminAddress = await upgrades.erc1967.getAdminAddress(
+    proxyAddress
+  );
   console.log("ProxyAdmin address:", proxyAdminAddress);
 
   console.log("========== Gnosis Safe Transaction ==========");

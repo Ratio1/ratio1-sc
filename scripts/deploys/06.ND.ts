@@ -1,25 +1,32 @@
 import { ethers, upgrades } from "hardhat";
 import {
-  CONTROLLER_ADDR,
   R1_TOKEN_ADDR,
+  CONTROLLER_ADDR,
   SAFE_ADDR,
 } from "../configs/constants";
+import { sleep } from "../utils/sleep";
+
+const PROXY_INDEXING_DELAY_MS = 5000;
 
 async function main() {
   const [deployer] = await ethers.getSigners();
 
-  const MNDContractFactory = await ethers.getContractFactory(
-    "MNDContract",
+  const NDContractFactory = await ethers.getContractFactory(
+    "NDContract",
     deployer
   );
-  const mndContract = await upgrades.deployProxy(
-    MNDContractFactory,
+
+  const ndContract = await upgrades.deployProxy(
+    NDContractFactory,
     [R1_TOKEN_ADDR, CONTROLLER_ADDR, SAFE_ADDR],
     { initializer: "initialize" }
   );
-  await mndContract.waitForDeployment();
-  const proxyAddress = await mndContract.getAddress();
-  console.log("MND deployed to:", proxyAddress);
+
+  await ndContract.waitForDeployment();
+  const proxyAddress = await ndContract.getAddress();
+  console.log("ND deployed to:", proxyAddress);
+  await sleep(PROXY_INDEXING_DELAY_MS);
+
   const implAddress = await upgrades.erc1967.getImplementationAddress(
     proxyAddress
   );

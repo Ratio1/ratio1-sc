@@ -1,20 +1,32 @@
 import { ethers } from "hardhat";
 import { ND_SC_ADDR } from "../constants";
 
+const LICENSES_TO_BUY = 1;
+const REQUESTED_PRICE_TIER = 1;
+const MAX_ACCEPTED_TOKEN_PER_LICENSE = 0n;
+const INVOICE_UUID =
+  "0x0000000000000000000000000000000000000000000000000000000000000000";
+const USD_MINT_LIMIT = 0;
+const VAT_PERCENT = 0;
+const SIGNATURE = "0x";
+
 async function main() {
   const [deployer] = await ethers.getSigners();
 
-  const NDContractFactory = await ethers.getContractFactory(
+  const ndContract = await ethers.getContractAt(
     "NDContract",
+    ND_SC_ADDR,
     deployer
   );
-  const ndContract = NDContractFactory.attach(ND_SC_ADDR);
 
   await ndContract.buyLicense(
-    1,
-    1,
-    Buffer.from("c006b48f9bda4236829ab328fd2a71a2"),
-    "0x878cc88c5b34fc9a54a8752d9717a4f614e21c7b19e4b01f897eba461bd818ad51d44ca5c85287b17d159c127dc086d96d406959a4de7c9cc309755afe66aeea1b"
+    LICENSES_TO_BUY,
+    REQUESTED_PRICE_TIER,
+    MAX_ACCEPTED_TOKEN_PER_LICENSE,
+    INVOICE_UUID,
+    USD_MINT_LIMIT,
+    VAT_PERCENT,
+    SIGNATURE
   );
 }
 

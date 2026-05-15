@@ -420,26 +420,23 @@ export async function signComputeParams({
   epochs: BigNumberish[];
   availabilities: BigNumberish[];
 }): Promise<string> {
+  const fromEpoch = epochs[0] ?? 0;
+  const toEpoch = epochs[epochs.length - 1] ?? 0;
+  const packedAvailabilities = packAvailabilities(availabilities);
   let messageBytes = Buffer.from(nodeAddress.slice(2), "hex");
 
-  for (const epoch of epochs) {
-    const epochBytes = ethers.zeroPadValue(ethers.toBeHex(epoch), 32);
+  for (const value of [fromEpoch, toEpoch]) {
+    const valueBytes = ethers.zeroPadValue(ethers.toBeHex(value), 32);
     messageBytes = Buffer.concat([
       messageBytes,
-      Buffer.from(epochBytes.slice(2), "hex"),
+      Buffer.from(valueBytes.slice(2), "hex"),
     ]);
   }
 
-  for (const availability of availabilities) {
-    const availabilityBytes = ethers.zeroPadValue(
-      ethers.toBeHex(availability),
-      32
-    );
-    messageBytes = Buffer.concat([
-      messageBytes,
-      Buffer.from(availabilityBytes.slice(2), "hex"),
-    ]);
-  }
+  messageBytes = Buffer.concat([
+    messageBytes,
+    Buffer.from(packedAvailabilities.slice(2), "hex"),
+  ]);
 
   const messageHash = ethers.keccak256(messageBytes);
   const signature = await signer.signMessage(ethers.getBytes(messageHash));
@@ -450,6 +447,34 @@ export async function signComputeParams({
   }
 
   return ethers.hexlify(signatureBytes);
+}
+
+export function packAvailabilities(availabilities: BigNumberish[]): string {
+  const bytes = availabilities.map((availability) => {
+    const value = BigInt(availability);
+    if (value < 0n || value > 255n) {
+      throw new Error(`Invalid availability ${availability}`);
+    }
+    return Number(value);
+  });
+  return ethers.hexlify(Uint8Array.from(bytes));
+}
+
+export function packedComputeParams<
+  T extends {
+    licenseId: BigNumberish;
+    nodeAddress: string;
+    epochs: BigNumberish[];
+    availabilies: BigNumberish[];
+  },
+>(params: T) {
+  return {
+    licenseId: params.licenseId,
+    nodeAddress: params.nodeAddress,
+    fromEpoch: params.epochs[0] ?? 0,
+    toEpoch: params.epochs[params.epochs.length - 1] ?? 0,
+    packedAvailabilities: packAvailabilities(params.availabilies),
+  };
 }
 
 export async function deployUniswapMocks(r1: R1): Promise<{

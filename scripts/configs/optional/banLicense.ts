@@ -1,19 +1,19 @@
 import { ethers } from "hardhat";
 import { ND_SC_ADDR } from "../constants";
 
-const ADDRESS_TO_BAN = "";
+const LICENSE_ID_TO_BAN = 0;
 
 async function main() {
 	const [deployer] = await ethers.getSigners();
 
-	const NDContractFactory = await ethers.getContractFactory(
+	const ndContract = await ethers.getContractAt(
 		"NDContract",
+		ND_SC_ADDR,
 		deployer
 	);
-	const ndContract = NDContractFactory.attach(ND_SC_ADDR);
 
-	await ndContract.banLicense(ADDRESS_TO_BAN);
-	console.log("Address", ADDRESS_TO_BAN, "banned in ND contract");
+	await ndContract.banLicense(LICENSE_ID_TO_BAN);
+	console.log("License", LICENSE_ID_TO_BAN, "banned in ND contract");
 }
 
 main()
