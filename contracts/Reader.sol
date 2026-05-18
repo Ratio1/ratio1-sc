@@ -115,6 +115,7 @@ struct EscrowDetails {
     address owner;
     int256 tvl;
     uint256 activeJobsCount;
+    uint8 cspTier;
 }
 
 struct UserEscrowDetails {
@@ -182,6 +183,7 @@ interface IPoAIManager {
 interface ICspEscrow {
     function getTotalJobsBalance() external view returns (int256);
     function getActiveJobsCount() external view returns (uint256);
+    function cspTier() external view returns (uint8);
     function getDelegatePermissions(
         address delegate
     ) external view returns (uint256);
@@ -514,7 +516,8 @@ contract Reader is Initializable {
                 escrowAddress: escrowAddr,
                 owner: cspsWithOwner[i].cspOwner,
                 tvl: ICspEscrow(escrowAddr).getTotalJobsBalance(),
-                activeJobsCount: ICspEscrow(escrowAddr).getActiveJobsCount()
+                activeJobsCount: ICspEscrow(escrowAddr).getActiveJobsCount(),
+                cspTier: ICspEscrow(escrowAddr).cspTier()
             });
         }
         return details;
@@ -588,7 +591,8 @@ contract Reader is Initializable {
                     escrowAddress: address(0),
                     owner: address(0),
                     tvl: 0,
-                    activeJobsCount: 0
+                    activeJobsCount: 0,
+                    cspTier: 0
                 });
         }
         return
@@ -596,7 +600,8 @@ contract Reader is Initializable {
                 escrowAddress: escrowAddr,
                 owner: owner,
                 tvl: ICspEscrow(escrowAddr).getTotalJobsBalance(),
-                activeJobsCount: ICspEscrow(escrowAddr).getActiveJobsCount()
+                activeJobsCount: ICspEscrow(escrowAddr).getActiveJobsCount(),
+                cspTier: ICspEscrow(escrowAddr).cspTier()
             });
     }
 

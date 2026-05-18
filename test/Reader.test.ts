@@ -328,6 +328,7 @@ describe("Reader contract", function () {
       owner: escrow[1],
       tvl: escrow[2],
       activeJobsCount: escrow[3],
+      cspTier: escrow[4],
     };
   }
 
@@ -877,6 +878,7 @@ describe("Reader contract", function () {
       const escrowAddress = await poaiManager.ownerToEscrow(
         await owner.getAddress()
       );
+      await poaiManager.connect(owner).setCspTier(await owner.getAddress(), 2);
 
       const result = await reader.getAllEscrowsDetails();
       const mapped = result.map(formatEscrowDetails);
@@ -887,6 +889,7 @@ describe("Reader contract", function () {
           owner: await owner.getAddress(),
           tvl: 0n,
           activeJobsCount: 0n,
+          cspTier: 2n,
         },
       ]);
     });
@@ -902,6 +905,7 @@ describe("Reader contract", function () {
         owner: NULL_ADDRESS,
         tvl: 0n,
         activeJobsCount: 0n,
+        cspTier: 0n,
       });
     });
 
@@ -924,6 +928,7 @@ describe("Reader contract", function () {
       const escrowAddress = await poaiManager.ownerToEscrow(
         await owner.getAddress()
       );
+      await poaiManager.connect(owner).setCspTier(await owner.getAddress(), 2);
 
       const result = await reader.getEscrowDetailsByOwner(
         await owner.getAddress()
@@ -935,6 +940,7 @@ describe("Reader contract", function () {
         owner: await owner.getAddress(),
         tvl: 0n,
         activeJobsCount: 0n,
+        cspTier: 2n,
       });
     });
   });
