@@ -35378,7 +35378,7 @@
             "label": "LOGISTIC_PLATEAU",
             "offset": 0,
             "slot": "0",
-            "type": "t_userDefinedValueType(SD59x18)15432",
+            "type": "t_userDefinedValueType(SD59x18)14519",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:121"
           },
@@ -35386,7 +35386,7 @@
             "label": "K",
             "offset": 0,
             "slot": "1",
-            "type": "t_userDefinedValueType(SD59x18)15432",
+            "type": "t_userDefinedValueType(SD59x18)14519",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:122"
           },
@@ -35394,7 +35394,7 @@
             "label": "MID_PRC",
             "offset": 0,
             "slot": "2",
-            "type": "t_userDefinedValueType(SD59x18)15432",
+            "type": "t_userDefinedValueType(SD59x18)14519",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:123"
           },
@@ -35418,7 +35418,7 @@
             "label": "_R1Token",
             "offset": 0,
             "slot": "5",
-            "type": "t_contract(R1)34387",
+            "type": "t_contract(R1)21499",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:142"
           },
@@ -35426,7 +35426,7 @@
             "label": "_controller",
             "offset": 0,
             "slot": "6",
-            "type": "t_contract(Controller)21476",
+            "type": "t_contract(Controller)18808",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:143"
           },
@@ -35434,7 +35434,7 @@
             "label": "_ndContract",
             "offset": 0,
             "slot": "7",
-            "type": "t_contract(IND)25925",
+            "type": "t_contract(IND)18837",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:144"
           },
@@ -35490,7 +35490,7 @@
             "label": "licenses",
             "offset": 0,
             "slot": "14",
-            "type": "t_mapping(t_uint256,t_struct(License)25971_storage)",
+            "type": "t_mapping(t_uint256,t_struct(License)18883_storage)",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:152"
           },
@@ -35530,7 +35530,7 @@
             "label": "adoptionOracle",
             "offset": 0,
             "slot": "19",
-            "type": "t_contract(IAdoptionOracle)25936",
+            "type": "t_contract(IAdoptionOracle)18848",
             "contract": "MNDContract",
             "src": "contracts/MNDContract.sol:159"
           },
@@ -35742,19 +35742,19 @@
             "label": "uint64",
             "numberOfBytes": "8"
           },
-          "t_contract(Controller)21476": {
+          "t_contract(Controller)18808": {
             "label": "contract Controller",
             "numberOfBytes": "20"
           },
-          "t_contract(IAdoptionOracle)25936": {
+          "t_contract(IAdoptionOracle)18848": {
             "label": "contract IAdoptionOracle",
             "numberOfBytes": "20"
           },
-          "t_contract(IND)25925": {
+          "t_contract(IND)18837": {
             "label": "contract IND",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)34387": {
+          "t_contract(R1)21499": {
             "label": "contract R1",
             "numberOfBytes": "20"
           },
@@ -35762,11 +35762,11 @@
             "label": "mapping(address => address)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_struct(License)25971_storage)": {
+          "t_mapping(t_uint256,t_struct(License)18883_storage)": {
             "label": "mapping(uint256 => struct License)",
             "numberOfBytes": "32"
           },
-          "t_struct(License)25971_storage": {
+          "t_struct(License)18883_storage": {
             "label": "struct License",
             "members": [
               {
@@ -35818,7 +35818,7 @@
             "label": "uint8",
             "numberOfBytes": "1"
           },
-          "t_userDefinedValueType(SD59x18)15432": {
+          "t_userDefinedValueType(SD59x18)14519": {
             "label": "SD59x18",
             "numberOfBytes": "32",
             "underlying": "t_int256"
@@ -36434,7 +36434,7 @@
             "label": "_R1Token",
             "offset": 1,
             "slot": "2",
-            "type": "t_contract(R1)34387",
+            "type": "t_contract(R1)13516",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:148"
           },
@@ -36442,7 +36442,7 @@
             "label": "_controller",
             "offset": 0,
             "slot": "3",
-            "type": "t_contract(Controller)21476",
+            "type": "t_contract(Controller)10445",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:149"
           },
@@ -36450,7 +36450,7 @@
             "label": "_uniswapV2Router",
             "offset": 0,
             "slot": "4",
-            "type": "t_contract(IUniswapV2Router02)18561",
+            "type": "t_contract(IUniswapV2Router02)9978",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:150"
           },
@@ -36458,7 +36458,7 @@
             "label": "_uniswapV2Pair",
             "offset": 0,
             "slot": "5",
-            "type": "t_contract(IUniswapV2Pair)18165",
+            "type": "t_contract(IUniswapV2Pair)9582",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:151"
           },
@@ -36474,7 +36474,7 @@
             "label": "_mndContract",
             "offset": 0,
             "slot": "7",
-            "type": "t_contract(IMND)28390",
+            "type": "t_contract(IMND)10468",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:153"
           },
@@ -36506,7 +36506,7 @@
             "label": "_priceTiers",
             "offset": 0,
             "slot": "11",
-            "type": "t_mapping(t_uint8,t_struct(PriceTier)28431_storage)",
+            "type": "t_mapping(t_uint8,t_struct(PriceTier)10509_storage)",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:158"
           },
@@ -36514,7 +36514,7 @@
             "label": "licenses",
             "offset": 0,
             "slot": "12",
-            "type": "t_mapping(t_uint256,t_struct(License)28444_storage)",
+            "type": "t_mapping(t_uint256,t_struct(License)10522_storage)",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:159"
           },
@@ -36594,7 +36594,7 @@
             "label": "poaiManager",
             "offset": 0,
             "slot": "22",
-            "type": "t_contract(IPoAIManager)28400",
+            "type": "t_contract(IPoAIManager)10478",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:171"
           },
@@ -36602,7 +36602,7 @@
             "label": "adoptionOracle",
             "offset": 0,
             "slot": "23",
-            "type": "t_contract(IAdoptionOracle)28408",
+            "type": "t_contract(IAdoptionOracle)10486",
             "contract": "NDContract",
             "src": "contracts/NDContract.sol:172"
           }
@@ -36802,31 +36802,31 @@
             "label": "bytes32",
             "numberOfBytes": "32"
           },
-          "t_contract(Controller)21476": {
+          "t_contract(Controller)10445": {
             "label": "contract Controller",
             "numberOfBytes": "20"
           },
-          "t_contract(IAdoptionOracle)28408": {
+          "t_contract(IAdoptionOracle)10486": {
             "label": "contract IAdoptionOracle",
             "numberOfBytes": "20"
           },
-          "t_contract(IMND)28390": {
+          "t_contract(IMND)10468": {
             "label": "contract IMND",
             "numberOfBytes": "20"
           },
-          "t_contract(IPoAIManager)28400": {
+          "t_contract(IPoAIManager)10478": {
             "label": "contract IPoAIManager",
             "numberOfBytes": "20"
           },
-          "t_contract(IUniswapV2Pair)18165": {
+          "t_contract(IUniswapV2Pair)9582": {
             "label": "contract IUniswapV2Pair",
             "numberOfBytes": "20"
           },
-          "t_contract(IUniswapV2Router02)18561": {
+          "t_contract(IUniswapV2Router02)9978": {
             "label": "contract IUniswapV2Router02",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)34387": {
+          "t_contract(R1)13516": {
             "label": "contract R1",
             "numberOfBytes": "20"
           },
@@ -36834,15 +36834,15 @@
             "label": "mapping(bytes32 => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_struct(License)28444_storage)": {
+          "t_mapping(t_uint256,t_struct(License)10522_storage)": {
             "label": "mapping(uint256 => struct License)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint8,t_struct(PriceTier)28431_storage)": {
+          "t_mapping(t_uint8,t_struct(PriceTier)10509_storage)": {
             "label": "mapping(uint8 => struct PriceTier)",
             "numberOfBytes": "32"
           },
-          "t_struct(License)28444_storage": {
+          "t_struct(License)10522_storage": {
             "label": "struct License",
             "members": [
               {
@@ -36884,7 +36884,7 @@
             ],
             "numberOfBytes": "160"
           },
-          "t_struct(PriceTier)28431_storage": {
+          "t_struct(PriceTier)10509_storage": {
             "label": "struct PriceTier",
             "members": [
               {
@@ -37302,7 +37302,7 @@
             "label": "ndContract",
             "offset": 0,
             "slot": "0",
-            "type": "t_contract(IND)34509",
+            "type": "t_contract(IND)2580",
             "contract": "Reader",
             "src": "contracts/Reader.sol:190"
           },
@@ -37310,7 +37310,7 @@
             "label": "mndContract",
             "offset": 0,
             "slot": "1",
-            "type": "t_contract(IMND)34527",
+            "type": "t_contract(IMND)2598",
             "contract": "Reader",
             "src": "contracts/Reader.sol:191"
           },
@@ -37318,7 +37318,7 @@
             "label": "controller",
             "offset": 0,
             "slot": "2",
-            "type": "t_contract(Controller)21476",
+            "type": "t_contract(Controller)2115",
             "contract": "Reader",
             "src": "contracts/Reader.sol:192"
           },
@@ -37326,7 +37326,7 @@
             "label": "r1Contract",
             "offset": 0,
             "slot": "3",
-            "type": "t_contract(R1)34264",
+            "type": "t_contract(R1)2335",
             "contract": "Reader",
             "src": "contracts/Reader.sol:193"
           },
@@ -37334,7 +37334,7 @@
             "label": "poaiManager",
             "offset": 0,
             "slot": "4",
-            "type": "t_contract(IPoAIManager)34579",
+            "type": "t_contract(IPoAIManager)2650",
             "contract": "Reader",
             "src": "contracts/Reader.sol:194"
           }
@@ -37344,7 +37344,7 @@
             "label": "bool",
             "numberOfBytes": "1"
           },
-          "t_struct(InitializableStorage)73_storage": {
+          "t_struct(InitializableStorage)7_storage": {
             "label": "struct Initializable.InitializableStorage",
             "members": [
               {
@@ -37366,23 +37366,23 @@
             "label": "uint64",
             "numberOfBytes": "8"
           },
-          "t_contract(Controller)21476": {
+          "t_contract(Controller)2115": {
             "label": "contract Controller",
             "numberOfBytes": "20"
           },
-          "t_contract(IMND)34527": {
+          "t_contract(IMND)2598": {
             "label": "contract IMND",
             "numberOfBytes": "20"
           },
-          "t_contract(IND)34509": {
+          "t_contract(IND)2580": {
             "label": "contract IND",
             "numberOfBytes": "20"
           },
-          "t_contract(IPoAIManager)34579": {
+          "t_contract(IPoAIManager)2650": {
             "label": "contract IPoAIManager",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)34264": {
+          "t_contract(R1)2335": {
             "label": "contract R1",
             "numberOfBytes": "20"
           }
@@ -37689,7 +37689,7 @@
             "label": "redmeshTestAttestations",
             "offset": 0,
             "slot": "1",
-            "type": "t_array(t_struct(RedmeshTestAttestation)19930_storage)dyn_storage",
+            "type": "t_array(t_struct(RedmeshTestAttestation)5964_storage)dyn_storage",
             "contract": "AttestationRegistry",
             "src": "contracts/AttestationRegistry.sol:69"
           },
@@ -37705,7 +37705,7 @@
             "label": "redmeshJobStartAttestations",
             "offset": 0,
             "slot": "3",
-            "type": "t_array(t_struct(RedmeshJobStartAttestation)19945_storage)dyn_storage",
+            "type": "t_array(t_struct(RedmeshJobStartAttestation)5979_storage)dyn_storage",
             "contract": "AttestationRegistry",
             "src": "contracts/AttestationRegistry.sol:71"
           },
@@ -37761,11 +37761,11 @@
             "label": "uint64",
             "numberOfBytes": "8"
           },
-          "t_array(t_struct(RedmeshJobStartAttestation)19945_storage)dyn_storage": {
+          "t_array(t_struct(RedmeshJobStartAttestation)5979_storage)dyn_storage": {
             "label": "struct AttestationRegistry.RedmeshJobStartAttestation[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(RedmeshTestAttestation)19930_storage)dyn_storage": {
+          "t_array(t_struct(RedmeshTestAttestation)5964_storage)dyn_storage": {
             "label": "struct AttestationRegistry.RedmeshTestAttestation[]",
             "numberOfBytes": "32"
           },
@@ -37793,7 +37793,7 @@
             "label": "mapping(address => uint32[])",
             "numberOfBytes": "32"
           },
-          "t_struct(RedmeshJobStartAttestation)19945_storage": {
+          "t_struct(RedmeshJobStartAttestation)5979_storage": {
             "label": "struct AttestationRegistry.RedmeshJobStartAttestation",
             "members": [
               {
@@ -37841,7 +37841,7 @@
             ],
             "numberOfBytes": "96"
           },
-          "t_struct(RedmeshTestAttestation)19930_storage": {
+          "t_struct(RedmeshTestAttestation)5964_storage": {
             "label": "struct AttestationRegistry.RedmeshTestAttestation",
             "members": [
               {
@@ -38253,7 +38253,7 @@
             "label": "poaiManager",
             "offset": 0,
             "slot": "0",
-            "type": "t_contract(IPoAIManager)21679",
+            "type": "t_contract(IPoAIManager)4110",
             "contract": "CspEscrow",
             "src": "contracts/CspEscrow.sol:118"
           },
@@ -38277,7 +38277,7 @@
             "label": "r1Token",
             "offset": 0,
             "slot": "3",
-            "type": "t_contract(R1)34264",
+            "type": "t_contract(R1)10396",
             "contract": "CspEscrow",
             "src": "contracts/CspEscrow.sol:121"
           },
@@ -38285,7 +38285,7 @@
             "label": "controller",
             "offset": 0,
             "slot": "4",
-            "type": "t_contract(Controller)21476",
+            "type": "t_contract(Controller)3907",
             "contract": "CspEscrow",
             "src": "contracts/CspEscrow.sol:122"
           },
@@ -38293,7 +38293,7 @@
             "label": "uniswapV2Router",
             "offset": 0,
             "slot": "5",
-            "type": "t_contract(IUniswapV2Router02)18561",
+            "type": "t_contract(IUniswapV2Router02)3440",
             "contract": "CspEscrow",
             "src": "contracts/CspEscrow.sol:123"
           },
@@ -38301,7 +38301,7 @@
             "label": "uniswapV2Pair",
             "offset": 0,
             "slot": "6",
-            "type": "t_contract(IUniswapV2Pair)18165",
+            "type": "t_contract(IUniswapV2Pair)3044",
             "contract": "CspEscrow",
             "src": "contracts/CspEscrow.sol:124"
           },
@@ -38309,7 +38309,7 @@
             "label": "jobDetails",
             "offset": 0,
             "slot": "7",
-            "type": "t_mapping(t_uint256,t_struct(JobDetails)21705_storage)",
+            "type": "t_mapping(t_uint256,t_struct(JobDetails)4136_storage)",
             "contract": "CspEscrow",
             "src": "contracts/CspEscrow.sol:126"
           },
@@ -38357,7 +38357,7 @@
             "label": "burnContract",
             "offset": 0,
             "slot": "13",
-            "type": "t_contract(IBurnContract)21490",
+            "type": "t_contract(IBurnContract)3921",
             "contract": "CspEscrow",
             "src": "contracts/CspEscrow.sol:133"
           }
@@ -38405,27 +38405,27 @@
             "label": "bytes32",
             "numberOfBytes": "32"
           },
-          "t_contract(Controller)21476": {
+          "t_contract(Controller)3907": {
             "label": "contract Controller",
             "numberOfBytes": "20"
           },
-          "t_contract(IBurnContract)21490": {
+          "t_contract(IBurnContract)3921": {
             "label": "contract IBurnContract",
             "numberOfBytes": "20"
           },
-          "t_contract(IPoAIManager)21679": {
+          "t_contract(IPoAIManager)4110": {
             "label": "contract IPoAIManager",
             "numberOfBytes": "20"
           },
-          "t_contract(IUniswapV2Pair)18165": {
+          "t_contract(IUniswapV2Pair)3044": {
             "label": "contract IUniswapV2Pair",
             "numberOfBytes": "20"
           },
-          "t_contract(IUniswapV2Router02)18561": {
+          "t_contract(IUniswapV2Router02)3440": {
             "label": "contract IUniswapV2Router02",
             "numberOfBytes": "20"
           },
-          "t_contract(R1)34264": {
+          "t_contract(R1)10396": {
             "label": "contract R1",
             "numberOfBytes": "20"
           },
@@ -38437,11 +38437,11 @@
             "label": "mapping(address => uint256)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_struct(JobDetails)21705_storage)": {
+          "t_mapping(t_uint256,t_struct(JobDetails)4136_storage)": {
             "label": "mapping(uint256 => struct JobDetails)",
             "numberOfBytes": "32"
           },
-          "t_struct(JobDetails)21705_storage": {
+          "t_struct(JobDetails)4136_storage": {
             "label": "struct JobDetails",
             "members": [
               {
@@ -38544,7 +38544,10 @@
             }
           ]
         }
-      }
+      },
+      "allAddresses": [
+        "0x4E7DF608e28B584Ae6103C0F7240A7d030F0FD8A"
+      ]
     },
     "d1d4c5647d8e405b0a6fe8e7dfef4a182e2f4c9577617779462ce6be988aaa9c": {
       "address": "0x9c3643c16691dCef2dD5DA763F5Bcbe0e861c174",
@@ -38556,7 +38559,7 @@
             "label": "cspEscrowBeacon",
             "offset": 0,
             "slot": "0",
-            "type": "t_contract(UpgradeableBeacon)3397",
+            "type": "t_contract(UpgradeableBeacon)1300",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:120"
           },
@@ -38564,7 +38567,7 @@
             "label": "ndContract",
             "offset": 0,
             "slot": "1",
-            "type": "t_contract(IND)31261",
+            "type": "t_contract(IND)7393",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:121"
           },
@@ -38572,7 +38575,7 @@
             "label": "mndContract",
             "offset": 0,
             "slot": "2",
-            "type": "t_contract(IMND)31271",
+            "type": "t_contract(IMND)7403",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:122"
           },
@@ -38580,7 +38583,7 @@
             "label": "controller",
             "offset": 0,
             "slot": "3",
-            "type": "t_contract(Controller)21476",
+            "type": "t_contract(Controller)3907",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:123"
           },
@@ -38676,7 +38679,7 @@
             "label": "deprecatedNodesTransactionProposals",
             "offset": 0,
             "slot": "15",
-            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)31287_storage)dyn_storage))",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)7419_storage)dyn_storage))",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:143"
           },
@@ -38732,7 +38735,7 @@
             "label": "nodesTransactionProposals",
             "offset": 0,
             "slot": "22",
-            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)31292_storage)dyn_storage))",
+            "type": "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)7424_storage)dyn_storage))",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:161"
           },
@@ -38756,7 +38759,7 @@
             "label": "adoptionOracle",
             "offset": 0,
             "slot": "25",
-            "type": "t_contract(IAdoptionOracle)31279",
+            "type": "t_contract(IAdoptionOracle)7411",
             "contract": "PoAIManager",
             "src": "contracts/PoAIManager.sol:166"
           }
@@ -38808,11 +38811,11 @@
             "label": "address[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(DeprecatedNodesTransitionProposal)31287_storage)dyn_storage": {
+          "t_array(t_struct(DeprecatedNodesTransitionProposal)7419_storage)dyn_storage": {
             "label": "struct DeprecatedNodesTransitionProposal[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(NodesTransitionProposal)31292_storage)dyn_storage": {
+          "t_array(t_struct(NodesTransitionProposal)7424_storage)dyn_storage": {
             "label": "struct NodesTransitionProposal[]",
             "numberOfBytes": "32"
           },
@@ -38824,23 +38827,23 @@
             "label": "bytes32",
             "numberOfBytes": "32"
           },
-          "t_contract(Controller)21476": {
+          "t_contract(Controller)3907": {
             "label": "contract Controller",
             "numberOfBytes": "20"
           },
-          "t_contract(IAdoptionOracle)31279": {
+          "t_contract(IAdoptionOracle)7411": {
             "label": "contract IAdoptionOracle",
             "numberOfBytes": "20"
           },
-          "t_contract(IMND)31271": {
+          "t_contract(IMND)7403": {
             "label": "contract IMND",
             "numberOfBytes": "20"
           },
-          "t_contract(IND)31261": {
+          "t_contract(IND)7393": {
             "label": "contract IND",
             "numberOfBytes": "20"
           },
-          "t_contract(UpgradeableBeacon)3397": {
+          "t_contract(UpgradeableBeacon)1300": {
             "label": "contract UpgradeableBeacon",
             "numberOfBytes": "20"
           },
@@ -38864,11 +38867,11 @@
             "label": "mapping(uint256 => address)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)31287_storage)dyn_storage)": {
+          "t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)7419_storage)dyn_storage)": {
             "label": "mapping(uint256 => struct DeprecatedNodesTransitionProposal[])",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)31292_storage)dyn_storage)": {
+          "t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)7424_storage)dyn_storage)": {
             "label": "mapping(uint256 => struct NodesTransitionProposal[])",
             "numberOfBytes": "32"
           },
@@ -38884,11 +38887,11 @@
             "label": "mapping(uint256 => mapping(bytes32 => bool))",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)31287_storage)dyn_storage))": {
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(DeprecatedNodesTransitionProposal)7419_storage)dyn_storage))": {
             "label": "mapping(uint256 => mapping(uint256 => struct DeprecatedNodesTransitionProposal[]))",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)31292_storage)dyn_storage))": {
+          "t_mapping(t_uint256,t_mapping(t_uint256,t_array(t_struct(NodesTransitionProposal)7424_storage)dyn_storage))": {
             "label": "mapping(uint256 => mapping(uint256 => struct NodesTransitionProposal[]))",
             "numberOfBytes": "32"
           },
@@ -38896,7 +38899,7 @@
             "label": "mapping(uint256 => uint256)",
             "numberOfBytes": "32"
           },
-          "t_struct(DeprecatedNodesTransitionProposal)31287_storage": {
+          "t_struct(DeprecatedNodesTransitionProposal)7419_storage": {
             "label": "struct DeprecatedNodesTransitionProposal",
             "members": [
               {
@@ -38920,7 +38923,7 @@
             ],
             "numberOfBytes": "96"
           },
-          "t_struct(NodesTransitionProposal)31292_storage": {
+          "t_struct(NodesTransitionProposal)7424_storage": {
             "label": "struct NodesTransitionProposal",
             "members": [
               {
