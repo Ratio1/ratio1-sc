@@ -37689,7 +37689,7 @@
             "label": "redmeshTestAttestations",
             "offset": 0,
             "slot": "1",
-            "type": "t_array(t_struct(RedmeshTestAttestation)5964_storage)dyn_storage",
+            "type": "t_array(t_struct(RedmeshTestAttestation)19930_storage)dyn_storage",
             "contract": "AttestationRegistry",
             "src": "contracts/AttestationRegistry.sol:69"
           },
@@ -37705,7 +37705,7 @@
             "label": "redmeshJobStartAttestations",
             "offset": 0,
             "slot": "3",
-            "type": "t_array(t_struct(RedmeshJobStartAttestation)5979_storage)dyn_storage",
+            "type": "t_array(t_struct(RedmeshJobStartAttestation)19945_storage)dyn_storage",
             "contract": "AttestationRegistry",
             "src": "contracts/AttestationRegistry.sol:71"
           },
@@ -37761,11 +37761,11 @@
             "label": "uint64",
             "numberOfBytes": "8"
           },
-          "t_array(t_struct(RedmeshJobStartAttestation)5979_storage)dyn_storage": {
+          "t_array(t_struct(RedmeshJobStartAttestation)19945_storage)dyn_storage": {
             "label": "struct AttestationRegistry.RedmeshJobStartAttestation[]",
             "numberOfBytes": "32"
           },
-          "t_array(t_struct(RedmeshTestAttestation)5964_storage)dyn_storage": {
+          "t_array(t_struct(RedmeshTestAttestation)19930_storage)dyn_storage": {
             "label": "struct AttestationRegistry.RedmeshTestAttestation[]",
             "numberOfBytes": "32"
           },
@@ -37793,7 +37793,7 @@
             "label": "mapping(address => uint32[])",
             "numberOfBytes": "32"
           },
-          "t_struct(RedmeshJobStartAttestation)5979_storage": {
+          "t_struct(RedmeshJobStartAttestation)19945_storage": {
             "label": "struct AttestationRegistry.RedmeshJobStartAttestation",
             "members": [
               {
@@ -37841,7 +37841,7 @@
             ],
             "numberOfBytes": "96"
           },
-          "t_struct(RedmeshTestAttestation)5964_storage": {
+          "t_struct(RedmeshTestAttestation)19930_storage": {
             "label": "struct AttestationRegistry.RedmeshTestAttestation",
             "members": [
               {
