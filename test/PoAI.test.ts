@@ -539,8 +539,21 @@ describe("PoAIManager", function () {
     });
   });
 
-  describe("CSP escrow owner migration", function () {
-    it("allows PoAI manager owner to migrate escrow ownership", async function () {
+  describe("CSP escrow owner transfer", function () {
+    async function initiateAndTransferCspEscrowOwnership(
+      oldOwnerSigner: Signer,
+      oldOwner: string,
+      newOwner: string
+    ) {
+      await poaiManager
+        .connect(owner)
+        .initiateCspEscrowOwnerTransfer(oldOwner, newOwner);
+      await poaiManager
+        .connect(oldOwnerSigner)
+        .transferCspEscrowOwnership(newOwner);
+    }
+
+    it("allows PoAI manager owner to initiate and CSP owner to transfer escrow ownership", async function () {
       const escrowAddress = await setupUserWithEscrow(user, oracle);
       const oldOwner = await user.getAddress();
       const newOwner = await other.getAddress();
@@ -550,11 +563,23 @@ describe("PoAIManager", function () {
       )) as unknown as CspEscrow;
 
       await expect(
-        poaiManager.connect(owner).migrateCspEscrowOwner(oldOwner, newOwner)
+        poaiManager
+          .connect(owner)
+          .initiateCspEscrowOwnerTransfer(oldOwner, newOwner)
+      )
+        .to.emit(poaiManager, "CspEscrowOwnerTransferInitiated")
+        .withArgs(escrowAddress, oldOwner, newOwner);
+
+      expect(
+        await poaiManager.initiatedCspOwnerTransferReceiver(oldOwner)
+      ).to.equal(newOwner);
+
+      await expect(
+        poaiManager.connect(user).transferCspEscrowOwnership(newOwner)
       )
         .to.emit(cspEscrow, "CspOwnerChanged")
         .withArgs(oldOwner, newOwner)
-        .and.to.emit(poaiManager, "CspEscrowOwnerMigrated")
+        .and.to.emit(poaiManager, "CspEscrowOwnerTransferred")
         .withArgs(escrowAddress, oldOwner, newOwner);
 
       expect(await poaiManager.ownerToEscrow(oldOwner)).to.equal(
@@ -565,6 +590,9 @@ describe("PoAIManager", function () {
       );
       expect(await poaiManager.escrowToOwner(escrowAddress)).to.equal(newOwner);
       expect(await cspEscrow.cspOwner()).to.equal(newOwner);
+      expect(
+        await poaiManager.initiatedCspOwnerTransferReceiver(oldOwner)
+      ).to.equal(ethers.ZeroAddress);
 
       expect(await poaiManager.getAddressRegistration(oldOwner)).to.deep.equal(
         [false, ethers.ZeroAddress]
@@ -574,7 +602,7 @@ describe("PoAIManager", function () {
       );
     });
 
-    it("preserves escrow jobs and CSP tier during ownership migration", async function () {
+    it("preserves escrow jobs and CSP tier during ownership transfer", async function () {
       const escrowAddress = await setupUserWithEscrow(user, oracle);
       const oldOwner = await user.getAddress();
       const newOwner = await other.getAddress();
@@ -606,9 +634,7 @@ describe("PoAIManager", function () {
         },
       ]);
 
-      await poaiManager
-        .connect(owner)
-        .migrateCspEscrowOwner(oldOwner, newOwner);
+      await initiateAndTransferCspEscrowOwnership(user, oldOwner, newOwner);
 
       const activeJobs = await cspEscrow.getActiveJobs();
       expect(activeJobs.length).to.equal(1);
@@ -633,9 +659,7 @@ describe("PoAIManager", function () {
         escrowAddress
       )) as unknown as CspEscrow;
 
-      await poaiManager
-        .connect(owner)
-        .migrateCspEscrowOwner(oldOwner, newOwner);
+      await initiateAndTransferCspEscrowOwnership(user, oldOwner, newOwner);
 
       await expect(
         cspEscrow
@@ -652,13 +676,13 @@ describe("PoAIManager", function () {
         .withArgs(delegate, PERMISSION_CREATE_JOBS);
     });
 
-    it("prevents non-owner accounts from migrating escrow ownership", async function () {
+    it("prevents non-owner accounts from initiating escrow ownership transfer", async function () {
       const escrowAddress = await setupUserWithEscrow(user, oracle);
 
       await expect(
         poaiManager
           .connect(user)
-          .migrateCspEscrowOwner(
+          .initiateCspEscrowOwnerTransfer(
             await user.getAddress(),
             await other.getAddress()
           )
@@ -672,7 +696,20 @@ describe("PoAIManager", function () {
       );
     });
 
-    it("reverts for invalid migration addresses", async function () {
+    it("prevents CSP owner transfer without protocol initiation", async function () {
+      await setupUserWithEscrow(user, oracle);
+
+      await expect(
+        poaiManager
+          .connect(user)
+          .transferCspEscrowOwnership(await other.getAddress())
+      ).to.be.revertedWithCustomError(
+        poaiManager,
+        "CspEscrowOwnerTransferNotInitiated"
+      );
+    });
+
+    it("reverts for invalid transfer addresses", async function () {
       await setupUserWithEscrow(user, oracle);
       const oldOwner = await user.getAddress();
       const newOwner = await other.getAddress();
@@ -680,17 +717,19 @@ describe("PoAIManager", function () {
       await expect(
         poaiManager
           .connect(owner)
-          .migrateCspEscrowOwner(ethers.ZeroAddress, newOwner)
+          .initiateCspEscrowOwnerTransfer(ethers.ZeroAddress, newOwner)
       ).to.be.revertedWithCustomError(poaiManager, "InvalidCspOwner");
 
       await expect(
         poaiManager
           .connect(owner)
-          .migrateCspEscrowOwner(oldOwner, ethers.ZeroAddress)
+          .initiateCspEscrowOwnerTransfer(oldOwner, ethers.ZeroAddress)
       ).to.be.revertedWithCustomError(poaiManager, "InvalidCspOwner");
 
       await expect(
-        poaiManager.connect(owner).migrateCspEscrowOwner(oldOwner, oldOwner)
+        poaiManager
+          .connect(owner)
+          .initiateCspEscrowOwnerTransfer(oldOwner, oldOwner)
       ).to.be.revertedWithCustomError(poaiManager, "SameCspOwner");
     });
 
@@ -698,7 +737,7 @@ describe("PoAIManager", function () {
       await expect(
         poaiManager
           .connect(owner)
-          .migrateCspEscrowOwner(
+          .initiateCspEscrowOwnerTransfer(
             await user.getAddress(),
             await other.getAddress()
           )
@@ -716,7 +755,7 @@ describe("PoAIManager", function () {
       await expect(
         poaiManager
           .connect(owner)
-          .migrateCspEscrowOwner(
+          .initiateCspEscrowOwnerTransfer(
             await user.getAddress(),
             await other.getAddress()
           )
@@ -740,7 +779,9 @@ describe("PoAIManager", function () {
         .setDelegatePermissions(newOwner, PERMISSION_CREATE_JOBS);
 
       await expect(
-        poaiManager.connect(owner).migrateCspEscrowOwner(oldOwner, newOwner)
+        poaiManager
+          .connect(owner)
+          .initiateCspEscrowOwnerTransfer(oldOwner, newOwner)
       ).to.be.revertedWithCustomError(
         poaiManager,
         "AddressDelegatedToAnotherEscrow"

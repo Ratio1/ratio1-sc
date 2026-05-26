@@ -110,6 +110,7 @@ error CspEscrowDoesNotExist();
 error InvalidCspOwner();
 error SameCspOwner();
 error EscrowOwnerMismatch();
+error CspEscrowOwnerTransferNotInitiated();
 
 contract PoAIManager is Initializable, OwnableUpgradeable {
     //..######..########..#######..########.....###.....######...########
@@ -168,6 +169,8 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
     mapping(address => address) public delegatedAddressToEscrow;
     address public burnContract;
     IAdoptionOracle public adoptionOracle;
+    // Mapping from current CSP owner to the protocol-approved transfer receiver
+    mapping(address => address) public initiatedCspOwnerTransferReceiver;
 
     //.########.##.....##.########.##....##.########..######.
     //.##.......##.....##.##.......###...##....##....##....##
@@ -217,7 +220,12 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         address indexed escrow,
         uint8 newTier
     );
-    event CspEscrowOwnerMigrated(
+    event CspEscrowOwnerTransferInitiated(
+        address indexed escrow,
+        address indexed oldOwner,
+        address indexed newOwner
+    );
+    event CspEscrowOwnerTransferred(
         address indexed escrow,
         address indexed oldOwner,
         address indexed newOwner
@@ -307,10 +315,42 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         emit CspTierUpdated(cspOwner, escrowAddress, newTier);
     }
 
-    function migrateCspEscrowOwner(
+    function initiateCspEscrowOwnerTransfer(
         address oldOwner,
         address newOwner
     ) external onlyOwner {
+        address escrowAddress = _validateCspEscrowOwnerTransfer(
+            oldOwner,
+            newOwner
+        );
+
+        initiatedCspOwnerTransferReceiver[oldOwner] = newOwner;
+
+        emit CspEscrowOwnerTransferInitiated(
+            escrowAddress,
+            oldOwner,
+            newOwner
+        );
+    }
+
+    function transferCspEscrowOwnership(address newOwner) external {
+        address oldOwner = msg.sender;
+        address escrowAddress = _validateCspEscrowOwnerTransfer(
+            oldOwner,
+            newOwner
+        );
+        if (initiatedCspOwnerTransferReceiver[oldOwner] != newOwner) {
+            revert CspEscrowOwnerTransferNotInitiated();
+        }
+
+        delete initiatedCspOwnerTransferReceiver[oldOwner];
+        _transferCspEscrowOwnership(escrowAddress, oldOwner, newOwner);
+    }
+
+    function _validateCspEscrowOwnerTransfer(
+        address oldOwner,
+        address newOwner
+    ) internal view returns (address escrowAddress) {
         if (oldOwner == address(0) || newOwner == address(0)) {
             revert InvalidCspOwner();
         }
@@ -318,7 +358,7 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
             revert SameCspOwner();
         }
 
-        address escrowAddress = ownerToEscrow[oldOwner];
+        escrowAddress = ownerToEscrow[oldOwner];
         if (escrowAddress == address(0)) {
             revert CspEscrowDoesNotExist();
         }
@@ -331,14 +371,20 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         if (escrowToOwner[escrowAddress] != oldOwner) {
             revert EscrowOwnerMismatch();
         }
+    }
 
+    function _transferCspEscrowOwnership(
+        address escrowAddress,
+        address oldOwner,
+        address newOwner
+    ) internal {
         delete ownerToEscrow[oldOwner];
         ownerToEscrow[newOwner] = escrowAddress;
         escrowToOwner[escrowAddress] = newOwner;
 
         CspEscrow(escrowAddress).setCspOwnerFromManager(newOwner);
 
-        emit CspEscrowOwnerMigrated(escrowAddress, oldOwner, newOwner);
+        emit CspEscrowOwnerTransferred(escrowAddress, oldOwner, newOwner);
     }
 
     // Internal function to check if user owns at least one ND or MND with a linked node address that is an oracle
