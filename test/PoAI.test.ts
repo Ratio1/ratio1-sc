@@ -539,6 +539,227 @@ describe("PoAIManager", function () {
     });
   });
 
+  describe("CSP escrow owner migration", function () {
+    it("allows PoAI manager owner to migrate escrow ownership", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const oldOwner = await user.getAddress();
+      const newOwner = await other.getAddress();
+      const cspEscrow = (await ethers.getContractAt(
+        "CspEscrow",
+        escrowAddress
+      )) as unknown as CspEscrow;
+
+      await expect(
+        poaiManager.connect(owner).migrateCspEscrowOwner(oldOwner, newOwner)
+      )
+        .to.emit(cspEscrow, "CspOwnerChanged")
+        .withArgs(oldOwner, newOwner)
+        .and.to.emit(poaiManager, "CspEscrowOwnerMigrated")
+        .withArgs(escrowAddress, oldOwner, newOwner);
+
+      expect(await poaiManager.ownerToEscrow(oldOwner)).to.equal(
+        ethers.ZeroAddress
+      );
+      expect(await poaiManager.ownerToEscrow(newOwner)).to.equal(
+        escrowAddress
+      );
+      expect(await poaiManager.escrowToOwner(escrowAddress)).to.equal(newOwner);
+      expect(await cspEscrow.cspOwner()).to.equal(newOwner);
+
+      expect(await poaiManager.getAddressRegistration(oldOwner)).to.deep.equal(
+        [false, ethers.ZeroAddress]
+      );
+      expect(await poaiManager.getAddressRegistration(newOwner)).to.deep.equal(
+        [true, escrowAddress]
+      );
+    });
+
+    it("preserves escrow jobs and CSP tier during ownership migration", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const oldOwner = await user.getAddress();
+      const newOwner = await other.getAddress();
+      const cspEscrow = (await ethers.getContractAt(
+        "CspEscrow",
+        escrowAddress
+      )) as unknown as CspEscrow;
+
+      await poaiManager.connect(owner).setCspTier(oldOwner, 2);
+
+      const currentEpoch = await poaiManager.getCurrentEpoch();
+      const lastExecutionEpoch = currentEpoch + 35n;
+      const numberOfNodesRequested = 1n;
+      const jobPrice =
+        (await cspEscrow.getPriceForJobType(1)) *
+        numberOfNodesRequested *
+        (lastExecutionEpoch - currentEpoch);
+
+      await mockUsdc.mint(oldOwner, jobPrice);
+      await mockUsdc.connect(user).approve(escrowAddress, jobPrice);
+      await cspEscrow.connect(user).createJobs([
+        {
+          jobType: 1,
+          projectHash: ethers.keccak256(
+            ethers.toUtf8Bytes("migration-project")
+          ),
+          lastExecutionEpoch,
+          numberOfNodesRequested,
+        },
+      ]);
+
+      await poaiManager
+        .connect(owner)
+        .migrateCspEscrowOwner(oldOwner, newOwner);
+
+      const activeJobs = await cspEscrow.getActiveJobs();
+      expect(activeJobs.length).to.equal(1);
+      expect(activeJobs[0].id).to.equal(1);
+      expect(await poaiManager.jobIdToEscrow(1)).to.equal(escrowAddress);
+
+      const jobDetails = await poaiManager.getJobDetails(1);
+      expect(jobDetails.escrowAddress).to.equal(escrowAddress);
+      expect(jobDetails.escrowOwner).to.equal(newOwner);
+      expect(await cspEscrow.cspTier()).to.equal(2);
+      expect(await poaiManager.getCspTier(newOwner)).to.equal(2);
+      expect(await poaiManager.getCspTier(oldOwner)).to.equal(0);
+    });
+
+    it("moves owner-only escrow permissions to the new owner", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const oldOwner = await user.getAddress();
+      const newOwner = await other.getAddress();
+      const delegate = await oracle2.getAddress();
+      const cspEscrow = (await ethers.getContractAt(
+        "CspEscrow",
+        escrowAddress
+      )) as unknown as CspEscrow;
+
+      await poaiManager
+        .connect(owner)
+        .migrateCspEscrowOwner(oldOwner, newOwner);
+
+      await expect(
+        cspEscrow
+          .connect(user)
+          .setDelegatePermissions(delegate, PERMISSION_CREATE_JOBS)
+      ).to.be.revertedWith("Not CSP owner");
+
+      await expect(
+        cspEscrow
+          .connect(other)
+          .setDelegatePermissions(delegate, PERMISSION_CREATE_JOBS)
+      )
+        .to.emit(cspEscrow, "DelegatePermissionsUpdated")
+        .withArgs(delegate, PERMISSION_CREATE_JOBS);
+    });
+
+    it("prevents non-owner accounts from migrating escrow ownership", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+
+      await expect(
+        poaiManager
+          .connect(user)
+          .migrateCspEscrowOwner(
+            await user.getAddress(),
+            await other.getAddress()
+          )
+      ).to.be.revertedWithCustomError(
+        poaiManager,
+        "OwnableUnauthorizedAccount"
+      );
+
+      expect(await poaiManager.escrowToOwner(escrowAddress)).to.equal(
+        await user.getAddress()
+      );
+    });
+
+    it("reverts for invalid migration addresses", async function () {
+      await setupUserWithEscrow(user, oracle);
+      const oldOwner = await user.getAddress();
+      const newOwner = await other.getAddress();
+
+      await expect(
+        poaiManager
+          .connect(owner)
+          .migrateCspEscrowOwner(ethers.ZeroAddress, newOwner)
+      ).to.be.revertedWithCustomError(poaiManager, "InvalidCspOwner");
+
+      await expect(
+        poaiManager
+          .connect(owner)
+          .migrateCspEscrowOwner(oldOwner, ethers.ZeroAddress)
+      ).to.be.revertedWithCustomError(poaiManager, "InvalidCspOwner");
+
+      await expect(
+        poaiManager.connect(owner).migrateCspEscrowOwner(oldOwner, oldOwner)
+      ).to.be.revertedWithCustomError(poaiManager, "SameCspOwner");
+    });
+
+    it("reverts when old owner has no escrow", async function () {
+      await expect(
+        poaiManager
+          .connect(owner)
+          .migrateCspEscrowOwner(
+            await user.getAddress(),
+            await other.getAddress()
+          )
+      ).to.be.revertedWithCustomError(
+        poaiManager,
+        "CspEscrowDoesNotExist"
+      );
+    });
+
+    it("reverts when new owner already owns an escrow", async function () {
+      await controller.addOracle(await oracle2.getAddress());
+      await setupUserWithEscrow(user, oracle);
+      await setupUserWithEscrow(other, oracle2);
+
+      await expect(
+        poaiManager
+          .connect(owner)
+          .migrateCspEscrowOwner(
+            await user.getAddress(),
+            await other.getAddress()
+          )
+      ).to.be.revertedWithCustomError(
+        poaiManager,
+        "AddressAlreadyOwnsEscrow"
+      );
+    });
+
+    it("reverts when new owner is already delegated to an escrow", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const oldOwner = await user.getAddress();
+      const newOwner = await other.getAddress();
+      const cspEscrow = (await ethers.getContractAt(
+        "CspEscrow",
+        escrowAddress
+      )) as unknown as CspEscrow;
+
+      await cspEscrow
+        .connect(user)
+        .setDelegatePermissions(newOwner, PERMISSION_CREATE_JOBS);
+
+      await expect(
+        poaiManager.connect(owner).migrateCspEscrowOwner(oldOwner, newOwner)
+      ).to.be.revertedWithCustomError(
+        poaiManager,
+        "AddressDelegatedToAnotherEscrow"
+      );
+    });
+
+    it("prevents direct CSP owner updates by non-manager accounts", async function () {
+      const escrowAddress = await setupUserWithEscrow(user, oracle);
+      const cspEscrow = (await ethers.getContractAt(
+        "CspEscrow",
+        escrowAddress
+      )) as unknown as CspEscrow;
+
+      await expect(
+        cspEscrow.connect(user).setCspOwnerFromManager(await other.getAddress())
+      ).to.be.revertedWith("Not PoAI Manager");
+    });
+  });
+
   it("should allow CSP owner to create a job", async function () {
     const escrowAddress = await setupUserWithEscrow(user, oracle);
     const CspEscrow = await ethers.getContractFactory("CspEscrow");

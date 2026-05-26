@@ -196,6 +196,10 @@ contract CspEscrow is Initializable {
     );
     event DelegateRemoved(address indexed delegate);
     event CspTierUpdated(uint8 previousTier, uint8 newTier);
+    event CspOwnerChanged(
+        address indexed previousOwner,
+        address indexed newOwner
+    );
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -753,6 +757,15 @@ contract CspEscrow is Initializable {
         uint8 previousTier = cspTier;
         cspTier = newTier;
         emit CspTierUpdated(previousTier, newTier);
+    }
+
+    function setCspOwnerFromManager(
+        address newOwner
+    ) external onlyPoAIManager {
+        require(newOwner != address(0), "CSP owner cannot be zero address");
+        address previousOwner = cspOwner;
+        cspOwner = newOwner;
+        emit CspOwnerChanged(previousOwner, newOwner);
     }
 
     function reconcileAllJobs() external onlyPoAIManager {

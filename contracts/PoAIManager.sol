@@ -107,6 +107,9 @@ error AlreadyReconciled();
 error TimestampBeforeStartEpoch();
 error NotCspEscrow();
 error CspEscrowDoesNotExist();
+error InvalidCspOwner();
+error SameCspOwner();
+error EscrowOwnerMismatch();
 
 contract PoAIManager is Initializable, OwnableUpgradeable {
     //..######..########..#######..########.....###.....######...########
@@ -214,6 +217,11 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
         address indexed escrow,
         uint8 newTier
     );
+    event CspEscrowOwnerMigrated(
+        address indexed escrow,
+        address indexed oldOwner,
+        address indexed newOwner
+    );
 
     //.########.##....##.########..########...#######..####.##....##.########..######.
     //.##.......###...##.##.....##.##.....##.##.....##..##..###...##....##....##....##
@@ -297,6 +305,40 @@ contract PoAIManager is Initializable, OwnableUpgradeable {
 
         CspEscrow(escrowAddress).setCspTier(newTier);
         emit CspTierUpdated(cspOwner, escrowAddress, newTier);
+    }
+
+    function migrateCspEscrowOwner(
+        address oldOwner,
+        address newOwner
+    ) external onlyOwner {
+        if (oldOwner == address(0) || newOwner == address(0)) {
+            revert InvalidCspOwner();
+        }
+        if (oldOwner == newOwner) {
+            revert SameCspOwner();
+        }
+
+        address escrowAddress = ownerToEscrow[oldOwner];
+        if (escrowAddress == address(0)) {
+            revert CspEscrowDoesNotExist();
+        }
+        if (ownerToEscrow[newOwner] != address(0)) {
+            revert AddressAlreadyOwnsEscrow();
+        }
+        if (delegatedAddressToEscrow[newOwner] != address(0)) {
+            revert AddressDelegatedToAnotherEscrow();
+        }
+        if (escrowToOwner[escrowAddress] != oldOwner) {
+            revert EscrowOwnerMismatch();
+        }
+
+        delete ownerToEscrow[oldOwner];
+        ownerToEscrow[newOwner] = escrowAddress;
+        escrowToOwner[escrowAddress] = newOwner;
+
+        CspEscrow(escrowAddress).setCspOwnerFromManager(newOwner);
+
+        emit CspEscrowOwnerMigrated(escrowAddress, oldOwner, newOwner);
     }
 
     // Internal function to check if user owns at least one ND or MND with a linked node address that is an oracle
