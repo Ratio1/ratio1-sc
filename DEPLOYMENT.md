@@ -22,27 +22,29 @@ ETHERSCAN_API_KEY=...
 3. Set the target network values in `scripts/configs/constants.ts`:
 
 ```ts
-SAFE_ADDR
-START_EPOCH_TIMESTAMP
-EPOCH_DURATION
-UNISWAP_V2_ROUTER_ADDR
-USDC_TOKEN_ADDR
-ND_FULL_RELEASE_THRESHOLD
-POAI_VOLUME_FULL_RELEASE_THRESHOLD
-NEW_COMPANY_WALLET
-NEW_LP_WALLET
-NEW_VAT_RECEIVER_WALLET
-NEW_EXPENSES_WALLET
-NEW_MARKETING_WALLET
-NEW_GRANTS_WALLET
-NEW_CSR_WALLET
-ND_BASE_URI
-MND_BASE_URI
-DIRECT_ADD_LP_PERCENTAGE
-MAX_ALLOWED_PRICE_DIFFERENCE
+SAFE_ADDR;
+START_EPOCH_TIMESTAMP;
+EPOCH_DURATION;
+UNISWAP_V2_ROUTER_ADDR;
+USDC_TOKEN_ADDR;
+ND_FULL_RELEASE_THRESHOLD;
+POAI_VOLUME_FULL_RELEASE_THRESHOLD;
+NEW_COMPANY_WALLET;
+NEW_LP_WALLET;
+NEW_VAT_RECEIVER_WALLET;
+NEW_EXPENSES_WALLET;
+NEW_MARKETING_WALLET;
+NEW_GRANTS_WALLET;
+NEW_CSR_WALLET;
+ND_BASE_URI;
+MND_BASE_URI;
+DIRECT_ADD_LP_PERCENTAGE;
+MAX_ALLOWED_PRICE_DIFFERENCE;
 ```
 
 `addOracle` and `setMinimumRequiredSignatures` are intentionally not part of the required Safe batch. Handle oracle membership separately if needed.
+
+`DAuthOracleRegistry` dAuth membership is also handled separately from the required Safe batch. Add dAuth oracles only after they are already registered as Controller oracles.
 
 ## Deploy Order
 
@@ -63,7 +65,7 @@ npx hardhat run scripts/deploys/00.Controller.ts --network baseSepolia
 Update:
 
 ```ts
-CONTROLLER_ADDR
+CONTROLLER_ADDR;
 ```
 
 ### 2. R1
@@ -75,7 +77,7 @@ npx hardhat run scripts/deploys/01.R1.ts --network baseSepolia
 Update:
 
 ```ts
-R1_TOKEN_ADDR
+R1_TOKEN_ADDR;
 ```
 
 ### 3. Uniswap V2 Pair
@@ -89,7 +91,7 @@ npx hardhat run scripts/deploys/02.CreateUniswapPair.ts --network baseSepolia
 Update:
 
 ```ts
-UNISWAP_V2_PAIR_ADDR
+UNISWAP_V2_PAIR_ADDR;
 ```
 
 If the script prints a zero pair address, do not continue. The script should fail in that case; check router/factory/network configuration.
@@ -103,7 +105,7 @@ npx hardhat run scripts/deploys/03.BurnContract.ts --network baseSepolia
 Update:
 
 ```ts
-BURN_CONTRACT_ADDR
+BURN_CONTRACT_ADDR;
 ```
 
 ### 5. CspEscrow Implementation
@@ -115,7 +117,7 @@ npx hardhat run scripts/deploys/04.CspEscrow.ts --network baseSepolia
 Update:
 
 ```ts
-CSP_ESCROW_IMPLEMENTATION_ADDR
+CSP_ESCROW_IMPLEMENTATION_ADDR;
 ```
 
 ### 6. MND
@@ -127,7 +129,7 @@ npx hardhat run scripts/deploys/05.MND.ts --network baseSepolia
 Update:
 
 ```ts
-MND_SC_ADDR
+MND_SC_ADDR;
 ```
 
 ### 7. ND
@@ -139,7 +141,7 @@ npx hardhat run scripts/deploys/06.ND.ts --network baseSepolia
 Update:
 
 ```ts
-ND_SC_ADDR
+ND_SC_ADDR;
 ```
 
 ### 8. PoAIManager
@@ -151,8 +153,8 @@ npx hardhat run scripts/deploys/07.PoAIManager.ts --network baseSepolia
 Update:
 
 ```ts
-POAI_MANAGER_ADDR
-CSP_ESCROW_BEACON_ADDR
+POAI_MANAGER_ADDR;
+CSP_ESCROW_BEACON_ADDR;
 ```
 
 ### 9. AdoptionOracle
@@ -164,7 +166,7 @@ npx hardhat run scripts/deploys/08.AdoptionOracle.ts --network baseSepolia
 Update:
 
 ```ts
-ADOPTION_ORACLE_ADDR
+ADOPTION_ORACLE_ADDR;
 ```
 
 ### 10. Reader
@@ -176,7 +178,7 @@ npx hardhat run scripts/deploys/09.Reader.ts --network baseSepolia
 Update:
 
 ```ts
-READER_ADDR
+READER_ADDR;
 ```
 
 ### 11. GratitudeBurn
@@ -188,7 +190,7 @@ npx hardhat run scripts/deploys/10.GratitudeBurn.ts --network baseSepolia
 Update:
 
 ```ts
-GRATITUDE_BURN_ADDR
+GRATITUDE_BURN_ADDR;
 ```
 
 ### 12. AttestationRegistry
@@ -200,8 +202,21 @@ npx hardhat run scripts/deploys/11.AttestationRegistry.ts --network baseSepolia
 Update:
 
 ```ts
-ATTESTATION_REGISTRY_ADDR
+ATTESTATION_REGISTRY_ADDR;
 ```
+
+### 13. DAuthOracleRegistry
+
+`DAuthOracleRegistry` is non-upgradeable and is deployed directly, not through a proxy. The constructor uses:
+
+- `CONTROLLER_ADDR` as the source of protocol oracle membership.
+- `SAFE_ADDR` as the contract owner.
+
+```bash
+npx hardhat run scripts/deploys/12.DAuthOracleRegistry.ts --network baseSepolia
+```
+
+The registry owner can add or remove dAuth oracles independently from the required Safe configuration batch. `addDAuthOracle` rejects nodes that are not current Controller oracles, and public registry reads exclude entries that are later removed from Controller.
 
 ## Required Safe Configuration
 

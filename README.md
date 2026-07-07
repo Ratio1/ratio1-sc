@@ -29,6 +29,11 @@ This repository contains all the smart contracts for the Ratio1 Ecosystem.
 - **Purpose:** Central configuration and oracle management for the protocol.
 - **Key Features:** Stores protocol constants, manages oracles, verifies signatures, links to ND and MND contracts.
 
+### DAuthOracleRegistry
+
+- **Purpose:** On-chain registry of Controller oracles selected to run dAuth services.
+- **Key Features:** Non-upgradeable, owner-managed add/remove flow, requires added dAuth nodes to already be Controller oracles, and filters public reads against current Controller oracle membership.
+
 ### MNDContract (Master Node Deed, ERC721)
 
 - **Purpose:** Manages Master Node licenses (NFTs), their assignment, and reward distribution.
@@ -59,13 +64,14 @@ This repository contains all the smart contracts for the Ratio1 Ecosystem.
 
 ## Deployment Addresses (Base)
 
-| Contract    | Address                                      |
-| ----------- | -------------------------------------------- |
-| R1 Token    | `0x6444C6c2D527D85EA97032da9A7504d6d1448ecF` |
-| MNDContract | `0x0C431e546371C87354714Fcc1a13365391A549E2` |
-| NDContract  | `0xE658DF6dA3FB5d4FBa562F1D5934bd0F9c6bd423` |
-| Controller  | `0x90dA5FdaA92edDC80FB73114fb7FE7D97f2be017` |
-| Reader      | `0xa2fDD4c7E93790Ff68a01f01AA789D619F12c6AC` |
+| Contract            | Address                                      |
+| ------------------- | -------------------------------------------- |
+| R1 Token            | `0x6444C6c2D527D85EA97032da9A7504d6d1448ecF` |
+| MNDContract         | `0x0C431e546371C87354714Fcc1a13365391A549E2` |
+| NDContract          | `0xE658DF6dA3FB5d4FBa562F1D5934bd0F9c6bd423` |
+| Controller          | `0x90dA5FdaA92edDC80FB73114fb7FE7D97f2be017` |
+| Reader              | `0xa2fDD4c7E93790Ff68a01f01AA789D619F12c6AC` |
+| DAuthOracleRegistry | `0x4805A2f5Edb258968791aBc87bcd4CD2F453D07d` |
 
 ## Deployment
 
@@ -86,6 +92,7 @@ npx hardhat run scripts/deploys/00.Controller.ts --network base
 npx hardhat run scripts/deploys/01.R1.ts --network base
 npx hardhat run scripts/deploys/02.MND.ts --network base
 npx hardhat run scripts/deploys/03.ND.ts --network base
+npx hardhat run scripts/deploys/12.DAuthOracleRegistry.ts --network base
 npx hardhat run scripts/deploys/Reader.ts --network base
 npx hardhat run scripts/deploys/TestnetFaucet.ts --network base
 ```
